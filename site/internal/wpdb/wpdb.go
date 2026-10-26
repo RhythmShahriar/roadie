@@ -89,12 +89,29 @@ func Options(ctx context.Context, s core.Site, names ...string) (map[string][]by
 	for _, n := range names {
 		want[n] = true
 	}
+	return OptionsMatch(ctx, s, func(n string) bool { return want[n] })
+}
+
+// OptionsMatch reads every option whose name match accepts, in one pass.
+func OptionsMatch(ctx context.Context, s core.Site, match func(name string) bool) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	err := Rows(ctx, s, Prefix(ctx, s)+"options", []string{"option_name", "option_value"}, func(v [][]byte) error {
-		if v[0] != nil && want[string(v[0])] {
+		if v[0] != nil && match(string(v[0])) {
 			out[string(v[0])] = append([]byte(nil), v[1]...)
 		}
 		return nil
 	})
 	return out, err
+}
+
+// Count counts the rows of table for which keep accepts the values of cols.
+func Count(ctx context.Context, s core.Site, table string, cols []string, keep func(vals [][]byte) bool) (int64, error) {
+	var n int64
+	err := Rows(ctx, s, table, cols, func(v [][]byte) error {
+		if keep(v) {
+			n++
+		}
+		return nil
+	})
+	return n, err
 }

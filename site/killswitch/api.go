@@ -31,15 +31,30 @@ type Options struct {
 	Mailers    []keys.Mailer                                             // nil: keys.Mailers()
 	// Version is rhythm-roadie's version, for the mu-plugin header.
 	Version string
+	// Salt makes one wp-config salt; nil is pseudo.Salt. Tests pass a
+	// fixed one for golden files.
+	Salt func() string
+	// GatewayIDs are the WooCommerce gateway IDs the source holds (the
+	// keys of woocommerce_gateway_order, see GatewayIDs). DataRules
+	// disables each one the gateway list doesn't know.
+	GatewayIDs []string
 }
 
-// Steps returns the kill-switch steps for the stack.
+// Steps returns the kill-switch steps for the stack, in the order they
+// apply. For WordPress every step is in phase "files": option changes are
+// DataRules. The exposure steps come from the exposure package.
 func Steps(stack core.Stack, o Options) []core.Step {
+	if stack == core.StackWordPress {
+		return wordpressSteps(o)
+	}
 	return nil
 }
 
 // DataRules returns the option-level changes made in the data stream.
 func DataRules(stack core.Stack, o Options) []core.Rule {
+	if stack == core.StackWordPress {
+		return wordpressRules(o)
+	}
 	return nil
 }
 
