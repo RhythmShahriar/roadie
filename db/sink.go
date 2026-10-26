@@ -46,6 +46,7 @@ type sink struct {
 	dropFor  string
 	mode     mysql.Mode
 	vars     mysql.Vars // the user variables the dump has set, for sql_mode
+	delim    string     // the mysql client's current DELIMITER, "" for ';'
 	verb     string     // INSERT INTO, INSERT IGNORE INTO or REPLACE INTO
 	copyCmd  string     // the COPY command of the open PostgreSQL statement
 	copyPos  []int      // value positions it sends
@@ -257,6 +258,17 @@ func (s *sink) pass(ctx context.Context, st *core.Statement) error {
 		// The sink runs its own transactions; LOCK TABLES and DISABLE
 		// KEYS would only get in their way.
 		return nil
+	case mysql.KindDelimiter:
+		// DELIMITER is for the mysql client: the server answers it with
+		// a syntax error. The sink sends one statement at a time, so it
+		// only needs the delimiter to cut it off the statements that
+		// follow (END */;; or END$$).
+		s.delim = delimiterArg(st.Text)
+		return nil
+	case mysql.KindClient:
+		// The allowlist refuses client commands; should one get here it
+		// is still the client's, never the server's.
+		return nil
 	case core.StmtSet:
 		if d == core.SQLite {
 			return nil
@@ -268,7 +280,7 @@ func (s *sink) pass(ctx context.Context, st *core.Statement) error {
 			}
 			s.mode = mysql.SQLMode(text, s.mode, &s.vars)
 		}
-		return s.exec(ctx, stmtText(text))
+		return s.exec(ctx, s.sql(text))
 	case core.StmtDropTable:
 		q, name := objectName(st.Text, "table")
 		if name == "" || !s.wanted(name) {
@@ -308,7 +320,7 @@ func (s *sink) pass(ctx context.Context, st *core.Statement) error {
 		if err := s.endUnit(ctx); err != nil {
 			return err
 		}
-		if err := s.exec(ctx, stmtText(text)); err != nil {
+		if err := s.exec(ctx, s.sql(text)); err != nil {
 			return err
 		}
 		s.st.changed = true
@@ -321,7 +333,13 @@ func (s *sink) pass(ctx context.Context, st *core.Statement) error {
 	if err := s.begin(ctx); err != nil {
 		return err
 	}
-	return s.exec(ctx, stmtText(text))
+	return s.exec(ctx, s.sql(text))
+}
+
+// sql is a statement as the driver takes it: without the current
+// DELIMITER and the trailing semicolons and space.
+func (s *sink) sql(b []byte) string {
+	return stmtText(trimDelim(b, s.delim))
 }
 
 // reCreateSeq finds a CREATE SEQUENCE without IF NOT EXISTS: a sequence
@@ -368,7 +386,7 @@ func (s *sink) create(ctx context.Context, st *core.Statement) error {
 		}
 		s.st.changed = true
 		s.state = core.Mixed
-		if err := s.exec(ctx, stmtText(text)); err != nil {
+		if err := s.exec(ctx, s.sql(text)); err != nil {
 			return err
 		}
 	case core.Postgres:
@@ -380,7 +398,7 @@ func (s *sink) create(ctx context.Context, st *core.Statement) error {
 		if err := s.exec(ctx, drop+" CASCADE"); err != nil {
 			return err
 		}
-		if err := s.exec(ctx, stmtText(text)); err != nil {
+		if err := s.exec(ctx, s.sql(text)); err != nil {
 			return err
 		}
 	default:
@@ -390,7 +408,7 @@ func (s *sink) create(ctx context.Context, st *core.Statement) error {
 		if err := s.exec(ctx, drop); err != nil {
 			return err
 		}
-		if err := s.exec(ctx, stmtText(text)); err != nil {
+		if err := s.exec(ctx, s.sql(text)); err != nil {
 			return err
 		}
 	}

@@ -17,7 +17,7 @@ import (
 	"github.com/RhythmShahriar/roadie/dump/mysql"
 )
 
-// mustCheck judges one MySQL statement given as text.
+// check judges one MySQL statement given as text.
 func check(text string, o Options) (Decision, error) {
 	kind, _ := mysql.Classify([]byte(text), o.Mode)
 	if strings.HasPrefix(strings.TrimSpace(text), "\\") {
@@ -105,6 +105,9 @@ func TestRefused(t *testing.T) {
 		{"source /etc/passwd", "holds a mysql client command (source),"},
 		{"\\. x.sql", `holds a mysql client command (\.),`},
 		{"SELECT 1; \\! id", "holds a mysql client command"},
+		{"CREATE TABLE t (a int) \\! id", `holds a mysql client command (\!), which would run`},
+		{"CREATE TABLE t (a int) \\G", "holds a mysql client command, which would run"},
+		{"SYSTEM id", "holds a mysql client command (system),"},
 		{"USE mysql;", "holds a USE statement for another database, which would send the import to a database --to doesn't name."},
 		{"use `mysql`;", "holds a USE statement for another database"},
 		{"CREATE DATABASE x;", "holds a CREATE DATABASE statement, which would make or remove a database --to doesn't name."},
@@ -164,7 +167,11 @@ func TestRefused(t *testing.T) {
 		{"CALL p();", "holds a CALL statement, which isn't on the list of statements Roadie copies from a dump."},
 		{"INSTALL PLUGIN x SONAME 'x.so';", "holds an INSTALL PLUGIN statement"},
 		{"PREPARE s FROM @q;", "holds a PREPARE statement, which could run code"},
-		{"EXECUTE s;", "holds an EXECUTE statement"},
+		{"EXECUTE s;", "holds an EXECUTE statement, which could run code on the staging database. Leave it out of the export; rhythm-roadie explain dump-refused lists what Roadie keeps."},
+		{"EXECUTE IMMEDIATE 'GRANT ALL ON *.* TO x';", "holds an EXECUTE statement, which could run code on the staging database. Leave it out of the export;"},
+		{"XA START 'x';", "holds an XA statement, which isn't on the list"},
+		{"CREATE TABLE t (a text DEFAULT (`LOAD_FILE`('/etc/passwd')));", "holds a call to load_file()"},
+		{"CREATE TABLE t (a text DEFAULT (`sys_exec`('id')));", "holds a call to sys_exec()"},
 		{"BEGIN NOT ATOMIC SELECT 1; END;", "holds a BEGIN NOT statement"},
 		{"DO SLEEP(10);", "holds a DO statement"},
 		{"HANDLER t OPEN;", "holds a HANDLER statement"},

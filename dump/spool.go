@@ -261,7 +261,10 @@ func (r *spoolReader) chunk() error {
 	if n < uint32(r.aead.Overhead()) || n > SpoolChunk+uint32(r.aead.Overhead()) { // #nosec G115 -- the GCM tag size
 		return errSpoolDamaged
 	}
-	r.ct = append(r.ct[:0], make([]byte, n)...)
+	if cap(r.ct) < int(n) {
+		r.ct = make([]byte, n) // once: later chunks reuse it
+	}
+	r.ct = r.ct[:n]
 	if _, err := io.ReadFull(r.br, r.ct); err != nil {
 		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 			return errSpoolDamaged

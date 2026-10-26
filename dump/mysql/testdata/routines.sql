@@ -7,6 +7,7 @@ CREATE TABLE `wp_users` (
   PRIMARY KEY (`ID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES' */ ;
 DELIMITER ;;
 /*!50003 CREATE*/ /*!50017 DEFINER=`root`@`localhost`*/ /*!50003 TRIGGER `keep_email` AFTER UPDATE ON `wp_users` FOR EACH ROW BEGIN

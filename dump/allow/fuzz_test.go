@@ -47,6 +47,10 @@ var (
 		"CREATE INDEX i ON mysql.user (a)",
 		"DROP TABLE IF EXISTS prod.t",
 		"LOCK TABLES t WRITE, prod.t WRITE",
+		"SET NAMES gbk",
+		"SET character_set_client = big5",
+		"SET NAMES utf8mb4, @@session.character_set_client = 'cp932'",
+		"SET @a = 1, @@session.sql_log_bin = 0",
 	}
 	// Row statements whose head or tail is never kept.
 	mysqlBadRows = []string{
@@ -68,6 +72,8 @@ var (
 		"ALTER TABLE t OWNER TO x",
 		"CREATE TRIGGER t AFTER UPDATE ON u FOR EACH ROW EXECUTE FUNCTION f()",
 		"SET log_statement = 'all'",
+		"SET client_encoding = 'SJIS'",
+		"SELECT pg_catalog.set_config('client_encoding', 'BIG5', false)",
 	}
 )
 
@@ -217,7 +223,8 @@ func FuzzSetGlobal(f *testing.F) {
 	plain := []string{"NAMES utf8mb4", "CHARACTER SET utf8", "CHARSET latin1", "NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
 		"@x = 1", "character_set_client = utf8mb4", "SESSION sql_mode = ''", "@@SESSION.time_zone = '+00:00'"}
 	globals := []string{"GLOBAL general_log = 1", "@@GLOBAL.general_log = 1", "@@global.general_log_file = 'x'",
-		"PERSIST local_infile = 1", "@@persist_only.local_infile = 1", "global sql_mode = ''"}
+		"PERSIST local_infile = 1", "@@persist_only.local_infile = 1", "global sql_mode = ''",
+		"character_set_connection = 'sjis'"}
 	f.Fuzz(func(t *testing.T, picks []byte, at, which uint8, ops []byte) {
 		var cs []string
 		for i, p := range picks {

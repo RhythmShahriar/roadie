@@ -285,12 +285,20 @@ func TestImportError(t *testing.T) {
 			"import: the connection to staging@localhost was lost before any table was replaced. The target is untouched. Run the same command again."},
 		{"duplicate masked", &mysql.MySQLError{Number: 1062, SQLState: [5]byte{'2', '3', '0', '0', '0'}, Message: "Duplicate entry 'jane@example.invalid' for key 'wp_users.user_email'"},
 			importState{engine: core.MySQL, current: "wp_users"}, core.ErrImport, core.Untouched,
-			"import: table wp_users: MySQL error 1062 (23000): Duplicate entry '•••' for key '•••'. The target is untouched."},
+			"import: table wp_users: MySQL error 1062 (23000): Duplicate entry '•••' for key 'wp_users.user_email'. The target is untouched."},
+		{"duplicate with a quote masked", &mysql.MySQLError{Number: 1062, SQLState: [5]byte{'2', '3', '0', '0', '0'}, Message: "Duplicate entry 'o'brien@example.test' for key 'wp_users.user_email'"},
+			importState{engine: core.MySQL, current: "wp_users"}, core.ErrImport, core.Untouched,
+			"import: table wp_users: MySQL error 1062 (23000): Duplicate entry '•••' for key 'wp_users.user_email'. The target is untouched."},
 		{"pg value masked", &pgconn.PgError{Code: "22P02", Message: `invalid input syntax for type integer: "abc"`}, importState{engine: core.Postgres, current: "users", committed: 1, total: 4, changed: true},
 			core.ErrImportMixed, core.Mixed,
 			"import: table users: PostgreSQL error 22P02: invalid input syntax for type integer: '•••'. The target is in a mixed state after 1 of 4 tables: some tables are pseudonymised, the rest still hold the earlier copy. Fix the cause and run the same command again."},
 		{"unknown total", driver.ErrBadConn, importState{target: "app@db", committed: 5, changed: true}, core.ErrImportMixed, core.Mixed,
 			"import: the connection to app@db was lost after 5 tables. The target is in a mixed state: some tables are pseudonymised, the rest still hold the earlier copy. Run the same command again."},
+		{"one table, unknown total", &mysql.MySQLError{Number: 1064, SQLState: [5]byte{'4', '2', '0', '0', '0'}, Message: "You have an error in your SQL syntax"},
+			importState{engine: core.MySQL, target: "app@db", committed: 1, changed: true}, core.ErrImportMixed, core.Mixed,
+			"import: MySQL error 1064 (42000): You have an error in your SQL syntax. The target is in a mixed state after 1 table: some tables are pseudonymised, the rest still hold the earlier copy. Fix the cause and run the same command again."},
+		{"one of one", driver.ErrBadConn, importState{target: "app@db", committed: 1, total: 1, changed: true}, core.ErrImportMixed, core.Mixed,
+			"import: the connection to app@db was lost after 1 of 1 table. The target is in a mixed state: some tables are pseudonymised, the rest still hold the earlier copy. Run the same command again."},
 		{"first table broke", driver.ErrBadConn, importState{target: "app@db", current: "wp_posts", changed: true}, core.ErrImportMixed, core.Mixed,
 			"import: the connection to app@db was lost during table wp_posts. The target is in a mixed state: some tables are pseudonymised, the rest still hold the earlier copy. Run the same command again."},
 	}
@@ -450,5 +458,25 @@ func TestCheckDDL(t *testing.T) {
 	}
 	if err := checkDDL(core.SQLite, "t", "CREATE TABLE t (a)"); err != nil {
 		t.Error(err)
+	}
+}
+
+func TestDelimiter(t *testing.T) {
+	for in, want := range map[string]string{
+		"DELIMITER ;;\n": ";;", "delimiter $$": "$$", "DELIMITER ;\n": "", "DELIMITER": "", "DELIMITER // trailing\n": "//",
+	} {
+		if got := delimiterArg([]byte(in)); got != want {
+			t.Errorf("delimiterArg(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for _, c := range []struct{ in, delim, want string }{
+		{"END */;;\n", ";;", "END */"},
+		{"END$$\r\n", "$$", "END"},
+		{"SELECT 1;\n", "", "SELECT 1"},
+		{"SELECT ';;' AS a\n", ";;", "SELECT ';;' AS a"},
+	} {
+		if got := stmtText(trimDelim([]byte(c.in), c.delim)); got != c.want {
+			t.Errorf("trimDelim(%q, %q) = %q, want %q", c.in, c.delim, got, c.want)
+		}
 	}
 }

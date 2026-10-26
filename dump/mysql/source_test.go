@@ -467,6 +467,8 @@ func BenchmarkScan(b *testing.B) {
 	fi, _ := os.Stat(path)
 	b.SetBytes(fi.Size())
 	b.ResetTimer()
+	start := cpuTime()
+	defer func() { cpuRate(b, start, fi.Size()) }()
 	for range b.N {
 		f, err := os.Open(path)
 		if err != nil {

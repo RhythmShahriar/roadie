@@ -162,16 +162,24 @@ func TestNoTrailerTools(t *testing.T) {
 		"CREATE TABLE `wp_users` (\n  `ID` bigint(20) UNSIGNED NOT NULL,\n  `user_email` varchar(100) NOT NULL\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n"
 	rows := "INSERT INTO `wp_users` (`ID`, `user_email`) VALUES\n(1, 'a@shop.test'),\n(2, 'b@shop.test');\n"
 	restore := "/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;\n"
+	noTx := strings.Replace(pma, "START TRANSACTION;\n", "", 1) // "Enclose export in a transaction" off
 	for _, c := range []struct {
 		in   string
 		want string // "" passes
 	}{
 		{pma + rows + "COMMIT;\n\n" + restore, ""},
-		{pma + rows, ""},
-		{pma + rows + "ALTER TABLE `wp_users`\n  ADD PRIMARY KEY (`ID`);\n", ""},
-		{pma, "dump-truncated: pma.sql ends inside table wp_users at 0.0 GB, with no closing COMMIT or complete INSERT. Export it again; the target is untouched."},
+		{noTx + rows, ""},
+		{noTx + rows + "ALTER TABLE `wp_users`\n  ADD PRIMARY KEY (`ID`);\n", ""},
+		{pma + rows + "ALTER TABLE `wp_users`\n  ADD PRIMARY KEY (`ID`);\nCOMMIT;\n", ""},
+		{pma + rows + "BEGIN;\nCOMMIT;\n", ""},
+		// phpMyAdmin stopped between statements: the transaction is open.
+		{pma + rows, "dump-truncated: pma.sql ends inside table wp_users at 0.0 GB, with no COMMIT for its START TRANSACTION. Export it again; the target is untouched."},
+		{pma + rows + "ALTER TABLE `wp_users`\n  ADD PRIMARY KEY (`ID`);\n", "with no COMMIT for its START TRANSACTION"},
+		{pma + rows + "COMMIT;\nSTART TRANSACTION;\n" + rows, "with no COMMIT for its START TRANSACTION"},
+		{noTx, "dump-truncated: pma.sql ends inside table wp_users at 0.0 GB, with no closing COMMIT or complete INSERT. Export it again; the target is untouched."},
+		{pma, "with no COMMIT for its START TRANSACTION"},
 		{pma + rows[:60], "dump-truncated: pma.sql ends inside table wp_users at 0.0 GB, in the middle of a statement. Export it again; the target is untouched."},
-		{"-- phpMyAdmin SQL Dump\nSTART TRANSACTION;\n", "dump-truncated: pma.sql ends early at 0.0 GB, with no closing COMMIT or complete INSERT."},
+		{"-- phpMyAdmin SQL Dump\nSTART TRANSACTION;\n", "dump-truncated: pma.sql ends early at 0.0 GB, with no COMMIT for its START TRANSACTION."},
 		{"-- phpMyAdmin SQL Dump\n-- nothing exported\n", ""},
 		{"-- Adminer 4.8.1 MySQL 8.0.36 dump\nCREATE TABLE `t` (`a` int);\n\n-- 2026-10-26 10:00:00\n", ""},
 		{"-- Adminer 4.8.1 MySQL 8.0.36 dump\nCREATE TABLE `t` (`a` int);\n", "with no closing COMMIT or complete INSERT"},

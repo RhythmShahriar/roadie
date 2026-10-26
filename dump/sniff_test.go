@@ -7,10 +7,13 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"bytes"
+	"context"
 	"errors"
+	"fmt"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -209,4 +212,82 @@ func FuzzSniff(f *testing.F) {
 			t.Fatalf("dialect %q with an error", d)
 		}
 	})
+}
+
+// A UTF-8 byte order mark before the dump is skipped, as the mysql
+// client skips it: the dialect is found and the batches are the same as
+// without it.
+func TestOpenUTF8BOM(t *testing.T) {
+	for _, path := range []string{"mysql/testdata/mysqldump8.sql", "mysql/testdata/phpmyadmin.sql", "pgsql/testdata/pg16-inserts.sql"} {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bom := append([]byte{0xef, 0xbb, 0xbf}, raw...)
+		d0, _, err0 := Sniff(head(raw))
+		d1, _, err1 := Sniff(head(bom))
+		if err0 != nil || err1 != nil || d0 == "" || d0 != d1 {
+			t.Errorf("%s: dialect %q %v with the mark, %q %v without", path, d1, err1, d0, err0)
+		}
+		for _, file := range [][]byte{bom, pack(t, compress.Gzip, bom)} {
+			want := drainText(t, path, raw)
+			if got := drainText(t, path, file); got != want {
+				t.Errorf("%s: batches differ with the mark\n got %.300q\nwant %.300q", path, got, want)
+			}
+		}
+	}
+}
+
+// drainText opens file and joins the text of every batch with its line.
+func drainText(t *testing.T, name string, file []byte) string {
+	t.Helper()
+	src, err := Open(context.Background(), bytes.NewReader(file), Options{Name: name, KeepRoutines: true})
+	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	defer src.Close()
+	bs, err := drainAll(t, src)
+	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	var sb strings.Builder
+	for _, b := range bs {
+		if b.Pass != nil {
+			fmt.Fprintf(&sb, "%d:%s|", b.Pass.Line, b.Pass.Text)
+		}
+		for _, r := range b.Rows {
+			sb.Write(r.Src)
+		}
+	}
+	return sb.String()
+}
+
+// A UTF-16 dump (Windows PowerShell 5's '>') is refused with a message
+// that names UTF-16 and says how to export UTF-8, not as a backup format.
+func TestSniffUTF16(t *testing.T) {
+	text := "-- MySQL dump 10.13\n/*!40101 SET NAMES utf8mb4 */;\n"
+	le, be := []byte{0xff, 0xfe}, []byte{0xfe, 0xff}
+	for _, c := range text {
+		le = append(le, byte(c), 0)
+		be = append(be, 0, byte(c))
+	}
+	for name, file := range map[string][]byte{"le.sql": le, "be.sql": be, "le.sql.gz": pack(t, compress.Gzip, le)} {
+		_, _, _, err := sniff(name, head(file))
+		var ce *core.Error
+		if !errors.As(err, &ce) || ce.Code != core.ErrDumpFormat || ce.Exit != 2 {
+			t.Fatalf("%s: err = %v, want dump-format", name, err)
+		}
+		want := "dump-format: " + name + " is UTF-16 text, which Windows PowerShell writes for '>'. Export again with mysqldump --result-file=dump.sql (or mariadb-dump --result-file), which writes the file itself in UTF-8. Roadie reads plain SQL: pg_dump -Fp, mysqldump, mariadb-dump or wp db export."
+		if ce.Msg != want {
+			t.Errorf("%s: message\n got %q\nwant %q", name, ce.Msg, want)
+		}
+		if _, err := Open(context.Background(), bytes.NewReader(file), Options{Name: name}); !errors.As(err, &ce) || ce.Msg != want {
+			t.Errorf("%s: Open: %v", name, err)
+		}
+	}
+	// Plain UTF-8 that happens to start with 0xFF as latin1 text is not a
+	// mark of its own: only the two-byte pair is.
+	if _, _, err := Sniff([]byte("-- MySQL dump\n\xffSET NAMES latin1;\n")); err != nil {
+		t.Errorf("latin1 byte: %v", err)
+	}
 }

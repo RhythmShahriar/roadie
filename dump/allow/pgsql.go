@@ -45,6 +45,14 @@ var pgRoutines = map[string]bool{
 	"conversion": true, "transform": true,
 }
 
+// whyUnicode is the refusal of U& escapes, which pg_dump never writes:
+// they could spell a name the rules here would refuse.
+var whyUnicode = why{"could spell a name Roadie can't read", "Export the dump again with pg_dump -Fp, which writes names and strings as plain UTF-8."}
+
+// whySchemaElems is the refusal of CREATE SCHEMA with elements.
+var whySchemaElems = why{"could create views, triggers or grants Roadie doesn't judge one by one",
+	"Export the dump again with pg_dump -Fp, which writes each object as its own statement."}
+
 // whyPGRoutine is the refusal of a PostgreSQL routine without --keep-routines.
 var whyPGRoutine = why{whyRunsCode.danger, "Pass --keep-routines to keep it, or leave it out of the export."}
 
@@ -63,7 +71,19 @@ func checkPG(st core.Statement, o Options) Decision {
 	if d, ok := globalChecks(t); ok {
 		return d
 	}
+	for i := range t {
+		if t.w(i) == unicodeEscape {
+			return refuse("a name or string with Unicode escapes (U&)", whyUnicode)
+		}
+	}
 	w0 := t.w(0)
+	if w0 != "select" && t.call("set_config") {
+		// pgSelect judges pg_dump's own top-level set_config. Anywhere
+		// else (a CHECK constraint, a column default) it runs while
+		// rows import and could turn standard_conforming_strings off
+		// under the reader.
+		return refuse("a call to set_config()", whySCS)
+	}
 	switch w0 {
 	case "set":
 		return pgSet(t, o)
@@ -196,6 +216,59 @@ func scsValue(t toks, k int) bool {
 	return false
 }
 
+// pgMBEncodings are the PostgreSQL client encodings, with their
+// aliases as the server folds them (lower case, letters and digits
+// only), in which a backslash (0x5c) can be the second byte of a
+// character. Under one of them the server reads E'\x83\\' as one
+// character and a quote where Roadie reads an escaped quote, so a row
+// Roadie keeps as data could end early on import and run the rest as
+// statements. The server refuses them as a database encoding but takes
+// them as a client encoding.
+var pgMBEncodings = map[string]bool{
+	"sjis": true, "shiftjis": true, "mskanji": true, "win932": true, "windows932": true,
+	"shiftjis2004": true, "big5": true, "win950": true, "windows950": true, "gbk": true,
+	"win936": true, "windows936": true, "uhc": true, "win949": true, "windows949": true,
+	"gb18030": true, "johab": true,
+}
+
+// labelEncoding names a client_encoding change Roadie refuses.
+const labelEncoding = "a change of client_encoding to SJIS, BIG5, GBK, UHC, GB18030, JOHAB or a value Roadie can't read"
+
+// whyEncoding is the danger of a client encoding Roadie can't read.
+var whyEncoding = why{
+	"could make the staging server read a backslash in the rows after it as part of a character, so a row could end early and run the rest as statements",
+	"Export the dump again with pg_dump -Fp -E UTF8.",
+}
+
+// pgEncoding reports whether x is a client encoding Roadie reads rows
+// under: a plain word or string (DEFAULT included) that doesn't name one
+// of pgMBEncodings.
+func pgEncoding(x tok) bool {
+	n := x.w
+	switch x.kind {
+	case str:
+		if len(n) < 2 || n[0] != '\'' {
+			return false // E'..' or another prefixed string
+		}
+		n = n[1 : len(n)-1]
+	case word, ident:
+	default:
+		return false
+	}
+	var b strings.Builder
+	for _, c := range []byte(n) {
+		switch {
+		case c >= '0' && c <= '9', c >= 'a' && c <= 'z':
+			b.WriteByte(c)
+		case c >= 'A' && c <= 'Z':
+			b.WriteByte(c | 0x20)
+		case c == '\\', c == '\'', c >= 0x80:
+			return false
+		}
+	}
+	return b.Len() > 0 && !pgMBEncodings[b.String()]
+}
+
 func pgSet(t toks, o Options) Decision {
 	i := 1
 	if t.w(i) == "standard_conforming_strings" || t.w(i+1) == "standard_conforming_strings" {
@@ -224,6 +297,12 @@ func pgSet(t toks, o Options) Decision {
 	case t.w(i) == "role":
 		return drop("SET ROLE", reasonOwner)
 	case t.is(i, "time", "zone"), t.w(i) == "constraints", t.w(i) == "transaction":
+		return keep()
+	case t.w(i) == "client_encoding":
+		k := i + 1
+		if !t.p(k, '=') && t.w(k) != "to" || k+2 != len(t) || !pgEncoding(t[k+1]) {
+			return refuse(labelEncoding, whyEncoding)
+		}
 		return keep()
 	case pgVars[t.w(i)]:
 		for k := i + 1; k < len(t); k++ {
@@ -257,6 +336,10 @@ func pgSelect(t toks, o Options) Decision {
 		}
 		if fn == "set_config" && (t.kind(i+2) != str || !pgVars[strings.ToLower(strings.Trim(t[i+2].w, "'"))]) {
 			ok = false
+		}
+		if ok && fn == "set_config" && strings.EqualFold(t[i+2].w, "'client_encoding'") &&
+			(!t.p(i+3, ',') || t.kind(i+4) == noKind || !pgEncoding(t[i+4]) || !t.p(i+5, ',')) {
+			return refuse(labelEncoding, whyEncoding)
 		}
 		if ok && fn == "set_config" && strings.EqualFold(t[i+2].w, "'standard_conforming_strings'") {
 			// set_config(name, value, is_local): only a lasting change
@@ -306,7 +389,17 @@ modifiers:
 		return pgCreates(t, i+1, "table")
 	case "index":
 		return keep()
-	case "sequence", "type", "domain", "schema", "statistics":
+	case "schema":
+		// CREATE SCHEMA s CREATE VIEW ... makes its elements in the same
+		// statement, out of reach of the rules for each kind. pg_dump
+		// writes each object as its own statement.
+		for k := i + 1; k < len(t); k++ {
+			if t.w(k) == "create" || t.w(k) == "grant" {
+				return refuse("a CREATE SCHEMA statement that creates objects inside it", whySchemaElems)
+			}
+		}
+		return pgCreates(t, i+1, obj)
+	case "sequence", "type", "domain", "statistics":
 		return pgCreates(t, i+1, obj)
 	case "extension":
 		name, _ := t.objName(afterIfExists(t, i+1), true)

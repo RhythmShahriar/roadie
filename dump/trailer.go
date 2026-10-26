@@ -31,7 +31,9 @@ var reAdminerEnd = regexp.MustCompile(`(?m)^-- \d{4}-\d\d-\d\d \d\d:\d\d:\d\d`)
 // dumps without a tool line write none: their end is accepted only at a
 // statement boundary after a COMMIT, a complete INSERT or the ALTER
 // TABLE and UNLOCK TABLES lines that close a table, or after Adminer's
-// closing date line.
+// closing date line. An export that opened a transaction must have
+// committed it: phpMyAdmin stops between statements when PHP runs out
+// of time, so a cut there leaves its START TRANSACTION open.
 type endCheck struct {
 	trailer  string // the end line wanted, "" for tools that write none
 	seen     bool   // the end line was read and nothing but comments followed
@@ -39,6 +41,7 @@ type endCheck struct {
 	dateSeen bool   // Adminer's closing date line was read last
 	closed   bool   // the last statement that counts closes an export
 	any      bool   // a statement that counts was read
+	txOpen   bool   // a START TRANSACTION or BEGIN has no COMMIT yet
 	lastKind string // the kind of that statement, for the message
 }
 
@@ -93,6 +96,12 @@ func (e *endCheck) see(b *core.Batch) {
 	e.seen, e.dateSeen = false, false
 	switch st.Kind {
 	case core.StmtTransaction:
+		switch txVerb(st.Text) {
+		case "start", "begin":
+			e.txOpen = true
+		case "commit", "end", "rollback", "abort":
+			e.txOpen = false
+		}
 		e.count("START TRANSACTION", isCommit(st.Text))
 	case mysql.KindAlterTable, core.StmtAlterKeys, core.StmtUnlock:
 		e.count("ALTER TABLE", true)
@@ -109,8 +118,17 @@ func (e *endCheck) count(kind string, closes bool) {
 }
 
 // isCommit reports whether a transaction statement is COMMIT.
-func isCommit(text []byte) bool {
-	return bytes.HasPrefix(bytes.ToLower(bytes.TrimSpace(mysql.Body(text, mysql.Mode{}))), []byte("commit"))
+func isCommit(text []byte) bool { return txVerb(text) == "commit" }
+
+// txVerb is the first word of a transaction statement, lower-cased:
+// start, begin, commit, end, rollback or abort.
+func txVerb(text []byte) string {
+	body := bytes.ToLower(bytes.TrimSpace(mysql.Body(text, mysql.Mode{})))
+	end := bytes.IndexFunc(body, func(r rune) bool { return r < 'a' || r > 'z' })
+	if end < 0 {
+		end = len(body)
+	}
+	return string(body[:end])
 }
 
 // whole reports whether the dump ended where its tool ends one.
@@ -120,6 +138,8 @@ func (e *endCheck) whole() bool {
 		return e.seen
 	case e.adminer && e.dateSeen:
 		return true
+	case e.txOpen:
+		return false
 	}
 	return !e.any || e.closed
 }
@@ -132,7 +152,11 @@ func (e *endCheck) truncatedError(name, table string, raw int64) *core.Error {
 		where = "ends inside table " + table
 	}
 	what := `with no "` + e.trailer + `" line`
-	if e.trailer == "" {
+	switch {
+	case e.trailer != "":
+	case e.txOpen:
+		what = "with no COMMIT for its START TRANSACTION"
+	default:
 		what = "with no closing COMMIT or complete INSERT"
 	}
 	return core.Errorf(core.ErrDumpTruncated, 3, "dump-truncated: %s %s at %s, %s. Export it again; the target is untouched.",

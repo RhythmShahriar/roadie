@@ -332,6 +332,11 @@ func parseModes(s string) (m Mode, certain, ok bool) {
 	return m, certain, true
 }
 
+// Gated reports whether a statement's text holds a versioned comment
+// that only some supported servers run, so the statement may or may not
+// run on the staging server.
+func Gated(text []byte, m Mode) bool { return gated(text, m) }
+
 // gated reports whether text holds a versioned comment that only some
 // supported servers run: /*!NNNNN above OldestServer, any other number of
 // digits, or MariaDB's /*M!, which MySQL reads as a plain comment.

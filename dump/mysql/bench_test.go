@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/RhythmShahriar/roadie/core"
 )
@@ -18,6 +19,17 @@ import (
 // (wp_postmeta 30% of the bytes with serialized values, 1 MB extended
 // INSERTs): 32 MB by default, the 378 MB shape with ROADIE_BENCH_FULL=1.
 // CI runs them with -benchtime=1x as a smoke test.
+
+// cpuRate reports the bytes read per second of CPU time the process
+// used since start (GC workers included, so it errs low). On a busy
+// machine the wall-clock MB/s mostly measures the wait for a core; this
+// figure doesn't, so a run there still says whether the read target
+// holds.
+func cpuRate(b *testing.B, start time.Duration, size int64) {
+	if d := cpuTime() - start; d > 0 && start > 0 {
+		b.ReportMetric(float64(size)*float64(b.N)/1e6/d.Seconds(), "MB/cpu-s")
+	}
+}
 
 // BenchmarkTokenize is the lexer alone: statements and every row's
 // values decoded, with one arena reused per 1,000 rows as a batch would.
@@ -30,6 +42,8 @@ func BenchmarkTokenize(b *testing.B) {
 	b.SetBytes(int64(len(data)))
 	b.ReportAllocs()
 	b.ResetTimer()
+	start := cpuTime()
+	defer func() { cpuRate(b, start, int64(len(data))) }()
 	for range b.N {
 		l := NewLexer(bytes.NewReader(data), Options{})
 		a := &Arena{}
