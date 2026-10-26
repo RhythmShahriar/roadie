@@ -1,0 +1,83 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Fixtures for the email detector (PRD 15.2, qa.md 3.5).
+detector: pii.email
+positive:
+  - value: ada.kowalczyk@gmail.com
+    match: ada.kowalczyk@gmail.com
+  - value: "Contact ops@acme-builders.co.uk for site access."
+    match: ops@acme-builders.co.uk
+  - value: "ada&#64;gmail.com"
+    match: "ada&#64;gmail.com"
+    note: decimal HTML entity
+  - value: "<a>ada&#x40;gmail.com</a>"
+    match: "ada&#x40;gmail.com"
+    note: hex HTML entity
+  - value: "mailto:ada%40gmail.com?subject=Hi"
+    match: "ada%40gmail.com"
+    note: URL-encoded
+  - value: "maría.lópez@correo.es"
+    match: "maría.lópez@correo.es"
+    note: Unicode local part, never half an address
+  - value: '{"billing":{"email":"ada.kowalczyk@gmail.com","phone":""}}'
+    match: ada.kowalczyk@gmail.com
+    note: inside JSON
+  - value: "a:1:{s:5:\"email\";s:23:\"ada.kowalczyk@gmail.com\";}"
+    match: ada.kowalczyk@gmail.com
+    note: inside PHP serialized
+  - value: "ADA.KOWALCZYK@GMAIL.COM"
+    note: upper case
+  - value: "jürgen@münchen.de"
+    note: IDN domain
+  - value: "ada+orders@gmail.com."
+    match: "ada+orders@gmail.com"
+    note: a sentence's full stop is not part of the domain
+  - value: "noreply@github.com"
+    want: pii.email-role
+    note: role mailbox at info
+  - value: "Mailer-Daemon@mail.acme-builders.co.uk"
+    want: pii.email-role
+  - value: "info@shop.com"
+    allow:
+      emails: ["sales@shop.com"]
+    note: another address of an allow-listed domain still counts
+negative:
+  - value: user@example.com
+  - value: user@example.net
+  - value: user@example.org
+  - value: user@mail.example.com
+  - value: user@shop.example
+  - value: u0123456789abcdef@example.invalid
+  - value: dev@site.test
+  - value: root@box.localhost
+  - value: printer@office.local
+  - value: "wordpress@staging.acme-builders.co.uk"
+    note: WordPress's own sender at any domain
+  - value: "logo@2x.png"
+  - value: "hero-image@2x.webp"
+  - value: "name@1.5x.jpg"
+  - value: "font@3x.woff2"
+  - value: "git@github.com:org/repo.git"
+  - value: "https://0123abcd@o12345.ingest.sentry.io/678"
+    note: a URL user part, not a mailbox
+  - value: info@shop.com
+    allow:
+      emails: ["*@shop.com"]
+  - value: Info@Shop.com
+    allow:
+      emails: ["info@shop.com"]
+    note: allow lists ignore case
+  - value: ada.kowalczyk@gmail.com
+    allow:
+      kept: ["ada.kowalczyk@gmail.com"]
+    note: a kept user
+  - value: noreply@github.com
+    note: role mailbox, info only
+  - value: "@@@@ @ a@ @b .@. a@b"
+  - value: "ada@gmail"
+    note: no top-level domain
+  - value: "ada@gmail.c0m"
+    note: top-level domain with a digit
+  - value: "ada.@gmail.com"
+    note: local part ends with a dot
