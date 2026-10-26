@@ -42,6 +42,8 @@ func TestRewriteForms(t *testing.T) {
 		{"https:&sol;&sol;shop.com", "https:&sol;&sol;staging.shop.test", 1},
 		{"https://www.shop.com/", "https://staging.shop.test/", 1},
 		{"https://shop.com:8443/x", "https://staging.shop.test:8443/x", 1},
+		{"next=https%3A%2F%2Fshop.com%3A8443%2Fa", "next=https%3A%2F%2Fstaging.shop.test%3A8443%2Fa", 1},
+		{"https://shop.com&#58;8443/x", "https://staging.shop.test&#58;8443/x", 1},
 		{"https://shop.com.", "https://staging.shop.test.", 1},
 		{"a https://shop.com b http://shop.com", "a https://staging.shop.test b https://staging.shop.test", 2},
 		{"ftp://shop.com", "ftp://staging.shop.test", 1},
@@ -57,6 +59,7 @@ func TestRewriteForms(t *testing.T) {
 		{"https://shop.com@other.example/x", "https://shop.com@other.example/x", 0},
 		{"https://shop.com:pw@other.example", "https://shop.com:pw@other.example", 0},
 		{"https://shop.com:8443@other.example", "https://shop.com:8443@other.example", 0},
+		{"https%3A%2F%2Fshop.com%3A8443%40other.example", "https%3A%2F%2Fshop.com%3A8443%40other.example", 0},
 		{"https%3A%2F%2Fshop.com%40other.example", "https%3A%2F%2Fshop.com%40other.example", 0},
 		{"https://myshop.com", "https://myshop.com", 0},
 		{"https://shop.com.au", "https://shop.com.au", 0},
@@ -92,6 +95,10 @@ func TestRewritePairs(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"https://shop.com/x", "http://localhost:8080/x"},
 		{"https://shop.com:8443/x", "http://localhost:8080/x"},
+		{"https%3A%2F%2Fshop.com%3A8443%2Fx", "http%3A%2F%2Flocalhost:8080%2Fx"},
+		{"https&#58;//shop.com&#x3a;8443/x", "http&#58;//localhost:8080/x"},
+		{"https://shop.com&colon;8443/x", "http://localhost:8080/x"},
+		{"https://shop.com%3Ax/y", "http://localhost:8080%3Ax/y"},
 		{"https://shop.com/blog/post", "http://localhost:8080/b/post"},
 		{"https://shop.com/blog", "http://localhost:8080/b"},
 		{"https://shop.com/blogger", "http://localhost:8080/blogger"},
@@ -103,6 +110,26 @@ func TestRewritePairs(t *testing.T) {
 		{"https://bücher.de/x", "https://buecher.test/x"},
 		{"https://xn--bcher-kva.de/x", "https://buecher.test/x"},
 		{"https://XN--BCHER-KVA.DE", "https://buecher.test"},
+	}
+	for _, c := range cases {
+		if got, _ := m.Rewrite([]byte(c.in)); string(got) != c.want {
+			t.Errorf("Rewrite(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestFromPort checks a From with a port matches that port in any colon
+// spelling and nothing else.
+func TestFromPort(t *testing.T) {
+	m := mustMap(t, Pair{"https://shop.com:8443", "https://staging.test"})
+	cases := []struct{ in, want string }{
+		{"https://shop.com:8443/x", "https://staging.test/x"},
+		{"https%3A%2F%2Fshop.com%3a8443%2Fx", "https%3A%2F%2Fstaging.test%2Fx"},
+		{"https://shop.com&colon;8443/x", "https://staging.test/x"},
+		// left alone
+		{"https://shop.com/x", "https://shop.com/x"},
+		{"https://shop.com:84430/x", "https://shop.com:84430/x"},
+		{"https%3A%2F%2Fshop.com%3A9000%2Fx", "https%3A%2F%2Fshop.com%3A9000%2Fx"},
 	}
 	for _, c := range cases {
 		if got, _ := m.Rewrite([]byte(c.in)); string(got) != c.want {
