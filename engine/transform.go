@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/RhythmShahriar/roadie/codec/nested"
@@ -71,6 +72,10 @@ func (t *transformer) transform(ctx context.Context, b *core.Batch, c *profile.C
 	}
 	prefix := t.sh.prefix
 	_, isOptions := blogOf(tb.Name, prefix, "options")
+	asFix := slices.Contains(c.RowFixes(), "action-scheduler-args")
+	if _, ok := blogOf(tb.Name, prefix, "actionscheduler_actions"); !ok {
+		asFix = false
+	}
 	isUsers := prefix != "" && tb.Name == prefix+"users"
 	orig := make([][]byte, len(b.Columns))
 	nulls := make([]bool, len(b.Columns))
@@ -118,6 +123,9 @@ func (t *transformer) transform(ctx context.Context, b *core.Batch, c *profile.C
 		}
 		if row.Drop {
 			continue
+		}
+		if asFix {
+			t.actionSchedulerArgs(out, tb.Name, row, pos)
 		}
 		if isUsers && t.sh.adminID != "" {
 			if id, _ := get("ID"); string(id) == t.sh.adminID {
@@ -248,6 +256,16 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 				return false, nil
 			}
 		}
+	}
+	if fixed, ok := t.addressIndex(rc, col, orig); ok {
+		if !bytes.Equal(fixed, orig) {
+			setValue(v, fixed, false)
+			c := out.change("hpos-address-index", rc.table, col.Name, core.Fixed)
+			c.Rows++
+			c.Values++
+			out.indexFixed++
+		}
+		return false, nil
 	}
 	if looksSerialized(orig) && nestedFormat(orig) == formatText {
 		done, err := t.unparseable(out, rc, col, v)
