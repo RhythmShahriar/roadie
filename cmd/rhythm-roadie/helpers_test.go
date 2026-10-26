@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +50,12 @@ func fakeEndpoint(s string) (core.Endpoint, error) {
 		e.Kind, e.Path = core.SSHSite, "/"+path
 		if user, h, ok := strings.Cut(host, "@"); ok {
 			e.User, host = user, h
+		}
+		// A port is kept apart from the host, as site.ParseEndpoint does.
+		if h, port, ok := strings.Cut(host, ":"); ok {
+			if n, err := strconv.Atoi(port); err == nil {
+				host, e.Port = h, n
+			}
 		}
 		e.Host = host
 	case strings.HasPrefix(s, "@"):

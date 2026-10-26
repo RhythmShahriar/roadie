@@ -218,6 +218,9 @@ func TestAlsoBlock(t *testing.T) {
 		{"wordpress ssh to site", copyArgs, copyPass()},
 		{"wordpress with basic auth and noindex off", args(copyArgs, "--basic-auth", "team", "--noindex=off"), copyPass()},
 		{"wordpress dump to dump", []string{"--from", "prod.sql.gz", "--to", "staging.sql.gz", "--url", "https://s.test"}, copyPass()},
+		{"wordpress ssh on port 2222 to site", []string{"--from", "ssh://deploy@shop.com:2222/var/www/shop", "--to", "/var/www/staging", "--url", "https://s.test", "--no-config"}, copyPass()},
+		{"wordpress ssh to ssh", []string{"--from", "ssh://deploy@shop.com/var/www/shop", "--to", "ssh://web@staging.shop.test/srv/staging", "--url", "https://s.test", "--no-config"}, copyPass()},
+		{"wordpress ssh to ssh on ports", []string{"--from", "ssh://deploy@shop.com:2222/var/www/shop", "--to", "ssh://web@staging.shop.test:2200/srv/it's", "--url", "https://s.test", "--no-config"}, copyPass()},
 		{"laravel", copyArgs, func() *core.Result {
 			r := copyPass()
 			r.Stack = core.StackInfo{Name: core.StackLaravel}

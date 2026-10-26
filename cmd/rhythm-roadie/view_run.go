@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -258,7 +259,9 @@ var uploadExcludes = []string{
 
 // rsyncLine is the rsync command that copies a WordPress site's files
 // without the folders that hold personal data. Roadie copies no files
-// (PRD 5), so it only prints it.
+// (PRD 5), so it only prints it. rsync refuses two remote ends, so when
+// both sites are over SSH the line runs rsync on production over ssh and
+// pushes to staging from there.
 func rsyncLine(j engine.Job) string {
 	src, dst := "<production>/", "<staging>/"
 	if p := rsyncPath(j.From); p != "" {
@@ -267,13 +270,50 @@ func rsyncLine(j engine.Job) string {
 	if p := rsyncPath(j.To); p != "" {
 		dst = p
 	}
+	if j.From.Kind == core.SSHSite && j.To.Kind == core.SSHSite {
+		src = strings.TrimRight(j.From.Path, "/") + "/"
+		inner := rsyncCmd(src, dst, j.To.Port)
+		return "ssh" + sshPortFlag(j.From.Port) + " " + shellQuote(sshHost(j.From)) + " " + shellQuote(inner)
+	}
+	port := 0
+	switch {
+	case j.From.Kind == core.SSHSite:
+		port = j.From.Port
+	case j.To.Kind == core.SSHSite:
+		port = j.To.Port
+	}
+	return rsyncCmd(src, dst, port)
+}
+
+// rsyncCmd is rsync -a with the excludes from src to dst; a non-default
+// SSH port goes in -e.
+func rsyncCmd(src, dst string, port int) string {
 	var b strings.Builder
 	b.WriteString("rsync -a")
+	if f := sshPortFlag(port); f != "" {
+		b.WriteString(" -e " + shellQuote("ssh"+f))
+	}
 	for _, e := range uploadExcludes {
 		b.WriteString(" --exclude " + shellQuote(e))
 	}
 	b.WriteString(" " + shellQuote(src) + " " + shellQuote(dst))
 	return b.String()
+}
+
+// sshPortFlag is " -p N" for a port other than SSH's default, else "".
+func sshPortFlag(port int) string {
+	if port == 0 || port == 22 {
+		return ""
+	}
+	return " -p " + strconv.Itoa(port)
+}
+
+// sshHost is an SSH site's [user@]host.
+func sshHost(e core.Endpoint) string {
+	if e.User != "" {
+		return e.User + "@" + e.Host
+	}
+	return e.Host
 }
 
 // rsyncPath is an endpoint as rsync names it, "" when it isn't a site.
@@ -282,11 +322,7 @@ func rsyncPath(e core.Endpoint) string {
 	case core.LocalSite:
 		return strings.TrimRight(e.Path, "/") + "/"
 	case core.SSHSite:
-		host := e.Host
-		if e.User != "" {
-			host = e.User + "@" + host
-		}
-		return host + ":" + strings.TrimRight(e.Path, "/") + "/"
+		return sshHost(e) + ":" + strings.TrimRight(e.Path, "/") + "/"
 	}
 	return ""
 }
