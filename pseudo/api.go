@@ -95,15 +95,17 @@ func Normalise(kind core.FakeKind, b []byte) []byte {
 //
 // Spans of kind email, phone, ip and the other fake kinds become the
 // faker's fake of that kind; any other span (cards, IBANs) becomes
-// "XXXX". An email span is first widened over the Unicode letters around
+// "XXXX". Scrub also finds addresses itself by their '@' and reads them
+// as Unicode; every email span is widened over the Unicode letters around
 // it, so no part of an address stays behind. Spans that already hold a
 // Roadie fake are left as they are. Then every word pair and word of the
 // rest of the text that known reports as a name becomes a fake name with
-// the same number of words. Text outside the replaced parts is copied
-// byte for byte; with nothing to replace, text itself comes back. Names
-// Roadie never saw in a structured column can't be found and stay.
+// the same number of words (O'Sullivan and Jean-Luc count as one word).
+// Text outside the replaced parts is copied byte for byte; with nothing
+// to replace, text itself comes back. Names Roadie never saw in a
+// structured column can't be found and stay.
 func Scrub(text []byte, sp core.Spanner, known core.Known, f core.Faker) ([]byte, int) {
-	return nil, 0
+	return scrub(text, sp, known, f)
 }
 
 // ResetHash returns a password hash no password matches, for the stack.
