@@ -630,7 +630,7 @@ func TestEchoModeControlChars(t *testing.T) {
 	s := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/v1/health" {
-			_, _ = io.WriteString(w, `{"tool":"rhythm-echo","version":"1.1.2","mode":"obs\u001b[2Jerve‮\u0007","wire":1,"providers":[]}`)
+			_, _ = io.WriteString(w, `{"tool":"rhythm-echo","version":"1.1.2","mode":"obs\u001b[2Jerve\u202e\u0007","wire":1,"providers":[]}`)
 			return
 		}
 		_, _ = io.WriteString(w, `{"messages":[]}`)
