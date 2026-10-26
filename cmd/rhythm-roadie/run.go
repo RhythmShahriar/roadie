@@ -52,7 +52,10 @@ func runEngine(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 	mode := p.mode()
 	job, err := p.buildJob(mode, cfg, stderr)
 	if err != nil {
-		if xe := (*cli.ExitError)(nil); errors.As(err, &xe) {
+		// A usage error is reported already and exits 2; kit prints it
+		// no second time.
+		var ue cli.UsageError
+		if xe := (*cli.ExitError)(nil); errors.As(err, &xe) || errors.As(err, &ue) {
 			return err
 		}
 		return runError(err)
@@ -80,16 +83,25 @@ func runEngine(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 	}
 
 	out := newOutputs(p, stdout, stderr, cfg, cfgPath, mode != engine.Plan)
-	vo := setupColor(&p.f.g, dep.stdoutTerminal(), dep.env)
+	// With --to - stdout carries the dump (PRD 6.2): the screen goes to
+	// stderr and no report may go to stdout, or the dump couldn't load.
+	screen, screenTerm := stdout, dep.stdoutTerminal()
+	if job.To.Kind == core.Stdio && mode != engine.Plan {
+		if out.format != "" {
+			return usageError(stderr, p.cmd, "--%s writes the report to stdout, which carries the dump with --to -; use -o report.%s", out.format, out.format)
+		}
+		screen, screenTerm = stderr, dep.stderrTerminal()
+	}
+	vo := setupColor(&p.f.g, screenTerm, dep.env)
 	v := &view{w: io.Discard, o: vo}
 	if out.live() {
-		v.w = stdout
+		v.w = screen
 	}
 	v.before(job)
 
 	// Progress goes with the live view; with a report on stdout it goes
 	// nowhere.
-	progressW, progressTerm := stdout, dep.stdoutTerminal() && !vo.plain
+	progressW, progressTerm := screen, screenTerm && !vo.plain
 	if !out.live() {
 		progressW, progressTerm = io.Discard, false
 	}
@@ -118,7 +130,7 @@ func runEngine(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 		}
 	}
 	if r.BasicAuthPassword != "" {
-		w := stdout
+		w := screen
 		if !out.live() {
 			w = stderr // never on stdout next to a report
 		}

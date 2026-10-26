@@ -673,6 +673,10 @@ func verdict(r *core.Result, failOn core.Severity, name string) (word, line stri
 // verdictBox prints the result box of a copy, prepare or verify.
 func (v *view) verdictBox(r *core.Result, j engine.Job) {
 	word, line, color := verdict(r, j.Opts.FailOn, shortName(j.Opts.URL, r.Target))
+	if r.Verify == nil && j.To.Kind == core.Stdio {
+		// A stream can't be read back, so verify never ran.
+		line = "written to stdout; not checked"
+	}
 	v.box(word, line, counts(r.Summary()), color)
 }
 
