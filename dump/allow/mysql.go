@@ -128,7 +128,7 @@ func checkMySQL(st core.Statement, o Options) Decision {
 			return keep()
 		}
 	case "set":
-		return mysqlSet(t)
+		return mysqlSet(st, t, o)
 	case "start":
 		if t.w(1) == "transaction" && onlyWords(t[2:], "with", "consistent", "snapshot", "read", "only", "write") {
 			return keep()
@@ -580,9 +580,11 @@ func clauses(t toks) []toks {
 
 // mysqlSet keeps a SET of the session settings dump tools write and the
 // user variables they save them in. A replication setting is dropped;
-// any other setting, a GLOBAL one or a value that runs a query is refused.
-func mysqlSet(t toks) Decision {
+// any other setting, a GLOBAL one, a value that
+// runs a query or a client character set Roadie can't read is refused.
+func mysqlSet(st core.Statement, t toks, o Options) Decision {
 	cs := clauses(t[1:])
+	charset := toks(nil) // the value of SET NAMES or SET CHARACTER SET
 	switch {
 	case t.w(1) == "names", t.is(1, "character", "set"), t.w(1) == "charset":
 		// SET NAMES x is one clause of a SET; the ones after it are
@@ -593,6 +595,10 @@ func mysqlSet(t toks) Decision {
 		}
 		if !plainValue(cs[0][words:]) {
 			return refuse("a SET NAMES statement that reads a query", whyQuery)
+		}
+		charset = cs[0][words:]
+		if t.w(1) == "names" && charset.w(len(charset)-2) == "collate" {
+			charset = charset[:len(charset)-2]
 		}
 		cs = cs[1:]
 	case t.w(1) == "password":
@@ -612,7 +618,175 @@ func mysqlSet(t toks) Decision {
 			out = d
 		}
 	}
-	return out
+	if out.Verdict != Keep {
+		return out
+	}
+	return setCharsets(st, cs, charset, o)
+}
+
+// mbCharsets are the MySQL character sets in which a backslash (0x5c)
+// can be the second byte of a character. With one of them as the client
+// character set the server reads 0xbf5c as one character where Roadie
+// reads a backslash that escapes the quote after it, so a row Roadie
+// keeps as data could end early on import and run the rest as
+// statements (CVE-2006-2753).
+var mbCharsets = map[string]bool{"big5": true, "cp932": true, "sjis": true, "gbk": true, "gb18030": true}
+
+// charsetVars are the session settings that hold a character set, or a
+// collation of one, the client sends or reads.
+var charsetVars = map[string]bool{
+	"character_set_client": true, "character_set_connection": true, "character_set_results": true,
+	"collation_connection": true,
+}
+
+// labelCharset names a client character set change Roadie refuses.
+const labelCharset = "a SET of the client character set to big5, cp932, sjis, gbk, gb18030 or a value Roadie can't read"
+
+// whyCharset is the danger of a client character set Roadie can't read.
+var whyCharset = why{
+	"could make the staging server read a backslash in the rows after it as part of a character, so a row could end early and run the rest as statements",
+	"Export the dump again with --default-character-set=utf8mb4.",
+}
+
+// setCharsets judges the character set values of a kept SET (charset is
+// the value of SET NAMES or SET CHARACTER SET, nil when there is none)
+// and works out which user variables it leaves holding a character set
+// Roadie has judged. A variable counts only when every clause of the
+// statement saves a judged value in a user variable and every supported
+// server runs it, since a SET that fails on one clause assigns none.
+func setCharsets(st core.Statement, cs []toks, charset toks, o Options) Decision {
+	assigned := map[string]bool{}
+	for _, a := range cs {
+		if k, _, ok := userAssign(a); ok {
+			assigned[k] = true
+		}
+	}
+	if charset != nil && !charsetValue(charset, o, assigned) {
+		return refuse(labelCharset, whyCharset)
+	}
+	d := keep()
+	certain := charset == nil && !mysql.Gated(st.Text, o.Mode)
+	for _, a := range cs {
+		if _, _, ok := userAssign(a); !ok {
+			certain = false
+			if a.p(0, '@') && !a.p(1, '@') {
+				d.lostVars = true // a user variable Roadie can't name
+			}
+		}
+	}
+	for _, a := range cs {
+		k, v, ok := userAssign(a)
+		if ok {
+			if d.vars == nil {
+				d.vars = map[string]bool{}
+			}
+			d.vars[k] = certain && charsetValue(v, o, assigned)
+			continue
+		}
+		name, v := sysAssign(a)
+		if charsetVars[name] && !charsetValue(v, o, assigned) {
+			return refuse(labelCharset, whyCharset)
+		}
+	}
+	return d
+}
+
+// userAssign splits a clause @name = value with a plain one-token name
+// and returns the name as the server folds it.
+func userAssign(a toks) (string, toks, bool) {
+	if !a.p(0, '@') || a.p(1, '@') || a.kind(1) == noKind {
+		return "", nil, false
+	}
+	k := varKey(a[1])
+	switch {
+	case k == "":
+		return "", nil, false
+	case a.p(2, '='):
+		return k, a[3:], true
+	case a.p(2, ':') && a.p(3, '='):
+		return k, a[4:], true
+	}
+	return "", nil, false
+}
+
+// sysAssign splits a clause [scope] [@@[scope.]]name = value into the
+// setting's name and its value; name is "" for any other clause.
+func sysAssign(a toks) (string, toks) {
+	k := 0
+	if a.w(0) == "session" || a.w(0) == "local" {
+		k = 1
+	}
+	if a.p(k, '@') && a.p(k+1, '@') {
+		k += 2
+		if (a.w(k) == "session" || a.w(k) == "local") && a.p(k+1, '.') {
+			k += 2
+		}
+	}
+	name := a.w(k)
+	switch {
+	case a.p(k+1, '='):
+		return name, a[k+2:]
+	case a.p(k+1, ':') && a.p(k+2, '='):
+		return name, a[k+3:]
+	}
+	return "", nil
+}
+
+// varKey is a user variable's name as the server compares it (case
+// folded), or "" for a name that holds a backslash or a quote, whose
+// unescaped spelling Roadie doesn't work out.
+func varKey(x tok) string {
+	n := x.w
+	if x.kind == str {
+		n = n[1 : len(n)-1]
+	} else if x.kind != word && x.kind != ident {
+		return ""
+	}
+	if n == "" || strings.ContainsAny(n, "\\'\"`") {
+		return ""
+	}
+	return strings.ToLower(n)
+}
+
+// charsetValue reports whether v, the value of a client character set
+// setting, is one Roadie reads rows under: a plain name outside
+// mbCharsets (a collation counts by its character set), DEFAULT, a read
+// of the session's own character set settings (each change of which
+// Roadie has judged) or a user variable o.Charsets marks judged (or the
+// dump never set) that the same statement doesn't assign.
+func charsetValue(v toks, o Options, assigned map[string]bool) bool {
+	switch {
+	case len(v) == 1:
+		n := ""
+		switch v.kind(0) {
+		case word, ident:
+			n = strings.ToLower(v[0].w)
+		case str:
+			n = strings.ToLower(v[0].w[1 : len(v[0].w)-1])
+		}
+		if n == "" || strings.ContainsAny(n, "\\'\"`") {
+			return false
+		}
+		cs, _, _ := strings.Cut(n, "_")
+		return !mbCharsets[cs] && !mbCharsets[n]
+	case v.p(0, '@') && v.p(1, '@'):
+		k := 2
+		if (v.w(k) == "session" || v.w(k) == "local") && v.p(k+1, '.') {
+			k += 2
+		}
+		return k+1 == len(v) && charsetVars[v.w(k)]
+	case v.p(0, '@') && len(v) == 2:
+		k := varKey(v[1])
+		judged, set := o.Charsets[k]
+		if !set {
+			// A variable the dump never set is NULL, which the server
+			// refuses as a character set, unless an earlier SET assigned
+			// one Roadie couldn't name.
+			judged = !o.CharsetsLost
+		}
+		return k != "" && !assigned[k] && judged
+	}
+	return false
 }
 
 // mysqlAssign judges one assignment of a SET.

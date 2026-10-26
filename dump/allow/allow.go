@@ -58,6 +58,14 @@ type Options struct {
 	// InTransaction is set while a PostgreSQL dump has a transaction
 	// block open (BEGIN without its COMMIT yet). The Filter keeps it.
 	InTransaction bool
+	// Charsets holds the MySQL user variables the dump has set, true for
+	// one that holds a client character set Roadie has judged (saved
+	// from @@character_set_client or set to a plain name), so that SET
+	// character_set_client = @saved_cs_client can be kept. CharsetsLost
+	// is set once a SET assigned a variable Roadie couldn't name. The
+	// Filter keeps both.
+	Charsets     map[string]bool
+	CharsetsLost bool
 }
 
 // Decision is the verdict on one statement.
@@ -82,6 +90,11 @@ type Decision struct {
 	creates  *object
 	prepared string
 	txn      int8 // +1 opens a PostgreSQL transaction block, -1 ends it
+	// vars are the user variables a kept SET assigns, each with whether
+	// it then holds a judged character set; lostVars is set when the SET
+	// assigns one Roadie can't name.
+	vars     map[string]bool
+	lostVars bool
 }
 
 // object is a table, view, sequence or other named thing of a dump.

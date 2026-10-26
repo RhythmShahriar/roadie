@@ -47,6 +47,9 @@ func NewFilter(o Options) *Filter {
 	if o.Prepared == nil {
 		o.Prepared = map[string]bool{}
 	}
+	if o.Charsets == nil {
+		o.Charsets = map[string]bool{}
+	}
 	return &Filter{o: o, created: map[object]bool{}, byNote: map[string]*planNote{}}
 }
 
@@ -95,6 +98,7 @@ func (f *Filter) Add(b *core.Batch, m mysql.Mode) (*core.Batch, error) {
 		f.note(d, b.Pass.Line, false)
 		return nil, nil
 	case Keep:
+		f.charsets(d)
 		if d.Routine {
 			f.note(d, b.Pass.Line, true)
 		}
@@ -124,6 +128,17 @@ func (f *Filter) Head(st core.Statement) error {
 		return refusal(st, o, refuse(d.Kind, whyUnknown))
 	}
 	return nil
+}
+
+// charsets follows the user variables a kept SET assigns.
+func (f *Filter) charsets(d Decision) {
+	if d.lostVars {
+		clear(f.o.Charsets)
+		f.o.CharsetsLost = true
+	}
+	for k, ok := range d.vars {
+		f.o.Charsets[k] = ok
+	}
 }
 
 // note counts a plan line.
