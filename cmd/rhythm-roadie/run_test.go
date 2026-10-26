@@ -6,7 +6,9 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -123,6 +125,8 @@ var prdErrors = map[string]string{
 	core.ErrReportEdited:          "report check: report.json was changed after it was signed (summary.high 3 → 0).",
 	core.ErrReportUnsigned:        "report check: report.json has no signature (it was written with --sign=off).",
 	core.ErrDiskFull:              "not enough free disk space: need about 2.4 GB, 1.1 GB free in /var/tmp",
+	core.ErrNotFound:              "not-found: shop.sql doesn't exist. Check the path you gave.",
+	core.ErrUnreachable:           "unreachable: db: connect to mysql://127.0.0.1:3306/shop: dial tcp 127.0.0.1:3306: connect: connection refused. Check that the database or host is running and reachable from here, and the host and port you gave.",
 	core.ErrCodeNotBuilt:          "not built yet",
 }
 
@@ -599,5 +603,25 @@ func TestProgressHugeSizes(t *testing.T) {
 	p.Advance(1 << 62)
 	if l := p.line(); !strings.Contains(l, strings.Repeat("█", barWidth)) || strings.Contains(l, "░") {
 		t.Errorf("line %q", l)
+	}
+}
+
+// A file that isn't there and a database that doesn't answer stop with
+// a code, an explain page and a next step, not a bare OS error.
+func TestPlainErrorsGetCodes(t *testing.T) {
+	_, err := os.Open(filepath.Join(t.TempDir(), "shop.sql"))
+	ce := asCoreError(fmt.Errorf("engine: %w", err))
+	if ce.Code != core.ErrNotFound || ce.Exit != 2 || !strings.HasSuffix(ce.Msg, "shop.sql doesn't exist. Check the path you gave.") {
+		t.Errorf("missing file: %+v", ce)
+	}
+	// 32921 is in the cmd tests' port range and nothing listens on it.
+	addr := "127.0.0.1:32921"
+	_, err = net.Dial("tcp", addr)
+	ce = asCoreError(fmt.Errorf("db: connect to mysql://%s/shop: %w", addr, err))
+	if ce.Code != core.ErrUnreachable || ce.Exit != 3 || !strings.HasPrefix(ce.Msg, "unreachable: db: connect to") {
+		t.Errorf("refused: %+v", ce)
+	}
+	if ce := asCoreError(errors.New("something else")); ce.Code != "" || ce.Exit != 3 {
+		t.Errorf("other: %+v", ce)
 	}
 }

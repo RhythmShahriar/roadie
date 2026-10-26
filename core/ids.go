@@ -86,6 +86,12 @@ const (
 	// free disk space: need about <N>, <M> free in <dir>"), which PRD 10.2
 	// and testbed scenario r20 need.
 	ErrDiskFull = "disk-full"
+	// ErrNotFound (exit 2) and ErrUnreachable (exit 3) are added at
+	// integration so every stop has a code (PRD 17): a dump or folder the
+	// command names that doesn't exist, and a database or host that
+	// doesn't answer.
+	ErrNotFound    = "not-found"
+	ErrUnreachable = "unreachable"
 	// ErrCodeNotBuilt is the code of ErrNotBuilt, which a frozen API stub
 	// returns until its lane lands the real code.
 	ErrCodeNotBuilt = "not-built"
@@ -101,6 +107,7 @@ var codeExit = map[string]int{
 	ErrURLMap: 2, ErrKeyManual: 1, ErrKillSwitch: 1, ErrTestKeyIsLive: 2, ErrConfig: 2,
 	ErrNothingScanned: 3, ErrLock: 3, ErrFakeCollision: 3, ErrEchoUnreachable: 1,
 	ErrReportEdited: 1, ErrReportUnsigned: 3, ErrDiskFull: 3, ErrCodeNotBuilt: 3,
+	ErrNotFound: 2, ErrUnreachable: 3,
 }
 
 // CodeExit returns the exit code PRD 17 gives an error code.

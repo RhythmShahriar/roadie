@@ -198,6 +198,19 @@ rhythm roadie dev - shop.com → staging.shop.test
 Source: ssh://deploy@shop.com/var/www/shop
 Target: /var/www/staging
 
+STOPPED   not-found; the target is untouched
+
+not-found: shop.sql doesn't exist. Check the path you gave.
+
+rhythm-roadie explain not-found
+--- exit 2
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
 STOPPED   nothing-scanned; the target is untouched
 
 nothing-scanned: verify read 0 rows from staging@localhost (58 tables, access denied on every one). A verify that sees nothing can't pass; check the user's SELECT rights.
@@ -394,6 +407,19 @@ uncovered: 2 columns look personal and no rule covers them: wp_loyalty_members.e
 
 rhythm-roadie explain uncovered
 --- exit 1
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   unreachable; the target is untouched
+
+unreachable: db: connect to mysql://127.0.0.1:3306/shop: dial tcp 127.0.0.1:3306: connect: connection refused. Check that the database or host is running and reachable from here, and the host and port you gave.
+
+rhythm-roadie explain unreachable
+--- exit 3
 
 $ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
 rhythm roadie dev - shop.com → staging.shop.test

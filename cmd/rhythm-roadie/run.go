@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"net"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -177,7 +179,24 @@ func asCoreError(err error) *core.Error {
 	if errors.As(err, &ce) {
 		return ce
 	}
+	var pe *fs.PathError
+	if errors.Is(err, fs.ErrNotExist) && errors.As(err, &pe) {
+		return core.Errorf(core.ErrNotFound, cli.ExitUsage,
+			"not-found: %s doesn't exist. Check the path you gave.", pe.Path)
+	}
+	if unreachable(err) {
+		return core.Errorf(core.ErrUnreachable, cli.ExitUnavailable,
+			"unreachable: %s. Check that the database or host is running and reachable from here, and the host and port you gave.", err)
+	}
 	return &core.Error{Exit: cli.ExitUnavailable, Msg: err.Error()}
+}
+
+// unreachable reports whether err is a connection that failed: refused,
+// timed out, or a host name that doesn't resolve.
+func unreachable(err error) bool {
+	var oe *net.OpError
+	var de *net.DNSError
+	return errors.As(err, &oe) || errors.As(err, &de)
 }
 
 // runError turns an error before the run (a bad config) into kit's exit:
