@@ -57,7 +57,12 @@ type GuardInput struct {
 	Production       []string
 	ProductionURL    string
 	TargetIsStaging  string
-	Mode             string
+	Mode             string // "copy", "prepare" or "plan"
+	// URL is --url, the staging URL.
+	URL string
+	// SiteURL is the target's siteurl when the caller already read it;
+	// "" makes Guard read it through WP-CLI or the options table.
+	SiteURL string
 }
 
 // Guard refuses a target that is production or the source, with the
