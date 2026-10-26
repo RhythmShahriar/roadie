@@ -600,3 +600,36 @@ func TestConfigKeepMuPlugin(t *testing.T) {
 		t.Fatalf("mail: keep still wrote %v", s.Writes())
 	}
 }
+
+// A multisite network's DOMAIN_CURRENT_SITE and PATH_CURRENT_SITE take
+// the staging URL's host and path; a site without them gets none.
+func TestNetworkDefines(t *testing.T) {
+	ctx := context.Background()
+	cfg := "<?php\ndefine( 'MULTISITE', true );\ndefine( 'DOMAIN_CURRENT_SITE', 'shop.com' );\ndefine( 'PATH_CURRENT_SITE', '/' );\nrequire_once ABSPATH . 'wp-settings.php';\n"
+	for url, want := range map[string][2]string{
+		"https://staging.shop.test/":           {"staging.shop.test", "/"},
+		"https://staging.shop.test:8443/shop/": {"staging.shop.test:8443", "/shop/"},
+	} {
+		o := fixtureOptions()
+		o.URL = url
+		st := subscriptionsStep(o)
+		s := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte(cfg)})
+		if err := st.Apply(ctx, s); err != nil {
+			t.Fatal(err)
+		}
+		b, _ := s.ReadFile(ctx, "wp-config.php")
+		for _, line := range []string{"'DOMAIN_CURRENT_SITE', '" + want[0] + "'", "'PATH_CURRENT_SITE', '" + want[1] + "'"} {
+			if !strings.Contains(string(b), line) {
+				t.Errorf("%s: wp-config.php lacks %s:\n%s", url, line, b)
+			}
+		}
+	}
+	single := "<?php\ndefine( 'WP_HOME', 'https://shop.com' );\n"
+	s := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte(single)})
+	if err := subscriptionsStep(fixtureOptions()).Apply(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := s.ReadFile(ctx, "wp-config.php"); strings.Contains(string(b), "CURRENT_SITE") {
+		t.Errorf("a single site got network defines:\n%s", b)
+	}
+}

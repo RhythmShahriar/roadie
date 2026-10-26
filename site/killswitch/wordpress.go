@@ -231,6 +231,23 @@ var urlDefines = []string{"WP_HOME", "WP_SITEURL"}
 // stagingURL is o.URL without a trailing slash, as WordPress keeps it.
 func (o Options) stagingURL() string { return strings.TrimSuffix(o.URL, "/") }
 
+// networkDefines are a multisite network's DOMAIN_CURRENT_SITE and
+// PATH_CURRENT_SITE for the staging URL: its host (with any port) and its
+// path with a slash at both ends, as wp-config.php holds them. A network
+// whose defines still name production loads production's network, or
+// sends visitors there.
+func (o Options) networkDefines() [][2]string {
+	u, err := url.Parse(o.stagingURL())
+	if err != nil || u.Host == "" {
+		return nil
+	}
+	p := "/" + strings.Trim(u.Path, "/") + "/"
+	if p == "//" {
+		p = "/"
+	}
+	return [][2]string{{"DOMAIN_CURRENT_SITE", u.Host}, {"PATH_CURRENT_SITE", p}}
+}
+
 // subscriptionsStep rewrites WP_HOME and WP_SITEURL; the mu-plugin forces
 // Subscriptions' staging mode and wc_subscriptions_siteurl is never touched.
 func subscriptionsStep(o Options) core.Step {
@@ -291,6 +308,11 @@ func subscriptionsStep(o Options) core.Step {
 					out = append(out, n+" to "+o.stagingURL())
 				}
 			}
+			for _, nv := range o.networkDefines() {
+				if _, ok := f.Lookup(nv[0]); ok {
+					out = append(out, nv[0]+" to "+nv[1])
+				}
+			}
 			return out
 		},
 		func(f *wpconfig.File) error {
@@ -301,9 +323,16 @@ func subscriptionsStep(o Options) core.Step {
 					}
 				}
 			}
+			for _, nv := range o.networkDefines() {
+				if d, ok := f.Lookup(nv[0]); ok && d.Literal && d.Value != nv[1] {
+					if err := f.Set(nv[0], nv[1]); err != nil {
+						return err
+					}
+				}
+			}
 			return nil
 		},
-		"WP_HOME or WP_SITEURL may still name production")
+		"WP_HOME, WP_SITEURL or the network's DOMAIN_CURRENT_SITE may still name production")
 	st.apply = apply
 	st.plan = func(ctx context.Context, s core.Site) ([]core.PlannedEdit, error) {
 		edits, err := plan(ctx, s)
