@@ -132,7 +132,15 @@ func (p *parsed) loadConfig() (*roadiecfg.Config, string, error) {
 		found, err := dep.findConfig(wd)
 		switch {
 		case errors.Is(err, fs.ErrNotExist), err == nil && found == "":
-			return dep.defaultConfig(), "", nil
+			// Without a .roadie/config.yaml, the production: lists of
+			// .soundcheck/ and .echo/ in this folder still count (PRD 8.2).
+			cfg := dep.defaultConfig()
+			if cfg != nil {
+				if err := cfg.MergeProduction(wd); err != nil {
+					return nil, "", err
+				}
+			}
+			return cfg, "", nil
 		case err != nil:
 			return nil, "", err
 		}

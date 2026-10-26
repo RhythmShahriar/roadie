@@ -335,6 +335,52 @@ func TestConfigShow(t *testing.T) {
 	}
 }
 
+// config show expands the rules: the file's columns: and each profile
+// of the stack; --json is a rhythm-roadie/v1 envelope of kind config.
+// Without a .roadie/config.yaml, production: of .soundcheck/ and .echo/
+// in the folder still counts.
+func TestConfigShowExpandsRules(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.MkdirAll(filepath.Join(dir, ".soundcheck"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".soundcheck", "config.yaml"), []byte("production: [\"shop.example.com\"]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, _, code := run(t, "config", "show")
+	if code != 0 || !strings.Contains(out, "# Rules, expanded:") || !strings.Contains(out, "#   {prefix}users.user_email: fake email") ||
+		!strings.Contains(out, "shop.example.com") {
+		t.Errorf("text: exit %d\n%s", code, out)
+	}
+	cfg := filepath.Join(dir, "crm.yaml")
+	if err := os.WriteFile(cfg, []byte("stack: sql\ncolumns:\n  - {table: contacts, column: email, rule: email}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, _, code = run(t, "config", "show", "--config", cfg, "--json")
+	var env struct {
+		Schema, Kind string
+		Data         struct {
+			Rules struct {
+				Note  string      `json:"note"`
+				Rules []shownRule `json:"rules"`
+			} `json:"rules"`
+			Config map[string]any `json:"config"`
+		}
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil || code != 0 {
+		t.Fatalf("json: exit %d %v\n%s", code, err, out)
+	}
+	want := []shownRule{{From: "columns", Table: "contacts", Column: "email", Action: "fake", Fake: "email"}}
+	if env.Schema != "rhythm-roadie/v1" || env.Kind != "config" || !reflect.DeepEqual(env.Data.Rules.Rules, want) || env.Data.Config == nil {
+		t.Errorf("envelope %+v", env)
+	}
+	out, _, code = run(t, "config", "check", "--config", cfg, "--json")
+	if code != 0 || !strings.Contains(out, `"kind": "config-check"`) || !strings.Contains(out, `"valid": true`) {
+		t.Errorf("check --json: exit %d\n%s", code, out)
+	}
+}
+
 func TestConfigKey(t *testing.T) {
 	t.Chdir(t.TempDir())
 	var saved, forgot int

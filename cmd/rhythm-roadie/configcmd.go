@@ -6,18 +6,21 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
 
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/engine"
+	"github.com/RhythmShahriar/roadie/profile"
 	"github.com/RhythmShahriar/roadie/roadiecfg"
 )
 
@@ -42,7 +45,7 @@ func runConfig(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 	case "check":
 		return configCheck(p, stdout, stderr)
 	case "show":
-		return configShow(p, stdout, stderr)
+		return configShow(ctx, p, stdout, stderr)
 	case "key":
 		return configKey(ctx, p, stdout, stderr)
 	}
@@ -208,28 +211,47 @@ func commentText(s string) string { return yamlBreaks.Replace(safe(s)) }
 var roadieVar = regexp.MustCompile(`\$\{(ROADIE_[A-Z0-9_]+)\}`)
 
 // configCheck validates the config and lists the ${ROADIE_*} variables
-// that are unset: exit 2 on a bad file, 0 otherwise.
+// that are unset: exit 2 on a bad file, 0 otherwise. With --json it
+// writes a rhythm-roadie/v1 envelope of kind config-check.
 func configCheck(p *parsed, stdout, stderr io.Writer) error {
 	path, err := p.configFile()
 	if err != nil {
 		return usageError(stderr, "config", "%v", err)
 	}
 	if _, err := dep.loadConfig(path, dep.env); err != nil {
+		if p.f.g.json {
+			ce := asCoreError(err)
+			if werr := writeEnvelope(stdout, "config-check", map[string]any{"path": path, "valid": false, "error": ce}); werr != nil {
+				return werr
+			}
+			return &cli.ExitError{Code: ce.Exit}
+		}
 		return runError(err)
 	}
 	b, err := os.ReadFile(path) // #nosec G304 -- the user's own settings file
 	if err != nil {
 		return &cli.ExitError{Code: cli.ExitUnavailable, Err: err}
 	}
-	fmt.Fprintf(stdout, "%s is valid.\n", path)
+	type unsetVar struct {
+		Name string `json:"name"`
+		Line int    `json:"line"`
+	}
+	unset := []unsetVar{}
 	seen := map[string]bool{}
 	for i, line := range strings.Split(string(b), "\n") {
 		for _, m := range roadieVar.FindAllStringSubmatch(yamlCode(line), -1) {
 			if _, ok := dep.env(m[1]); !ok && !seen[m[1]] {
 				seen[m[1]] = true
-				fmt.Fprintf(stdout, "Unset: %s (line %d); set it before a run that reads it.\n", m[1], i+1)
+				unset = append(unset, unsetVar{m[1], i + 1})
 			}
 		}
+	}
+	if p.f.g.json {
+		return writeEnvelope(stdout, "config-check", map[string]any{"path": path, "valid": true, "unset": unset})
+	}
+	fmt.Fprintf(stdout, "%s is valid.\n", path)
+	for _, u := range unset {
+		fmt.Fprintf(stdout, "Unset: %s (line %d); set it before a run that reads it.\n", u.Name, u.Line)
 	}
 	return nil
 }
@@ -274,9 +296,11 @@ func (p *parsed) configFile() (string, error) {
 	return found, nil
 }
 
-// configShow prints the effective config with defaults and sources;
-// secrets are masked by Show.
-func configShow(p *parsed, stdout, _ io.Writer) error {
+// configShow prints the effective config with defaults and sources and
+// the rules it gives, expanded: its own columns: and those of every
+// profile it may apply. Secrets are masked by Show. With --json it is a
+// rhythm-roadie/v1 envelope of kind config.
+func configShow(ctx context.Context, p *parsed, stdout, _ io.Writer) error {
 	cfg, _, err := p.loadConfig()
 	if err != nil {
 		return runError(err)
@@ -288,8 +312,121 @@ func configShow(p *parsed, stdout, _ io.Writer) error {
 	if err != nil {
 		return runError(err)
 	}
-	_, err = stdout.Write(b)
+	defs, _, err := dep.loadProfiles(ctx, p.offline(dep.env))
+	if err != nil {
+		return runError(err)
+	}
+	rules, note := expandedRules(cfg, defs)
+	if p.f.g.json {
+		var data map[string]json.RawMessage
+		if err := json.Unmarshal(b, &data); err != nil {
+			return runError(err)
+		}
+		r, err := json.Marshal(map[string]any{"note": note, "rules": rules})
+		if err != nil {
+			return runError(err)
+		}
+		data["rules"] = r
+		return writeEnvelope(stdout, "config", data)
+	}
+	var out bytes.Buffer
+	out.Write(b)
+	fmt.Fprintf(&out, "\n# Rules, expanded: %s\n", commentText(note))
+	from := ""
+	for _, r := range rules {
+		if r.From != from {
+			from = r.From
+			fmt.Fprintf(&out, "# %s\n", commentText(from))
+		}
+		fmt.Fprintf(&out, "#   %s\n", commentText(r.line()))
+	}
+	_, err = stdout.Write(out.Bytes())
 	return err
+}
+
+// shownRule is one rule config show lists.
+type shownRule struct {
+	From   string            `json:"from"` // "columns" or a profile ID
+	Table  string            `json:"table"`
+	Column string            `json:"column,omitempty"`
+	Where  map[string]string `json:"where,omitempty"`
+	Path   string            `json:"path,omitempty"`
+	Action string            `json:"action"`
+	Fake   string            `json:"fake,omitempty"`
+}
+
+// line is a rule as one line: "wp_users.user_email (meta_key = x) → json:a: fake email".
+func (r shownRule) line() string {
+	s := r.Table
+	if r.Column != "" {
+		s += "." + r.Column
+	}
+	if r.Path != "" {
+		s += " → " + r.Path
+	}
+	for _, w := range sortedWhere(r.Where) {
+		s += " (" + w + ")"
+	}
+	s += ": " + r.Action
+	if r.Fake != "" {
+		s += " " + r.Fake
+	}
+	return s
+}
+
+// expandedRules lists the rules the config gives: its columns: (and
+// laravel.tables) first, then each profile it may apply, with a note on
+// when a profile's rules apply. profiles: names them; otherwise every
+// profile of the stack (all of them with stack auto) applies when its
+// tables, options or files are found.
+func expandedRules(cfg *roadiecfg.Config, defs []profile.Def) ([]shownRule, string) {
+	out := []shownRule{}
+	for _, c := range cfg.Columns {
+		r := shownRule{From: "columns", Table: c.Table, Column: c.Column, Where: c.Where, Action: c.Rule}
+		if spec, err := roadiecfg.ParseRule(c.Rule); err == nil {
+			r.Action, r.Fake, r.Path = string(spec.Action), string(spec.Fake), spec.Path
+		}
+		out = append(out, r)
+	}
+	if cfg.Stack == "laravel" {
+		for t, cols := range cfg.Laravel.Tables {
+			for col, rule := range cols {
+				r := shownRule{From: "laravel.tables", Table: t, Column: col, Action: rule}
+				if spec, err := roadiecfg.ParseRule(rule); err == nil {
+					r.Action, r.Fake, r.Path = string(spec.Action), string(spec.Fake), spec.Path
+				}
+				out = append(out, r)
+			}
+		}
+		slices.SortStableFunc(out, func(a, b shownRule) int { return strings.Compare(a.From+a.Table+a.Column, b.From+b.Table+b.Column) })
+	}
+	named := slices.DeleteFunc(slices.Clone(cfg.Profiles), func(id string) bool { return id == "auto" })
+	note := "each profile's rules apply when its tables, options or files are found; columns: always apply"
+	switch {
+	case len(named) > 0:
+		note = "the profiles profiles: names; columns: always apply"
+	case cfg.Stack == "sql":
+		note = "stack sql: only columns: apply"
+		return out, note
+	}
+	for _, d := range defs {
+		if len(named) > 0 && !slices.Contains(named, d.ID) || len(named) == 0 && cfg.Stack != "auto" && cfg.Stack != "" && string(d.Stack) != cfg.Stack {
+			continue
+		}
+		for _, r := range d.Rules {
+			out = append(out, shownRule{From: d.ID + " (" + d.Name + ")", Table: r.Table, Column: r.Column, Where: r.Where, Path: r.Path,
+				Action: string(r.Action), Fake: string(r.Fake)})
+		}
+		for _, l := range []struct {
+			action string
+			list   []string
+		}{{"truncate", d.Truncate}, {"drop", d.Drop}, {"keep", d.Keep}} {
+			for _, t := range l.list {
+				out = append(out, shownRule{From: d.ID + " (" + d.Name + ")", Table: t, Action: l.action})
+			}
+		}
+	}
+	return out, note
 }
 
 // projectDir is the folder .roadie/ lives in: the config's, else here.

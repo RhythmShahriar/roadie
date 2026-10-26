@@ -244,14 +244,15 @@ const configHelp = `rhythm roadie config: write, check and print .roadie/config.
 
 Usage:
   rhythm-roadie config init [--stack wordpress|woocommerce|laravel|sql] [--from <source>] [--force]
-  rhythm-roadie config check
+  rhythm-roadie config check [--json]
   rhythm-roadie config show [--json]
   rhythm-roadie config key show|rotate|forget
 
   init     write .roadie/config.yaml with every key commented
   check    parse and validate it, list the ${ROADIE_*} variables that are unset
-  show     the effective config with defaults, where each value comes from and
-           the profile rules expanded; secrets masked
+  show     the effective config with defaults, where each value comes from
+           (production: of .soundcheck/ and .echo/ too) and the rules expanded:
+           columns: and each profile it may apply; secrets masked
   key      the consistency key's fingerprint, a new key, or delete .roadie/key
            (ROADIE_KEY wins over the file)
 
