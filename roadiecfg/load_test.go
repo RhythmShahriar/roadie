@@ -153,6 +153,8 @@ func TestLoadErrors(t *testing.T) {
 			".roadie/config.yaml line 2: columns[0].rule: \"emial\" isn't a rule; did you mean email? Rules: " + strings.Join(RuleNames(), ", ")},
 		{"echo url over http to a public host", "side_effects:\n  echo: {url: \"http://echo.example.com:8025\"}\n", core.ErrConfig,
 			".roadie/config.yaml line 2: side_effects.echo.url is http://echo.example.com:8025 over plain http to a public host; use https or an address on this machine or a private network"},
+		{"echo proxy as a public host:port", "side_effects:\n  echo: {proxy: \"203.0.113.9:3128\"}\n", core.ErrConfig,
+			".roadie/config.yaml line 2: side_effects.echo.proxy is http://203.0.113.9:3128 over plain http to a public host; use https or an address on this machine or a private network"},
 		{"key set twice", "stack: auto\nstack: sql\n", core.ErrConfig,
 			".roadie/config.yaml line 2: stack is set twice (first on line 1); keep one"},
 		{"bad production entry", "production: [\"shop.com\", \"ftp://shop.com\"]\n", core.ErrConfig,
@@ -610,4 +612,13 @@ func FuzzStripPassword(f *testing.F) {
 			t.Errorf("stripPassword(%q) = %q, which keeps %q", v, got, v[start:end])
 		}
 	})
+}
+
+// A proxy written as host:port, as cURL and --echo-proxy take it, is
+// checked as an http URL.
+func TestEchoProxyHostPort(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "side_effects:\n  echo: {proxy: \"127.0.0.1:8026\"}\n"), nil)
+	if err != nil || cfg.SideEffects.Echo.Proxy != "127.0.0.1:8026" {
+		t.Fatalf("%v %+v", err, cfg)
+	}
 }
