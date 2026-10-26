@@ -47,20 +47,22 @@ type mark struct {
 	text, env string
 }
 
-// match tries the rule at i.
-func (r *tokenRule) match(v []byte, i int) (int, string) {
+// match tries the rule at i. body is where the key's own characters
+// start, after its marker.
+func (r *tokenRule) match(v []byte, i int) (end int, env string, body int) {
 	if r.whole != nil {
-		return r.whole(v, i)
+		end, env = r.whole(v, i)
+		return end, env, i
 	}
 	for _, m := range r.marks {
 		if !bytes.HasPrefix(v[i:], []byte(m.text)) {
 			continue
 		}
 		if end := r.body(v, i+len(m.text)); end > 0 {
-			return end, m.env
+			return end, m.env, i + len(m.text)
 		}
 	}
-	return -1, ""
+	return -1, "", i
 }
 
 func marks(pairs ...string) []mark {
@@ -295,9 +297,15 @@ func findTokensFrom(v []byte, src ctxSource) []keyToken {
 					continue
 				}
 			}
-			end, env := r.match(v, i)
+			end, env, body := r.match(v, i)
 			if end < 0 {
 				continue
+			}
+			if placeholderBody(v[body:end]) {
+				// A stand-in in help text or a code comment is no key,
+				// and no other rule reads it either.
+				i = end - 1
+				break
 			}
 			out = append(out, keyToken{rule: r, start: i, end: end, env: env})
 			i = end - 1
@@ -597,6 +605,38 @@ func placeholder(v string) bool {
 	switch l {
 	case "null", "nil", "none", "true", "false", "empty", "test", "secret", "password", "undefined", "0", "1":
 		return true
+	}
+	return false
+}
+
+// placeholderWords mark a key-shaped stand-in such as
+// sk_live_YOUR_KEY_HERE_0000000. They count written all in lower or all in
+// upper case, which a random key body almost never is for four letters.
+var placeholderWords = []string{"xxxx", "your", "changeme", "placeholder", "example", "redacted", "dummy"}
+
+// placeholderBody reports whether the characters after a key's marker
+// only stand in for a key: fewer than four different bytes (xxxx...,
+// 0000..., XXXX-XXXX) or a placeholder word. A real key body is random,
+// so it has many different bytes and no such word.
+func placeholderBody(b []byte) bool {
+	var seen [256]bool
+	distinct := 0
+	for _, c := range b {
+		if !seen[c] {
+			seen[c] = true
+			distinct++
+			if distinct >= 4 {
+				break
+			}
+		}
+	}
+	if distinct < 4 {
+		return true
+	}
+	for _, w := range placeholderWords {
+		if bytes.Contains(b, []byte(w)) || bytes.Contains(b, []byte(strings.ToUpper(w))) {
+			return true
+		}
 	}
 	return false
 }

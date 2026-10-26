@@ -47,7 +47,7 @@ func modeValue(g Gateway, env string) string {
 		return "b:" + v
 	}
 	if strings.HasSuffix(v, "_") {
-		return v + strings.Repeat("a1", 7)
+		return v + keyBody("a1", 14)
 	}
 	return v
 }
@@ -157,20 +157,20 @@ func liveValueFor(id, path string) string {
 	switch id {
 	case "stripe":
 		if strings.Contains(path, "publishable") {
-			return testutil.J("pk_", "live_", strings.Repeat("Ab3", 8))
+			return testutil.J("pk_", "live_", keyBody("Ab3", 24))
 		}
 		if strings.Contains(path, "webhook") {
-			return testutil.J("whsec_", strings.Repeat("Ab3", 8))
+			return testutil.J("whsec_", keyBody("Ab3", 24))
 		}
-		return testutil.J("sk_", "live_", strings.Repeat("Ab3", 8))
+		return testutil.J("sk_", "live_", keyBody("Ab3", 24))
 	case "mollie":
-		return testutil.J("live_", strings.Repeat("Ab3", 10))
+		return testutil.J("live_", keyBody("Ab3", 30))
 	case "razorpay":
-		return testutil.J("rzp_", "live_", strings.Repeat("Ab", 7))
+		return testutil.J("rzp_", "live_", keyBody("Ab", 14))
 	case "square":
-		return testutil.J("EAAA", strings.Repeat("Ab3", 20))
+		return testutil.J("EAAA", keyBody("Ab3", 60))
 	}
-	return strings.Repeat("Zq7", 10)
+	return keyBody("Zq7", 30)
 }
 
 func TestMailers(t *testing.T) {
@@ -237,12 +237,12 @@ func TestPathMatch(t *testing.T) {
 }
 
 func TestReplace(t *testing.T) {
-	liveSK := testutil.J("sk_", "live_", strings.Repeat("Ab3", 8))
-	testSK := testutil.J("sk_", "test_", strings.Repeat("Cd4", 8))
-	livePK := testutil.J("pk_", "live_", strings.Repeat("Ab3", 8))
-	testPK := testutil.J("pk_", "test_", strings.Repeat("Cd4", 8))
-	liveRzp := testutil.J("rzp_", "live_", strings.Repeat("Ab", 7))
-	testRzp := testutil.J("rzp_", "test_", strings.Repeat("Cd", 7))
+	liveSK := testutil.J("sk_", "live_", keyBody("Ab3", 24))
+	testSK := testutil.J("sk_", "test_", keyBody("Cd4", 24))
+	livePK := testutil.J("pk_", "live_", keyBody("Ab3", 24))
+	testPK := testutil.J("pk_", "test_", keyBody("Cd4", 24))
+	liveRzp := testutil.J("rzp_", "live_", keyBody("Ab", 14))
+	testRzp := testutil.J("rzp_", "test_", keyBody("Cd", 14))
 	hit := func(v, path string) Hit {
 		hs := ScanValue([]byte(v), core.Location{Row: "option_name=woocommerce-ppcp-settings,option_name=woocommerce_razorpay_settings", Path: path}, nil)
 		if len(hs) != 1 {
@@ -250,7 +250,7 @@ func TestReplace(t *testing.T) {
 		}
 		return hs[0]
 	}
-	paypalLive := hit(strings.Repeat("Pp9", 20), "serialized:client_secret_production")
+	paypalLive := hit(keyBody("Pp9", 60), "serialized:client_secret_production")
 	tests := []struct {
 		name       string
 		h          Hit
@@ -270,8 +270,8 @@ func TestReplace(t *testing.T) {
 		{"test key kept", hit(testSK, ""), testSK, "swap", nil, testSK, "kept", ""},
 		{"key in text", hit("key="+liveSK+";", ""), "key=" + liveSK + ";", "blank", nil, "key=;", "blanked", ""},
 		{"key in text swapped", hit("key="+liveSK+";", ""), "key=" + liveSK + ";", "swap", map[string]string{"stripe": testSK}, "key=" + testSK + ";", "swapped", ""},
-		{"paypal by field", paypalLive, strings.Repeat("Pp9", 20), "swap", map[string]string{"paypal_client_secret": "SandboxSecret123"}, "SandboxSecret123", "swapped", ""},
-		{"paypal live given", paypalLive, strings.Repeat("Pp9", 20), "swap", map[string]string{"paypal_client_secret": liveSK}, "", "blanked", ""},
+		{"paypal by field", paypalLive, keyBody("Pp9", 60), "swap", map[string]string{"paypal_client_secret": "SandboxSecret123"}, "SandboxSecret123", "swapped", ""},
+		{"paypal live given", paypalLive, keyBody("Pp9", 60), "swap", map[string]string{"paypal_client_secret": liveSK}, "", "blanked", ""},
 		{"razorpay id", hit(liveRzp, "serialized:key_id"), liveRzp, "swap", map[string]string{"razorpay_key_id": testRzp}, testRzp, "swapped", ""},
 		{"razorpay id wrong", hit(liveRzp, "serialized:key_id"), liveRzp, "swap", map[string]string{"razorpay_key_id": liveRzp}, "", "blanked", ""},
 		{"unknown env kept", Hit{Provider: "square", Env: EnvUnknown}, "EAAAx", "swap", nil, "EAAAx", "kept", ""},
@@ -294,7 +294,7 @@ func TestReplace(t *testing.T) {
 }
 
 func TestValidateTestKey(t *testing.T) {
-	live := testutil.J("sk_", "live_", strings.Repeat("Ab3", 8))
+	live := testutil.J("sk_", "live_", keyBody("Ab3", 24))
 	err := ValidateTestKey("stripe", live)
 	var ce *core.Error
 	if !errors.As(err, &ce) || ce.Code != core.ErrTestKeyIsLive || ce.Exit != 2 {
@@ -308,10 +308,10 @@ func TestValidateTestKey(t *testing.T) {
 		t.Error("message shows the key")
 	}
 	for p, v := range map[string]string{
-		"stripe":               testutil.J("sk_", "test_", strings.Repeat("Ab3", 8)),
-		"stripe-publishable":   testutil.J("pk_", "test_", strings.Repeat("Ab3", 8)),
+		"stripe":               testutil.J("sk_", "test_", keyBody("Ab3", 24)),
+		"stripe-publishable":   testutil.J("pk_", "test_", keyBody("Ab3", 24)),
 		"paypal_client_secret": "SandboxSecret123",
-		"mollie":               testutil.J("test_", strings.Repeat("Ab3", 10)),
+		"mollie":               testutil.J("test_", keyBody("Ab3", 30)),
 		"square":               "",
 	} {
 		if err := ValidateTestKey(p, v); err != nil {
@@ -319,9 +319,9 @@ func TestValidateTestKey(t *testing.T) {
 		}
 	}
 	for p, v := range map[string]string{
-		"razorpay-key-id":      testutil.J("rzp_", "live_", strings.Repeat("Ab", 7)),
+		"razorpay-key-id":      testutil.J("rzp_", "live_", keyBody("Ab", 14)),
 		"paypal_client_secret": live,
-		"mollie":               testutil.J("live_", strings.Repeat("Ab3", 10)),
+		"mollie":               testutil.J("live_", keyBody("Ab3", 30)),
 	} {
 		if err := ValidateTestKey(p, v); !errors.Is(err, &core.Error{Code: core.ErrTestKeyIsLive}) {
 			t.Errorf("%s: %v, want test-key-is-live", p, err)

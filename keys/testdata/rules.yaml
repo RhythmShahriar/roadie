@@ -20,6 +20,11 @@ cases:
   - {provider: stripe, env: none, value: "sk_live_xxxxxxxxxxxxxxxxxxxxxxxx", note: placeholder}
   - {provider: stripe, env: none, value: "sk_live_{a:10}", note: too short}
   - {provider: stripe, env: none, value: "ask_live_{a:24}", note: not at a token start}
+  - {provider: stripe, env: live, value: "Use this key on the shop: sk_live_{a:24}. It was set up by the agency in March for the checkout page."}
+  - {provider: stripe, env: none, value: "Paste your secret key, which looks like sk_live_xxxxxxxxxxxxxxxxxxxxxxxx, into the field below and save.", note: placeholder in long text}
+  - {provider: stripe, env: none, value: "sk_live_000000000000000000000000", note: zeros}
+  - {provider: stripe, env: none, value: "define( 'STRIPE_SECRET', 'sk_live_YOUR_SECRET_KEY_HERE_123' ); // set this on the server before you go live", note: placeholder word in a code line}
+  - {provider: stripe-publishable, env: none, value: "The publishable key starts with pk_live_XXXXXXXXXXXXXXXXXXXXXXXX and goes in the theme settings page.", note: placeholder in long text}
   # Stripe publishable keys.
   - {provider: stripe-publishable, env: live, value: "pk_live_{a:24}"}
   - {provider: stripe-publishable, env: test, value: "pk_test_{a:24}"}

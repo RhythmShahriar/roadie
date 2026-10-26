@@ -240,7 +240,14 @@ func ids(res *core.VerifyResult) []string {
 	return out
 }
 
-func liveStripe() string { return testutil.J("sk_", "live_", strings.Repeat("Ab3", 8)) }
+// keyBody returns n key characters starting with seed. A real key body
+// is random, so it has more than three different characters; a body of
+// fewer reads as a placeholder (xxxx, 0000).
+func keyBody(seed string, n int) string {
+	return strings.Repeat(seed+"Zk7Wm", n)[:n]
+}
+
+func liveStripe() string { return testutil.J("sk_", "live_", keyBody("Ab3", 24)) }
 
 // ser writes a flat serialized array of strings.
 func ser(kv ...string) string {
@@ -383,7 +390,7 @@ func TestRunGatewayLiveModeAndKeys(t *testing.T) {
 	}
 
 	// A Square token with no environment beside it is key.unknown-env.
-	sq := testutil.J("EAAA", strings.Repeat("Zx9", 20))
+	sq := testutil.J("EAAA", keyBody("Zx9", 60))
 	res = runJob(t, Job{Source: source(options([]string{"1", "my_square_token", sq}))})
 	if f := find(res, core.FindingKeyUnknownEnv); f == nil || f.Severity != core.SeverityMedium {
 		t.Errorf("unknown env: %+v", res.Findings)
@@ -391,7 +398,7 @@ func TestRunGatewayLiveModeAndKeys(t *testing.T) {
 
 	// Test keys are no finding at all.
 	res = runJob(t, Job{Source: source(options([]string{"1", "woocommerce_stripe_settings",
-		ser("enabled", "yes", "testmode", "yes", "test_secret_key", testutil.J("sk_", "test_", strings.Repeat("Ab3", 8)))}))})
+		ser("enabled", "yes", "testmode", "yes", "test_secret_key", testutil.J("sk_", "test_", keyBody("Ab3", 24)))}))})
 	if len(res.Findings) != 0 {
 		t.Errorf("test mode: %v", ids(res))
 	}
@@ -471,7 +478,7 @@ func siteFixture(kind core.EndpointKind) *testutil.Site {
 			"define('WP_HOME', 'https://shop.com');\ndefine('STRIPE_SECRET', '" + liveStripe() + "');\n"),
 		"wp-content/themes/shop/functions.php":       []byte("<?php\n// settings\n$stripe = '" + liveStripe() + "';\n"),
 		"wp-content/themes/shop/style.css":           []byte(liveStripe()),
-		"wp-content/plugins/x/test.php":              []byte("<?php $k = '" + testutil.J("sk_", "test_", strings.Repeat("Ab3", 8)) + "';"),
+		"wp-content/plugins/x/test.php":              []byte("<?php $k = '" + testutil.J("sk_", "test_", keyBody("Ab3", 24)) + "';"),
 		"wp-content/debug.log":                       []byte("PHP Notice"),
 		"wp-content/uploads/gravity_forms/1/a.pdf":   []byte("%PDF"),
 		"wp-content/uploads/gravity_forms/index.php": []byte("<?php"),
