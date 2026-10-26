@@ -449,7 +449,7 @@ func TestLeakScannerFindsEveryForm(t *testing.T) {
 
 // TestCanaryKeys seeds canaries as the keys of JSON and serialized
 // values: a plugin that keys its data by a customer's name, phone or
-// address, and WordPress's session tokens keyed by a hash. Finding
+// address and WordPress's session tokens keyed by a hash. Finding
 // locations name those keys; no canary may reach any output of verify.
 func TestCanaryKeys(t *testing.T) {
 	requireLanes(t, "io", "values", "site", "detect", "engine")

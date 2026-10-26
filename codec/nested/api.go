@@ -25,7 +25,7 @@ type Options struct {
 	Stats *Stats
 	// Key, when set, sees each string key of serialized data and each
 	// object key of JSON in Rewrite, at the path of the array or object
-	// that holds it, and may change it: a plugin may key its data by a
+	// that holds it; it may change it: a plugin may key its data by a
 	// customer's address or phone. Leaves never calls it.
 	Key func(path string, key []byte) ([]byte, bool)
 }

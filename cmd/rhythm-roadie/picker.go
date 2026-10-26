@@ -294,7 +294,7 @@ func termWidth() int {
 
 // formWidth is the width a picker form is drawn at. A terminal that
 // reports 0 columns (a pty with no window size) made Huh's text input
-// panic, so the form gets the screen's width then, and at least
+// panic, so the form gets the screen's width then; it gets at least
 // minFormWidth columns always.
 func formWidth(cols int) int {
 	const minFormWidth = 40
