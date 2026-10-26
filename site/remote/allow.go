@@ -76,10 +76,12 @@ var templates = map[Template]template{
 	MySQLDump:      {format: "mysqldump --defaults-extra-file=/dev/stdin --single-transaction --skip-triggers --no-tablespaces --hex-blob %q%v"},
 	PGDump:         {format: pgWrapper + "pg_dump --format=plain --no-owner --no-privileges --host=%q --port=%n --username=%q --dbname=%q%v"},
 
-	DBImport:  {format: "%w db import -", target: true},
-	MySQL:     {format: mysqlWrapper, target: true},
-	PSQL:      {format: pgWrapper + "psql --no-psqlrc --quiet --set=ON_ERROR_STOP=1 --host=%q --port=%n --username=%q --dbname=%q", target: true},
-	Backup:    {format: "umask 077 && mkdir -p ~/.roadie-backups && { %w db export - --skip-plugins --skip-themes --single-transaction || echo '" + backupFailed + "' >&2; } | gzip > ~/.roadie-backups/%t.sql.gz", target: true},
+	DBImport: {format: "%w db import -", target: true},
+	MySQL:    {format: mysqlWrapper, target: true},
+	PSQL:     {format: pgWrapper + "psql --no-psqlrc --quiet --set=ON_ERROR_STOP=1 --host=%q --port=%n --username=%q --dbname=%q", target: true},
+	// Backup sets noclobber (set -C), so a backup that another run made
+	// in the same second is never overwritten: the redirect fails instead.
+	Backup:    {format: "set -C && umask 077 && mkdir -p ~/.roadie-backups && { %w db export - --skip-plugins --skip-themes --single-transaction || echo '" + backupFailed + "' >&2; } | gzip > ~/.roadie-backups/%t.sql.gz", target: true},
 	Write:     {format: "umask 077 && cat > %q && mv -f -- %q %q", target: true},
 	WriteMode: {format: "umask 077 && cat > %q && chmod %m -- %q && mv -f -- %q %q", target: true},
 	// WriteKeep replaces an existing file: it gives the temp file the old

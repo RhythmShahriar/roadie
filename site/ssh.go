@@ -14,6 +14,7 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -505,6 +506,11 @@ func errImportEnded(err error) error {
 
 func (s *sshSite) RemoteCommands() []string { return s.r.Commands() }
 
+// backupExistsRE is a POSIX shell refusing to overwrite the backup file
+// under set -C: dash and busybox say "File exists", bash "cannot
+// overwrite existing file", zsh "file exists".
+var backupExistsRE = regexp.MustCompile(`\.roadie-backups/.*(?i:file exists|cannot overwrite existing file)|(?i:file exists): .*\.roadie-backups/`)
+
 // Backup runs the allowlisted remote backup: wp db export into
 // ~/.roadie-backups/<UTC ts>.sql.gz with umask 077. Only WordPress sites
 // have one; the restore line runs over the same ssh.
@@ -516,10 +522,14 @@ func (s *sshSite) Backup(ctx context.Context) (string, string, error) {
 		return "", "", fmt.Errorf("backup: Roadie backs up an ssh target only through WP-CLI; export %s's database yourself, then pass --no-backup", s.ep.Display)
 	}
 	ts := backupStamp()
+	p := "~/.roadie-backups/" + ts + ".sql.gz"
 	if err := s.r.Run(ctx, nil, io.Discard, remote.Backup, ts); err != nil {
+		var re *remote.RunError
+		if errors.As(err, &re) && backupExistsRE.Match(re.Stderr) {
+			return "", "", fmt.Errorf("backup: %s already exists on %s: another backup started there in the same second. Run again", p, s.r.Dest())
+		}
 		return "", "", err
 	}
-	p := "~/.roadie-backups/" + ts + ".sql.gz"
 	wp := s.o.WP
 	if wp == "" {
 		wp = "wp"
