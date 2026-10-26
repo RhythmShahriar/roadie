@@ -4,6 +4,7 @@
 package pseudo
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -74,6 +75,39 @@ func TestListFiles(t *testing.T) {
 		for _, f := range files {
 			if _, ok := listMinimum[strings.TrimSuffix(f.Name(), ".txt")]; !ok {
 				t.Errorf("data/%s/%s isn't a list", d.Name(), f.Name())
+			}
+		}
+	}
+}
+
+func TestIsFakeOfFakes(t *testing.T) {
+	kinds := []core.FakeKind{core.KEmail, core.KUsername, core.KNicename, core.KURL, core.KFirstName,
+		core.KLastName, core.KFullName, core.KStreet, core.KAddress, core.KCity, core.KCompany,
+		core.KPhone, core.KIP, core.KUserAgent}
+	for _, loc := range Locales {
+		for _, style := range []string{PhoneEcho, PhoneCountry} {
+			f := mustFaker(t, testKey(5), Options{Locale: loc, PhoneStyle: style})
+			for _, kind := range kinds {
+				for i := range scaled(10000) / 6 {
+					in := fmt.Sprintf("Real Value %d", i)
+					switch kind {
+					case core.KIP:
+						in = fmt.Sprintf("81.2.%d.%d", i>>8&255, i&255)
+						if i%2 == 1 {
+							in = fmt.Sprintf("2a00:1450::%x", i)
+						}
+					case core.KPhone:
+						in = fmt.Sprintf("+44 7911 %06d", i)
+					}
+					o := core.FakeOpts{}
+					if i%7 == 0 {
+						o.Unique = true
+					}
+					got := fake(t, f, kind, in, o)
+					if !IsFake(kind, []byte(got)) {
+						t.Fatalf("%s %s: IsFake(%q) = false", loc, kind, got)
+					}
+				}
 			}
 		}
 	}
