@@ -104,7 +104,7 @@ func excludeFromGit(dir string, paths []string) (bool, error) {
 	for _, p := range paths {
 		// Anchored at the work tree root, so a folder of the same name
 		// deeper down isn't hidden too.
-		line := "/" + path.Join(filepath.ToSlash(rel), p)
+		line := "/" + gitEscape(path.Join(filepath.ToSlash(rel), p))
 		if strings.HasSuffix(p, "/") {
 			line += "/"
 		}
@@ -129,4 +129,20 @@ func excludeFromGit(dir string, paths []string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// gitEscape backslash-escapes the characters a gitignore pattern reads as
+// glob syntax, so a project folder named "shop[1]" or "a*b" matches only
+// itself. Trailing spaces are escaped too, since git drops unescaped
+// ones. The line starts with "/", so a leading "!" or "#" never needs it.
+func gitEscape(p string) string {
+	var b strings.Builder
+	trail := len(p) - len(strings.TrimRight(p, " "))
+	for i, r := range p {
+		if strings.ContainsRune(`*?[]\`, r) || (r == ' ' && i >= len(p)-trail) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }

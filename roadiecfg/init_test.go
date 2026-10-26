@@ -327,6 +327,21 @@ func TestExcludeFromGit(t *testing.T) {
 	}
 }
 
+// gitEscape leaves plain paths alone and escapes glob syntax.
+func TestGitEscape(t *testing.T) {
+	for in, want := range map[string]string{
+		"sites/shop/.roadie/key": "sites/shop/.roadie/key",
+		"shop[1]/.roadie/key":    `shop\[1\]/.roadie/key`,
+		"a*b?/c\\d":              `a\*b\?/c\\d`,
+		"!x/#y":                  "!x/#y",
+		"dir /x ":                `dir /x\ `,
+	} {
+		if got := gitEscape(in); got != want {
+			t.Errorf("gitEscape(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // A linked worktree has a .git file; its excludes live in the main
 // repository's info/exclude, through the gitdir's commondir.
 func TestExcludeFromGitWorktree(t *testing.T) {
@@ -377,7 +392,12 @@ func TestExcludeFromGitWithGit(t *testing.T) {
 	run(root, "-c", "user.email=t@example.test", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
 	wt := filepath.Join(t.TempDir(), "wt")
 	run(root, "worktree", "add", "-q", wt)
-	for _, dir := range []string{root, wt} {
+	dirs := []string{root, wt}
+	if runtime.GOOS != "windows" {
+		// Glob characters in a folder name match only themselves.
+		dirs = append(dirs, filepath.Join(root, "shop[1]"), filepath.Join(root, "a*b?"))
+	}
+	for _, dir := range dirs {
 		if _, err := ExcludeFromGit(dir, GitExcludes()); err != nil {
 			t.Fatal(err)
 		}
