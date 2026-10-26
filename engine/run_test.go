@@ -978,3 +978,31 @@ func TestRunOnlyNoindexLaravel(t *testing.T) {
 	}
 }
 
+// A standalone verify --from keeps every production host, also a blog's
+// custom domain that url_map doesn't name: verify rewrites nothing. Both
+// sides from stdin is refused.
+func TestVerifyJobProductionHosts(t *testing.T) {
+	f := useRunFakes(t)
+	f.prod.SourceFunc = func([]string) (core.Source, error) {
+		td := blogTables()
+		td[0].rows = append(td[0].rows, []any{4, "boutique.example", "/"})
+		return testutil.FakeSource(schemaOf("wp_", td), batches(td)), nil
+	}
+	cfg := roadiecfg.Default()
+	cfg.URL = "https://staging.shop.test"
+	j := Job{Config: cfg, Opts: Options{FailOn: core.SeverityHigh}}
+	from := prodEP
+	vj, err := VerifyJob(context.Background(), j, stagingEP, &from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range []string{"shop.com", "fr.shop.com", "boutique.example"} {
+		if !slices.Contains(vj.Production, h) {
+			t.Errorf("production %v lacks %s", vj.Production, h)
+		}
+	}
+	stdio := core.Endpoint{Kind: core.Stdio, Raw: "-", Display: "-"}
+	if _, err := VerifyJob(context.Background(), j, stdio, &stdio); !isCode(err, core.ErrConfig) {
+		t.Errorf("stdin twice: %v", err)
+	}
+}

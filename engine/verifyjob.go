@@ -42,6 +42,10 @@ func VerifyJob(ctx context.Context, j Job, target core.Endpoint, from *core.Endp
 			_ = s.Close()
 		}
 	}()
+	if from != nil && from.Kind == core.Stdio && target.Kind == core.Stdio {
+		return verify.Job{}, core.Errorf(core.ErrConfig, 2,
+			"verify can't read both the copy and --from from stdin (-); name a file or a site for one of them")
+	}
 	defs, _, err := loadProfiles(ctx, r.opts.Offline)
 	if err != nil {
 		return verify.Job{}, err
@@ -160,6 +164,9 @@ func (r *runner) productionIndex(ctx context.Context, from core.Endpoint, defs [
 		return nil, nil, nil, err
 	}
 	// The final rules first: they add the form entry values to Known.
+	// Verify needs production's hosts, not rewrite pairs: without a
+	// staging URL the plan never stops on a blog host url_map lacks.
+	p.opts.URL = ""
 	var found []string
 	if c, err := p.finalCompile(idx, schema); err == nil {
 		if plan, err := p.urlPlan(ctx, idx, c); err == nil {
