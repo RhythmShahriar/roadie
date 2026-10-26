@@ -41,7 +41,11 @@ func normalise(kind core.FakeKind, b []byte) []byte {
 
 // normPhone keeps the digits of b and a leading '+'.
 func normPhone(b []byte) []byte {
-	out := make([]byte, 0, len(b))
+	return appendPhone(make([]byte, 0, len(b)), b)
+}
+
+// appendPhone appends the digits of b and a leading '+' to out.
+func appendPhone(out, b []byte) []byte {
 	if len(b) > 0 && b[0] == '+' {
 		out = append(out, '+')
 	}
@@ -56,9 +60,15 @@ func normPhone(b []byte) []byte {
 // normText makes b NFC, case-folds it and makes every run of white space
 // one space. b is already trimmed.
 func normText(b []byte) []byte {
+	return appendNormText(make([]byte, 0, len(b)), b)
+}
+
+// appendNormText appends normText(b) to out. ASCII text needs no
+// allocation beyond out's growth, which keeps Known.Contains on the
+// scrubber's hot path free of garbage.
+func appendNormText(out, b []byte) []byte {
 	if isASCII(b) {
 		// NFC and case folding of ASCII is lower case: skip the tables.
-		out := make([]byte, 0, len(b))
 		space := false
 		for _, c := range b {
 			switch {
@@ -81,7 +91,6 @@ func normText(b []byte) []byte {
 	folders.Put(c)
 	// Folding can undo NFC for a few letters; compose once more.
 	folded = norm.NFC.Bytes(folded)
-	out := make([]byte, 0, len(folded))
 	space := false
 	for i := 0; i < len(folded); {
 		r, size := utf8.DecodeRune(folded[i:])

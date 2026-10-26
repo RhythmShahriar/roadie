@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"hash/maphash"
 	"math/rand/v2"
 	"strings"
 	"sync"
@@ -233,13 +234,17 @@ func TestKnownFalsePositives(t *testing.T) {
 	}
 }
 
-// 2 million emails fit in under 64 MB once sealed. The tables' own size
-// is the measure: the heap of a test binary also holds what earlier
+// 2 million emails fit in under 64 MB once sealed. The tables' and the
+// Bloom filters' own size is the measure: the heap of a test binary also holds what earlier
 // tests left for the collector.
 func TestKnownMemory(t *testing.T) {
 	values := scaled(2_000_000)
 	size := 0
-	for _, tab := range bigKnown().(*known).tabs {
+	kn := bigKnown().(*known)
+	for _, f := range kn.filters {
+		size += cap(f.bits) * 8
+	}
+	for _, tab := range kn.tabs {
 		size += cap(tab.h)*8 + cap(tab.k)
 		if tab.hchunks != nil || tab.kchunks != nil {
 			t.Error("Seal kept the chunks")
@@ -249,5 +254,45 @@ func TestKnownMemory(t *testing.T) {
 	t.Logf("%d values: %.1f MB of tables; %.1f MB at 2M", values, float64(size)/1e6, at2M/1e6)
 	if at2M >= 64<<20 {
 		t.Errorf("2M values would take %.1f MB, want under 64 MB", at2M/(1<<20))
+	}
+}
+
+// The Bloom filter in front of the raw table never turns away a token
+// that was added (across several filter generations) and turns away
+// most tokens that weren't.
+func TestKnownFilter(t *testing.T) {
+	k := NewKnown(testKey(9))
+	const n = 5 * firstFilter // fills three filters
+	for i := range n {
+		k.Add(core.KEmail, fmt.Appendf(nil, "member%d@club.example", i))
+	}
+	k.Add(core.KFullName, []byte("Ada Kowalczyk"))
+	k.Seal()
+	kn := k.(*known)
+	if len(kn.filters) < 3 {
+		t.Fatalf("%d filters after %d tokens, want at least 3", len(kn.filters), n)
+	}
+	for i := range n {
+		tok := fmt.Appendf(nil, "MEMBER%d@club.example", i)
+		if _, _, ok := k.Contains(tok); !ok {
+			t.Fatalf("added %s not found", tok)
+		}
+	}
+	for _, tok := range []string{"ada", "kowalczyk", "Ada Kowalczyk"} {
+		if _, _, ok := k.Contains([]byte(tok)); !ok {
+			t.Fatalf("name token %q not found", tok)
+		}
+	}
+	passed := 0
+	const misses = 100_000
+	for i := range misses {
+		if kn.mayHave(maphash.Bytes(kn.seed, fmt.Appendf(nil, "word%d", i))) {
+			passed++
+		}
+	}
+	// Each full filter lets about 1% through; three or four of them stay
+	// well under 10%.
+	if passed > misses/10 {
+		t.Fatalf("filter let %d of %d unknown tokens through", passed, misses)
 	}
 }

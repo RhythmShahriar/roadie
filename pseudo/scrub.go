@@ -21,6 +21,7 @@ type scrubber struct {
 	known core.Known
 	f     core.Faker
 	out   []byte // nil until the first replacement
+	pair  []byte // reused for each word pair looked up
 	last  int    // end of the text already copied to out
 	n     int
 }
@@ -94,8 +95,8 @@ func (s *scrubber) names(start, end int) {
 		if i+1 < len(words) {
 			b := [2]int{start + words[i+1][0], start + words[i+1][1]}
 			if gap := s.text[a[1]:b[0]]; pairGap(gap) {
-				pair := pairToken(s.text[a[0]:a[1]], s.text[b[0]:b[1]])
-				if kind, _, ok := s.known.Contains(pair); ok && isNameKind(kind) {
+				s.pair = append(append(append(s.pair[:0], s.text[a[0]:a[1]]...), ' '), s.text[b[0]:b[1]]...)
+				if kind, _, ok := s.known.Contains(s.pair); ok && isNameKind(kind) {
 					kind = core.KFullName
 					if !bytes.ContainsFunc(gap, unicode.IsSpace) {
 						kind = oneWordKind(s.known, s.text[a[0]:b[1]])
