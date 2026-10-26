@@ -25,7 +25,7 @@ import (
 // space again.
 const checkEvery = 64 << 20
 
-// freeSpace returns the bytes free to this user in dir, and false when
+// freeSpace returns the bytes free to this user in dir and false when
 // the platform can't tell. Tests replace it.
 var freeSpace = diskFree
 
@@ -87,7 +87,7 @@ func (c *counter) Write(p []byte) (int, error) {
 }
 
 // fileSink writes a dump to '<name>.roadie-tmp-<random>' next to the
-// target, 0600, and renames it over the target on Commit.
+// target with mode 0600 and renames it over the target on Commit.
 type fileSink struct {
 	mu    sync.Mutex
 	path  string

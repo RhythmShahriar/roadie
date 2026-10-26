@@ -218,7 +218,7 @@ func (enospc) Write([]byte) (int, error) {
 	return 0, &os.PathError{Op: "write", Path: "x", Err: syscall.ENOSPC}
 }
 
-// A write that fails with ENOSPC is disk-full, and the temp file goes.
+// A write that fails with ENOSPC is disk-full and the temp file goes.
 func TestDiskFullENOSPC(t *testing.T) {
 	dir := t.TempDir()
 	sink, err := NewFileSink(filepath.Join(dir, "out.sql"), WriterOptions{})

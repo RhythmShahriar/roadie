@@ -103,7 +103,7 @@ func fixtures(t *testing.T) []string {
 	return names
 }
 
-// Every fixture splits into statements and rows that join back to it, and
+// Every fixture splits into statements and rows that join back to it and
 // each statement read alone is the same single statement.
 func TestFixturesJoin(t *testing.T) {
 	for _, name := range fixtures(t) {
@@ -116,7 +116,7 @@ func TestFixturesJoin(t *testing.T) {
 }
 
 // checkAlone re-lexes each statement on its own, in the state it started
-// in, and wants the same statement back: no boundary fell inside a quote.
+// in and wants the same statement back: no boundary fell inside a quote.
 func checkAlone(t testing.TB, ps []piece) {
 	t.Helper()
 	for _, p := range ps {

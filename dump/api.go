@@ -58,7 +58,7 @@ type WriterOptions struct {
 // renames it on Commit. The temp file is '<path>.roadie-tmp-<random>';
 // Abort, a canceled context and any write error remove it. Compression
 // "" takes gzip or zstd from the extension of path. With ExpectBytes set
-// it refuses up front, and every 64 MiB written, when the folder has less
+// it refuses up front and every 64 MiB written, when the folder has less
 // free space than is still to come (disk-full).
 func NewFileSink(path string, o WriterOptions) (core.Sink, error) {
 	return newFileSink(path, o)

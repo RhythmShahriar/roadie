@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Package compress reads gzip, zstd and bzip2 dumps with an output cap,
-// counts and hashes the raw input bytes on the way, and writes gzip and
+// counts and hashes the raw input bytes on the way and writes gzip and
 // zstd output (security.md A2).
 //
 // The cap matters because streaming keeps memory flat but not disk: a
-// 10 KB gzip can inflate to 10 GB, and a zstd frame to far more. Reading
+// 10 KB gzip can inflate to 10 GB and a zstd frame to far more. Reading
 // stops once the output passes MaxRatio times the compressed bytes read so
 // far, after a grace of the first 64 MiB, so a small dump with a high
 // ratio (a schema of empty tables compresses well) still reads.

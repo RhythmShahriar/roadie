@@ -47,7 +47,7 @@ func compressed(t testing.TB, kind string, plain []byte) []byte {
 	return buf.Bytes()
 }
 
-// Every compression of the same dump reads back to the same bytes, and the
+// Every compression of the same dump reads back to the same bytes and the
 // fingerprint is sha256sum of the file as stored.
 func TestReadersAgree(t *testing.T) {
 	plain := readFixture(t)

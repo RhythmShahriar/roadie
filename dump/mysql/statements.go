@@ -149,11 +149,11 @@ func max0(a, b int) int {
 	return b
 }
 
-// Classify names the kind of a statement that isn't row data, and the
+// Classify names the kind of a statement that isn't row data and the
 // table it names when it is about one. An INSERT or REPLACE reaching
 // Classify is one the lexer couldn't stream (inside a versioned comment,
 // INSERT ... SELECT or SET), so it is StmtOther: its values would pass
-// unread, and the allowlist refuses other.
+// unread and the allowlist refuses other.
 func Classify(text []byte, m Mode) (core.StmtKind, string) {
 	t := tokens(Body(text, m), m, 32)
 	if len(t) == 0 {

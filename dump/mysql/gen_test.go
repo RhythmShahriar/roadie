@@ -83,7 +83,7 @@ func genDump(w io.Writer, size int64, seed uint64) int64 {
 }
 
 // benchSize is the generated dump size for benchmarks: 32 MB by default,
-// so the CI smoke run (-benchtime 1x) stays quick, and the 378 MB shape
+// so the CI smoke run (-benchtime 1x) stays quick and the 378 MB shape
 // with ROADIE_BENCH_FULL=1 for the recorded numbers.
 func benchSize() int64 {
 	if os.Getenv("ROADIE_BENCH_FULL") == "1" {

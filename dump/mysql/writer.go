@@ -114,7 +114,7 @@ func isSandbox(b *core.Batch) bool {
 	return b.Pass != nil && b.Pass.Kind == core.StmtComment && bytes.HasPrefix(b.Pass.Text, []byte(SandboxLine))
 }
 
-// pass appends a passthrough statement, with the collation fix, and
+// pass appends a passthrough statement with the collation fix and
 // follows its sql_mode changes for the encoder.
 func (w *Writer) pass(out []byte, st *core.Statement) []byte {
 	text := st.Text
@@ -154,7 +154,7 @@ func FixCollation(text []byte, m Mode) []byte {
 
 // rows appends the rows of a batch: the head before the first row
 // written, no lead before it (so dropping the statement's first row
-// leaves no leading comma), and the tail after the last batch only when
+// leaves no leading comma) and the tail after the last batch only when
 // some row was written. A statement whose rows are all dropped is left
 // out whole.
 func (w *Writer) rows(b *core.Batch) error {

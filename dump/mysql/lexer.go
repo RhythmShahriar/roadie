@@ -970,7 +970,7 @@ func (l *Lexer) wordRun() {
 	}
 }
 
-// numberRun consumes the rest of a number: digits, '.', and an exponent.
+// numberRun consumes the rest of a number: digits, '.' and an exponent.
 func (l *Lexer) numberRun() {
 	s := &l.s
 	for s.ensure(1) {

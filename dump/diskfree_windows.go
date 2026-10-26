@@ -41,6 +41,6 @@ func isNoSpace(err error) bool {
 	return errors.Is(err, errorDiskFull) || errors.Is(err, errorHandleDiskFull) || errors.Is(err, syscall.ENOSPC)
 }
 
-// syncDir does nothing: Windows has no folder fsync, and MoveFileEx is
+// syncDir does nothing: Windows has no folder fsync and MoveFileEx is
 // durable once the file itself was synced.
 func syncDir(string) {}

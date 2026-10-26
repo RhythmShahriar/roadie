@@ -105,7 +105,7 @@ func archive(b []byte) string {
 // Quoted strings are skipped because mysqldump without --hex-blob writes
 // blobs as raw bytes inside '...'. The check also counts the other C0
 // controls, not only those below 0x09: random bytes spend most of their
-// length inside what looks like a quote, and the extra controls keep them
+// length inside what looks like a quote and the extra controls keep them
 // well over the line. Text that isn't valid UTF-8 passes as latin1
 // (MySQL's latin1 is cp1252, which gives every byte a meaning), so the
 // control count is the whole test.

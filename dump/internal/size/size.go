@@ -34,7 +34,7 @@ func GB(n int64) string {
 const MiB = 1 << 20
 
 // Binary formats n as a whole number of binary units when it is one,
-// "256 MiB" or "1 GiB", and in bytes otherwise; it names the --max-value
+// "256 MiB" or "1 GiB" and in bytes otherwise; it names the --max-value
 // limit in the unit the user passed.
 func Binary(n int64) string {
 	switch {

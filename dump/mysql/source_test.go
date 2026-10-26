@@ -50,7 +50,7 @@ func readFixture(t testing.TB, name string) []byte {
 }
 
 // Batches are numbered in order, a statement's first batch carries its
-// head and its last the tail, and passthrough statements keep their place.
+// head and its last the tail and passthrough statements keep their place.
 func TestBatchOrder(t *testing.T) {
 	bs, err := drain(t, sourceOf(readFixture(t, "mysqldump8.sql"), SourceOptions{}))
 	if err != nil {
@@ -259,7 +259,7 @@ func TestAlterTable(t *testing.T) {
 }
 
 // The source follows ALTER TABLE ADD COLUMN, so an INSERT after it maps
-// its values to the new column list, and earlier batches keep theirs.
+// its values to the new column list and earlier batches keep theirs.
 func TestAlterThenInsert(t *testing.T) {
 	in := "CREATE TABLE `t` (`a` int, `b` int);\nINSERT INTO `t` VALUES (1,2);\nALTER TABLE `t` ADD COLUMN `e` varchar(100) AFTER `a`;\nINSERT INTO `t` VALUES (1,'x@example.test',2);\n"
 	bs, err := drain(t, sourceOf([]byte(in), SourceOptions{}))
@@ -345,7 +345,7 @@ func TestDataOnlyDump(t *testing.T) {
 		ce.Msg != "dump-format: data.sql: table wp_x has no CREATE TABLE before line 2; pass --schema." {
 		t.Fatalf("err = %#v", err)
 	}
-	// With --schema it reads, and the table joins the dump's schema.
+	// With --schema it reads and the table joins the dump's schema.
 	sc := &core.Schema{Tables: []*core.Table{{Name: "wp_x", Columns: []core.Column{{Name: "id"}, {Name: "v"}}}}}
 	s := sourceOf(in, SourceOptions{Schema: sc})
 	bs, err := drain(t, s)

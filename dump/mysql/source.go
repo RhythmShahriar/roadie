@@ -27,7 +27,7 @@ type SourceOptions struct {
 }
 
 // Source turns a MySQL dump into batches: rows of INSERT and REPLACE
-// statements, cut at row boundaries near core.MaxBatchBytes, and every
+// statements, cut at row boundaries near core.MaxBatchBytes and every
 // other statement as a passthrough batch in input order.
 type Source struct {
 	lex    *Lexer
@@ -261,7 +261,7 @@ func (s *Source) rows(first bool) (*core.Batch, error) {
 	return b, nil
 }
 
-// Arena sizes for the first batch, before there is a hint, and the most
+// Arena sizes for the first batch, before there is a hint and the most
 // any hint asks for.
 const (
 	firstSrc  = 64 << 10
@@ -305,7 +305,7 @@ func (s *Source) close(b *core.Batch) error {
 }
 
 // check refuses a row whose value count doesn't match the column count:
-// MySQL would refuse it too, and a misread row would put values in the
+// MySQL would refuse it too and a misread row would put values in the
 // wrong columns.
 func (s *Source) check(r core.Row) error {
 	if len(r.Values) == len(s.cols) {
