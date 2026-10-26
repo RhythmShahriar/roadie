@@ -203,10 +203,11 @@ func (v *view) checkLines(checks []core.Check) {
 		}
 		g := lipgloss.NewStyle().Foreground(color).Render(glyph)
 		const col = 38
-		lines := wrap(safe(detail), width-col-7)
+		lines := wrap(safe(detail), width-col-8)
 		fmt.Fprintf(v.w, "    %s %s %s\n", g, ui.Pad(safe(ui.Truncate(label, col)), col+1), muted.Render(lines[0]))
+		// The detail starts after "    ✓ ", the padded label and a space.
 		for _, l := range lines[1:] {
-			fmt.Fprintf(v.w, "%s%s\n", strings.Repeat(" ", col+7), muted.Render(l))
+			fmt.Fprintf(v.w, "%s%s\n", strings.Repeat(" ", col+8), muted.Render(l))
 		}
 	}
 }
