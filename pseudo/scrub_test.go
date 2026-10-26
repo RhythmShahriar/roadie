@@ -96,6 +96,29 @@ func TestScrubUnicodeEmail(t *testing.T) {
 	}
 }
 
+// TestScrubCommonWordNames checks that customers named like common words
+// don't turn prose into nonsense: a single word is a name only when it
+// is capitalised.
+func TestScrubCommonWordNames(t *testing.T) {
+	k := NewKnown(testKey(9))
+	for _, name := range []string{"Will", "Mark", "Green"} {
+		k.Add(core.KFirstName, []byte(name))
+	}
+	k.Add(core.KFullName, []byte("Mark Green"))
+	k.Seal()
+	f := mustFaker(t, testKey(9), Options{})
+	const prose = "We will mark the green box."
+	if got, n := Scrub([]byte(prose), nil, k, f); n != 0 || string(got) != prose {
+		t.Errorf("Scrub(%q) = %q, %d replacements, want it unchanged", prose, got, n)
+	}
+	for _, in := range []string{"Ask Will today.", "Ask mark green today.", "Ask MARK today."} {
+		got, n := Scrub([]byte(in), nil, k, f)
+		if n != 1 || !strings.HasPrefix(string(got), "Ask ") || !strings.HasSuffix(string(got), " today.") || string(got) == in {
+			t.Errorf("Scrub(%q) = %q, %d replacements, want the name replaced", in, got, n)
+		}
+	}
+}
+
 func TestScrubNamesAndPairs(t *testing.T) {
 	k := NewKnown(testKey(8))
 	k.Add(core.KFullName, []byte("Zoë Ångström"))
@@ -114,7 +137,8 @@ func TestScrubNamesAndPairs(t *testing.T) {
 	}{
 		{"Called ZOË ÅNGSTRÖM today.", 2, 1, []string{"Called ", " today."}},
 		{"Called Ångström today.", 1, 1, []string{"Called ", " today."}},
-		{"Ask bartholomew", 1, 1, []string{"Ask "}},
+		{"Ask BARTHOLOMEW", 1, 1, []string{"Ask "}},
+		{"Ask bartholomew", 0, 0, []string{"Ask bartholomew"}}, // one lower-case word reads as prose
 		{"Mr O'Sullivan rang", 1, 1, []string{"Mr ", " rang"}}, // joined by an apostrophe: one name word
 		{"Ask Jean-Luc O'Sullivan", 1, 2, []string{"Ask "}},
 		{"Ask jean luc", 2, 1, []string{"Ask "}},

@@ -78,7 +78,12 @@ func (s *scrubber) fake(kind core.FakeKind, v []byte) []byte {
 }
 
 // names replaces the known names in text[start:end]: a known word pair
-// first, then a known word of 3 or more letters.
+// first, then a capitalised known word of 3 or more letters.
+//
+// A single word must start with a capital letter: a customer named Will,
+// Mark or Green would otherwise turn "we will mark the green box" into
+// nonsense. A pair is matched in any case, since two known words in a
+// row are far more likely a name than prose.
 //
 // A pair joined by white space is a full name and gets a two-word fake.
 // A pair joined by a hyphen or an apostrophe (O'Sullivan, Jean-Luc) is
@@ -108,7 +113,7 @@ func (s *scrubber) names(start, end int) {
 			}
 		}
 		word := s.text[a[0]:a[1]]
-		if utf8.RuneCount(word) < minWordLetters {
+		if utf8.RuneCount(word) < minWordLetters || !capitalised(word) {
 			continue
 		}
 		if kind, _, ok := s.known.Contains(word); ok && isNameKind(kind) {
@@ -118,6 +123,13 @@ func (s *scrubber) names(start, end int) {
 			s.replace(a[0], a[1], s.fake(kind, word))
 		}
 	}
+}
+
+// capitalised reports whether word starts with an upper or title case
+// letter.
+func capitalised(word []byte) bool {
+	r, _ := utf8.DecodeRune(word)
+	return unicode.IsUpper(r) || unicode.IsTitle(r)
 }
 
 // oneWordKind is the kind of fake for a joined name such as O'Sullivan:
