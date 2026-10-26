@@ -622,6 +622,36 @@ func TestRunHoldsProduction(t *testing.T) {
 	}
 }
 
+// A URL read from the target's own data loses control and format
+// characters before the question shows it.
+func TestRunHoldsProductionPrintable(t *testing.T) {
+	esc := string(rune(0x1b))
+	f := useRunFakes(t)
+	f.guardErr = func(site.GuardInput) error {
+		return core.Errorf(core.ErrTargetHoldsProduction, 3, "%s",
+			"target-holds-production: /srv/staging still calls itself https://sh"+esc+"]0;pwned\a"+string(rune(0x202e))+"op.com. Pass --production-url.")
+	}
+	var asked string
+	j := f.job(Prepare)
+	j.Opts.ProductionURL = ""
+	j.Confirm = func(q, expect string) (bool, error) {
+		if expect == "yes" {
+			asked = q
+		}
+		return false, nil
+	}
+	_, _ = Run(context.Background(), j)
+	if asked != "/srv/staging still calls itself https://sh]0;pwnedop.com. Is https://sh]0;pwnedop.com the live site? Type yes to go on:" {
+		t.Errorf("asked %q", asked)
+	}
+	for in, want := range map[string]string{"https://a.test": "https://a.test", "  https://b.test\n": "https://b.test",
+		"https://c.test x": "https://c.test", esc + "[31m" + esc + "[0m": "[31m[0m", "": "", strings.Repeat("é", 400): strings.Repeat("é", 256)} {
+		if got := printable(in); got != want {
+			t.Errorf("printable(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // --no-kill-switch applies no step and joins no data rule; verify still
 // checks every step.
 func TestRunNoKillSwitch(t *testing.T) {

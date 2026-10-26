@@ -17,6 +17,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	echowp "github.com/RhythmShahriar/echo/connectors/wordpress"
 	"github.com/RhythmShahriar/roadie/core"
@@ -524,7 +526,7 @@ func (r *runner) guard(ctx context.Context) error {
 // message, else from WP-CLI.
 func (r *runner) heldURL(ctx context.Context, msg string) string {
 	if m := heldURL.FindStringSubmatch(msg); m != nil {
-		return m[1]
+		return printable(m[1])
 	}
 	if r.to == nil {
 		return ""
@@ -533,7 +535,26 @@ func (r *runner) heldURL(ctx context.Context, msg string) string {
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(b))
+	return printable(strings.TrimSpace(string(b)))
+}
+
+// printable drops control and format characters (escape sequences,
+// bidi overrides) and anything after the first space from a URL read
+// from the target's own data, so a crafted siteurl can't drive the
+// terminal when the question shows it. It is cut to 512 bytes.
+func printable(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == utf8.RuneError {
+			return -1
+		}
+		return r
+	}, s)
+	s, _, _ = strings.Cut(strings.TrimSpace(s), " ")
+	for len(s) > 512 {
+		_, n := utf8.DecodeLastRuneInString(s)
+		s = s[:len(s)-n]
+	}
+	return s
 }
 
 // confirmNames are the names the target may be confirmed by, the one to
