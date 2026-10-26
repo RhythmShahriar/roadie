@@ -426,6 +426,8 @@ func TestDOB(t *testing.T) {
 		"19840714":            func(s string) bool { return len(s) == 8 && strings.HasPrefix(s, "1984") },
 		"0000-00-00":          func(s string) bool { return s == "0000-00-00" },
 		"born in spring 84":   func(s string) bool { return strings.HasPrefix(s, "born in spring ") && s != "born in spring 84" },
+		"fifth of May":        func(s string) bool { return s == "" },
+		"":                    func(s string) bool { return s == "" },
 	}
 	for in, ok := range cases {
 		if got := fake(t, f, core.KDOB, in, core.FakeOpts{}); !ok(got) {
