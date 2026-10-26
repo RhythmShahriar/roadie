@@ -1,6 +1,6 @@
 # Lane values: value codecs and pseudonymisation
 
-What the `codec` and `pseudo` packages change that a user can see: the fake values in a copy, the options that shape them, the passwords, salts and keys Roadie writes, what the free-text scrubber can and can't do, how production URLs are rewritten and how fast all of it runs. Roadie's copy is pseudonymised, not anonymised: whoever holds the consistency key can check a guess.
+What the `codec` and `pseudo` packages change that a user can see: the fake values in a copy, the options that shape them, the passwords, salts and keys Roadie writes, what the free-text scrubber can and can't do, how production URLs are rewritten and how fast all of it runs. Roadie's copy is pseudonymised, so whoever holds the consistency key can check a guess.
 
 ## Fake values
 
