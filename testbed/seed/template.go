@@ -117,23 +117,88 @@ func (r *renderer) key(name string) (string, error) {
 	return v, nil
 }
 
-// join prints args and records enc on every canary among them. For
-// base64 the encoding name carries the canary's offset modulo 3.
-func join(enc string, args []any) string {
+// placed is a canary at a byte offset inside a rendered string.
+type placed struct {
+	c   *Canary
+	off int
+}
+
+// cstr is a rendered string that still holds canaries as they are, such
+// as the output of ser or sarr. It carries them on to the function that
+// encodes it, so a canary serialized and then base64 encoded is recorded
+// as base64 too.
+type cstr struct {
+	s      string
+	inside []placed
+}
+
+func (v cstr) String() string { return v.s }
+
+// collect prints args and lists every canary among them with its offset,
+// canaries inside a cstr included.
+func collect(args []any) (string, []placed) {
 	var b strings.Builder
+	var in []placed
 	for _, a := range args {
-		if v, ok := a.(cval); ok {
-			name := enc
-			if enc == "base64" || enc == "base64url" {
-				name += "-" + strconv.Itoa(b.Len()%3)
-			}
-			if name != "" && !slices.Contains(v.c.Encodings, name) {
-				v.c.Encodings = append(v.c.Encodings, name)
+		switch v := a.(type) {
+		case cval:
+			in = append(in, placed{v.c, b.Len()})
+		case cstr:
+			for _, p := range v.inside {
+				in = append(in, placed{p.c, b.Len() + p.off})
 			}
 		}
 		fmt.Fprint(&b, a)
 	}
-	return b.String()
+	return b.String(), in
+}
+
+// record adds enc to c's encodings. For base64 the name carries the
+// canary's offset modulo 3.
+func record(c *Canary, enc string, off int) {
+	if enc == "base64" || enc == "base64url" {
+		enc += "-" + strconv.Itoa(off%3)
+	}
+	if enc != "" && !slices.Contains(c.Encodings, enc) {
+		c.Encodings = append(c.Encodings, enc)
+	}
+}
+
+// join prints args and records enc on every canary among them. A canary
+// held inside a cstr is recorded too, unless enc is raw: sql of a
+// serialized canary plants it serialized, not as itself.
+func join(enc string, args []any) string {
+	s, in := collect(args)
+	for _, p := range in {
+		if enc == "raw" && !direct(p.c, args) {
+			continue
+		}
+		record(p.c, enc, p.off)
+	}
+	return s
+}
+
+// direct reports whether c is one of args itself, not inside a cstr.
+func direct(c *Canary, args []any) bool {
+	for _, a := range args {
+		if v, ok := a.(cval); ok && v.c == c {
+			return true
+		}
+	}
+	return false
+}
+
+// keep wraps s, rendered from args with prefix bytes before them, as a
+// cstr when a canary sits inside it, so an outer encoding sees it.
+func keep(s, prefix string, in []placed) any {
+	if len(in) == 0 {
+		return s
+	}
+	out := cstr{s: s}
+	for _, p := range in {
+		out.inside = append(out.inside, placed{p.c, len(prefix) + p.off})
+	}
+	return out
 }
 
 func jsonContents(s string) string {
@@ -220,7 +285,14 @@ func (r *renderer) funcs() template.FuncMap {
 		}),
 		"b64":    enc("base64", func(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }),
 		"b64url": enc("base64url", func(s string) string { return base64.URLEncoding.EncodeToString([]byte(s)) }),
-		"ser":    enc("serialized", func(s string) string { return "s:" + strconv.Itoa(len(s)) + `:"` + s + `";` }),
+		"ser": func(args ...any) any {
+			v, in := collect(args)
+			for _, p := range in {
+				record(p.c, "serialized", p.off)
+			}
+			prefix := "s:" + strconv.Itoa(len(v)) + `:"`
+			return keep(prefix+v+`";`, prefix, in)
+		},
 		"md5": enc("md5", func(s string) string {
 			m := md5.Sum([]byte(s)) // #nosec G401 -- planting the md5 form of a canary
 			return hex.EncodeToString(m[:])
@@ -229,18 +301,24 @@ func (r *renderer) funcs() template.FuncMap {
 			m := sha256.Sum256([]byte(s))
 			return hex.EncodeToString(m[:])
 		}),
-		"sarr": func(kv ...any) (string, error) {
+		"sarr": func(kv ...any) (any, error) {
 			if len(kv)%2 != 0 {
 				return "", fmt.Errorf("sarr needs key and value pairs, got %d arguments", len(kv))
 			}
 			var b strings.Builder
+			var in []placed
 			fmt.Fprintf(&b, "a:%d:{", len(kv)/2)
 			for i := 0; i < len(kv); i += 2 {
 				k := fmt.Sprint(kv[i])
-				fmt.Fprintf(&b, `s:%d:"%s";%s`, len(k), k, join("", kv[i+1:i+2]))
+				fmt.Fprintf(&b, `s:%d:"%s";`, len(k), k)
+				v, inside := collect(kv[i+1 : i+2])
+				for _, p := range inside {
+					in = append(in, placed{p.c, b.Len() + p.off})
+				}
+				b.WriteString(v)
 			}
 			b.WriteByte('}')
-			return b.String(), nil
+			return keep(b.String(), "", in), nil
 		},
 		// A canary straight inside sql is planted as itself.
 		"sql":    func(args ...any) string { return SQLEscape(join("raw", args)) },

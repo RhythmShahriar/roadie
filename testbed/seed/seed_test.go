@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"net/netip"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -290,7 +292,8 @@ func TestTemplateEncodings(t *testing.T) {
 	write("fixture.yaml", "description: test\nstack: wordpress\ncanaries: true\n")
 	write("db.sql.tmpl", "{{$e := canary \"email\" \"e\" \"wp_users.user_email\"}}"+
 		"{{b64 \"x\" $e}} {{b64url \"xy\" $e}} {{jsonslash $e}} {{url $e}} {{html $e}} {{htmlnum $e}} {{md5 $e}} {{sha256 $e}} {{upper $e}} {{ser $e}}\n"+
-		"{{sql (sarr \"ip\" (ser (canary \"ip\" \"i\" \"wp_usermeta.meta_value\")))}}\n{{key \"stripe_test_secret\"}}\n")
+		"{{sql (sarr \"ip\" (ser (canary \"ip\" \"i\" \"wp_usermeta.meta_value\")))}}\n{{key \"stripe_test_secret\"}}\n"+
+		"{{b64 (sarr \"k\" (ser (canary \"user_agent\" \"u\" \"sessions.payload\")))}}\n")
 	write("files/wp-content/debug.log.tmpl", "{{canary \"phone\" \"p\" \"files.debug_log\"}}\n")
 	write("files/plain.txt", "{{not a template}}\n")
 	res, err := Run(context.Background(), Options{Fixtures: filepath.Join(dir, "fixtures"), Out: filepath.Join(dir, "out"), Seed: 3})
@@ -298,14 +301,22 @@ func TestTemplateEncodings(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := map[string][]string{}
+	var ua string
 	for _, c := range res.Canaries {
 		got[c.Kind] = c.Encodings
+		if c.Kind == "user_agent" {
+			ua = c.Value
+		}
 	}
+	// A canary serialized inside base64 is recorded as both, at its
+	// offset inside the encoded payload.
+	inner := fmt.Sprintf(`a:1:{s:1:"k";s:%d:"`, len(ua))
 	want := map[string][]string{
-		"email": {"base64-1", "base64url-2", "html", "html-entity", "json-slash", "md5", "serialized", "sha256", "upper", "url"},
-		"ip":    {"serialized"},
-		"phone": {"raw"},
-		"key":   {"raw"},
+		"user_agent": {"base64-" + strconv.Itoa(len(inner)%3), "serialized"},
+		"email":      {"base64-1", "base64url-2", "html", "html-entity", "json-slash", "md5", "serialized", "sha256", "upper", "url"},
+		"ip":         {"serialized"},
+		"phone":      {"raw"},
+		"key":        {"raw"},
 	}
 	for k, w := range want {
 		if !slices.Equal(got[k], w) {
