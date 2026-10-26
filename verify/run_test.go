@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 	"testing"
@@ -727,5 +728,50 @@ func TestRunRealURLs(t *testing.T) {
 	res := runJob(t, Job{Production: []string{"shop.com"}, Source: source(options([]string{"1", "siteurl", "https://shop.com"}))})
 	if find(res, core.FindingURLProductionSiteURL) == nil {
 		t.Errorf("real urlrw: %v", ids(res))
+	}
+}
+
+// lockedSite fails to list plugins and to read one theme file, as a site
+// with unreadable folders does.
+type lockedSite struct{ *testutil.Site }
+
+func (s lockedSite) List(ctx context.Context, rel string, depth int) ([]core.FileInfo, error) {
+	if rel == "wp-content/plugins" {
+		return nil, &fs.PathError{Op: "open", Path: rel, Err: fs.ErrPermission}
+	}
+	return s.Site.List(ctx, rel, depth)
+}
+
+func (s lockedSite) ReadFile(ctx context.Context, rel string) ([]byte, error) {
+	if rel == "wp-content/themes/shop/functions.php" {
+		return nil, &fs.PathError{Op: "open", Path: rel, Err: fs.ErrPermission}
+	}
+	return s.Site.ReadFile(ctx, rel)
+}
+
+// Code files verify couldn't list or read are a coverage gap, not a pass;
+// a missing themes or plugins folder is not.
+func TestRunCodeFilesUnreadable(t *testing.T) {
+	res := runJob(t, Job{Site: lockedSite{siteFixture(core.LocalSite)}, Source: source(options([]string{"1", "blogname", "Shop"}))})
+	want := []core.Skipped{
+		{Table: "code files", Reason: "1 file in wp-content/themes not read; first wp-content/themes/shop/functions.php: open wp-content/themes/shop/functions.php: permission denied"},
+		{Table: "code files", Reason: "wp-content/plugins not listed: open wp-content/plugins: permission denied"},
+	}
+	var got []core.Skipped
+	for _, s := range res.Coverage.Skipped {
+		if s.Table == "code files" {
+			got = append(got, s)
+		}
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("skipped %+v\nwant %+v", got, want)
+	}
+
+	bare := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\n")})
+	res = runJob(t, Job{Site: bare, Source: source(options([]string{"1", "blogname", "Shop"}))})
+	for _, s := range res.Coverage.Skipped {
+		if s.Table == "code files" {
+			t.Errorf("no code folders: %+v", s)
+		}
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net"
 	"net/netip"
@@ -302,19 +303,34 @@ func (r *run) codeFiles(ctx context.Context, s core.Site) {
 	}
 	for _, root := range codeRoots {
 		list, err := s.List(ctx, root, codeDepth)
-		if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			// A site without themes or plugins has no code to read there.
 			continue
 		}
+		if err != nil {
+			r.res.Coverage.Skipped = append(r.res.Coverage.Skipped,
+				core.Skipped{Table: "code files", Reason: root + " not listed: " + err.Error()})
+			continue
+		}
+		unread, first := 0, ""
 		for _, f := range list {
 			if f.Dir || f.Size <= 0 || f.Size > codeMaxSize || !strings.HasSuffix(strings.ToLower(f.Rel), ".php") {
 				continue
 			}
 			b, err := s.ReadFile(ctx, f.Rel)
 			if err != nil {
+				if unread == 0 {
+					first = f.Rel + ": " + err.Error()
+				}
+				unread++
 				continue
 			}
 			r.count(CheckKeyLive, 1)
 			r.codeFile(f.Rel, b)
+		}
+		if unread > 0 {
+			r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, core.Skipped{Table: "code files",
+				Reason: fmt.Sprintf("%d %s in %s not read; first %s", unread, plural(int64(unread), "file", "files"), root, first)})
 		}
 	}
 }
