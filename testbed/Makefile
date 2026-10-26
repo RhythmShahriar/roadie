@@ -12,7 +12,9 @@
 #                          and wp db export (make up runs it)
 #   make seal              TestNetworkIsSealed against the running testbed
 #   make oracle ID=r01 DUMP=out.sql [TREE=dir]   judge an output
-#   make bench / reproduce the benchmark, once or twice with a diff
+#   make bench [ONLY=r01]  the benchmark into bench/work/results.json
+#   make reproduce         the benchmark twice; fails if the score differs
+#   make drill             the side-effect drill alone on the running staging
 #
 # Nothing here prints a secret: the passwords, Echo's token, the SSH keys
 # and the fake API keys are written to runtime/ (0600, gitignored) and
@@ -44,7 +46,7 @@ PHP_IMAGE := php:8.3-cli@sha256:98d555ff97b3865140ad31032508c3ca089fa97a8944b14c
 PHP       := docker run --rm -i --network none $(PHP_IMAGE) php
 SEED      ?= 1
 
-.PHONY: up down reset seal oracle bench reproduce binaries keys seed install load formats status logs
+.PHONY: up down reset seal oracle bench reproduce drill roadie-bin binaries keys seed install load formats status logs
 
 up: binaries keys seed ## build, start and seed everything
 	$(COMPOSE) build -q sinkhole prod-wp laravel sshd
@@ -135,13 +137,28 @@ oracle: ## judge an output: make oracle ID=r01 DUMP=out.sql [TREE=dir]
 		$(if $(DUMP),-dump $(abspath $(DUMP)) -input testbed/$(RUNTIME)/fixtures/$(ID)/db.sql -serialized testbed/$(RUNTIME)/fixtures/$(ID)/serialized.json) \
 		$(if $(TREE),-tree $(abspath $(TREE))) -php "$(PHP)"
 
-bench: ## run the benchmark (needs make up and ../bin/rhythm-roadie)
-	cd $(ROOT) && $(GO) run -tags testbed ./testbed/bench -bin $(ROOT)/bin/rhythm-roadie
+# The benchmark: every scenario of scenarios.yaml, the oracle, the drill
+# and the control pass, into bench/work/results.json. rhythm-roadie is
+# built from this checkout without cgo, so the same binary runs here and
+# in every container. DRILL is how long the side-effect drill runs after
+# each copy and prepare (5m for the published numbers).
+DRILL ?= 5m
+BENCH := cd $(ROOT) && $(GO) run -tags testbed ./testbed/bench -bin testbed/$(RUNTIME)/bin/rhythm-roadie -php "$(PHP)" -seed $(SEED) -drill-for $(DRILL)
 
-reproduce: ## run the benchmark twice and fail if results.json differs
-	cd $(ROOT) && $(GO) run -tags testbed ./testbed/bench -bin $(ROOT)/bin/rhythm-roadie -work testbed/bench/work/first
-	cd $(ROOT) && $(GO) run -tags testbed ./testbed/bench -bin $(ROOT)/bin/rhythm-roadie -work testbed/bench/work/second
-	diff -u bench/work/first/results.json bench/work/second/results.json
+roadie-bin:
+	@mkdir -p $(RUNTIME)/bin
+	cd $(ROOT) && CGO_ENABLED=0 GOOS=linux $(GO) build -o testbed/$(RUNTIME)/bin/rhythm-roadie ./cmd/rhythm-roadie
+
+bench: roadie-bin ## run the benchmark (needs make up); ONLY=r01,v01 for some
+	$(BENCH) $(if $(ONLY),-only $(ONLY))
+
+reproduce: roadie-bin ## run the benchmark twice and fail if the score differs
+	$(BENCH) $(if $(ONLY),-only $(ONLY)) -work testbed/bench/work/first
+	$(BENCH) $(if $(ONLY),-only $(ONLY)) -work testbed/bench/work/second
+	cd $(ROOT) && $(GO) run -tags testbed ./testbed/bench -diff testbed/bench/work/first/results.json testbed/bench/work/second/results.json
+
+drill: ## the side-effect drill alone on the running staging (FOR=5m)
+	cd $(ROOT) && $(GO) run -tags testbed ./testbed/bench -drill -for $(or $(FOR),5m)
 
 status:
 	$(COMPOSE) ps
