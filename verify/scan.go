@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"slices"
 	"strings"
 
 	"github.com/RhythmShahriar/roadie/codec/nested"
@@ -20,8 +21,11 @@ type scanner struct {
 	detectors []core.Detector
 	survivors core.Detector
 	skip      skipper
-	findURL   func([]byte) []core.Span
-	filter    *filter
+	// noKeys and noLiveMode are the --skip answers the hot path needs,
+	// worked out once.
+	noKeys, noLiveMode bool
+	findURL            func([]byte) []core.Span
+	filter             *filter
 }
 
 // detectorSkip names the --skip entry of each PII detector.
@@ -32,7 +36,7 @@ var detectorSkip = map[string]string{
 }
 
 func newScanner(j Job, skip skipper, f *filter) *scanner {
-	s := &scanner{skip: skip, filter: f}
+	s := &scanner{skip: skip, filter: f, noKeys: skip.skips("key."), noLiveMode: skip.skips(core.FindingKeyLiveMode)}
 	for _, d := range detect.All() {
 		if skip[detectorSkip[d.ID()]] {
 			continue
@@ -55,11 +59,13 @@ func (s *scanner) batch(w work) result {
 	t := b.Table
 	var acc core.Aggregator
 	out := filtered{agg: &acc, f: s.filter, hidden: &res.hidden}
+	idx := newColIndex(b)
+	f := newField(s, out, &res.keys)
 	for _, ri := range w.rows {
 		row := &b.Rows[ri]
 		res.rows++
-		get := rowGetter(b, row)
-		base := core.Location{Table: t.Name, Row: rowKey(b, row)}
+		get := idx.getter(row)
+		base := core.Location{Table: t.Name, Row: rowKey(b, get)}
 		for pos, v := range row.Values {
 			if v.Kind != core.String && v.Kind != core.BinaryString || len(v.Raw) == 0 {
 				continue
@@ -72,31 +78,48 @@ func (s *scanner) batch(w work) result {
 			at := base
 			at.Column = c.Name
 			sc := core.ScanContext{Table: t.Name, Column: c.Name, ColumnKind: w.kinds[c.Name], Row: get}
-			s.value(v.Raw, sc, at, out, &res.keys)
+			f.value(v.Raw, sc, at)
 		}
 	}
 	res.findings = acc.Findings()
 	return res
 }
 
-// rowGetter answers ScanContext.Row for one row.
-func rowGetter(b *core.Batch, row *core.Row) func(string) ([]byte, bool) {
-	return func(col string) ([]byte, bool) {
-		ci := b.Table.Col(col)
-		if ci < 0 {
-			return nil, false
-		}
-		pos := ci
+// colIndex maps the column names of one batch to value positions, so the
+// detectors' many row lookups cost a map read each.
+type colIndex map[string]int
+
+// newColIndex indexes b's columns by name and lower-case name.
+func newColIndex(b *core.Batch) colIndex {
+	idx := colIndex{}
+	for i, c := range b.Table.Columns {
+		pos := i
 		if b.Columns != nil {
-			pos = -1
-			for p, x := range b.Columns {
-				if x == ci {
-					pos = p
-					break
-				}
+			pos = slices.Index(b.Columns, i)
+		}
+		if pos < 0 {
+			continue
+		}
+		if _, ok := idx[c.Name]; !ok {
+			idx[c.Name] = pos
+		}
+		if l := strings.ToLower(c.Name); l != c.Name {
+			if _, ok := idx[l]; !ok {
+				idx[l] = pos
 			}
 		}
-		if pos < 0 || pos >= len(row.Values) || row.Values[pos].Kind == core.Null {
+	}
+	return idx
+}
+
+// getter answers ScanContext.Row for one row of the batch.
+func (idx colIndex) getter(row *core.Row) func(string) ([]byte, bool) {
+	return func(col string) ([]byte, bool) {
+		pos, ok := idx[col]
+		if !ok {
+			pos, ok = idx[strings.ToLower(col)]
+		}
+		if !ok || pos >= len(row.Values) || row.Values[pos].Kind == core.Null {
 			return nil, false
 		}
 		return row.Values[pos].Raw, true
@@ -109,9 +132,8 @@ var rowKeyColumns = []string{"option_name", "meta_key"}
 
 // rowKey builds Location.Row from the primary key and the option or meta
 // key of a row, through core.MaskRow.
-func rowKey(b *core.Batch, row *core.Row) string {
+func rowKey(b *core.Batch, get func(string) ([]byte, bool)) string {
 	t := b.Table
-	get := rowGetter(b, row)
 	pk := map[string]string{}
 	cols := append(append([]string(nil), t.PrimaryKey...), rowKeyColumns...)
 	for _, c := range cols {
@@ -129,70 +151,106 @@ func rowKey(b *core.Batch, row *core.Row) string {
 // form entries).
 var ipKeys = map[string]bool{"ip": true, "ip_address": true, "ipaddress": true, "user_ip": true, "remote_addr": true, "client_ip": true}
 
+// field scans the values of one batch, one at a time. A worker keeps one
+// per batch so the callbacks the detectors and the nested walker take are
+// made once, not for every value.
+type field struct {
+	s        *scanner
+	acc      sink
+	hits     *[]core.KeyHit
+	sc       core.ScanContext
+	at       core.Location
+	settings map[string]string
+	sibs     map[string]map[string]string
+	public   bool
+	lat      core.Location // the leaf being scanned, for emit
+	emitFn   func(core.Hit)
+	leafFn   func(string, []byte)
+}
+
+func newField(s *scanner, acc sink, hits *[]core.KeyHit) *field {
+	f := &field{s: s, acc: acc, hits: hits}
+	f.emitFn, f.leafFn = f.emit, f.leaf
+	return f
+}
+
 // value scans one field: the gateway and encryption checks on the whole
 // value, then the detectors, key rules and URL matcher on every leaf.
-func (s *scanner) value(v []byte, sc core.ScanContext, at core.Location, acc sink, hits *[]core.KeyHit) {
-	settings := settingsOf(v)
-	if !s.skip.skips(core.FindingKeyLiveMode) {
-		s.liveMode(v, settings, sc, at, acc)
+func (f *field) value(v []byte, sc core.ScanContext, at core.Location) {
+	s := f.s
+	f.sc, f.at = sc, at
+	f.settings = settingsOf(v)
+	f.sibs = nil
+	if !s.noLiveMode {
+		s.liveMode(v, f.settings, sc, at, f.acc)
 	}
 	if encrypted(v) {
-		acc.add(core.Finding{ID: core.FindingDataEncrypted, Severity: core.SeverityInfo, Title: titles[core.FindingDataEncrypted],
+		f.acc.add(core.Finding{ID: core.FindingDataEncrypted, Severity: core.SeverityInfo, Title: titles[core.FindingDataEncrypted],
 			Locations: []core.LocationCount{{Location: at}}})
 	}
-	sibs := map[string]map[string]string{}
-	leaf := func(p string, l []byte) {
-		lat := at
-		lat.Path = p
-		lsc := sc
-		inner, key := keys.LeafKey(p)
-		if p != "" {
-			lsc.ColumnKind = ""
-			if ipKeys[strings.ToLower(key)] {
-				lsc.ColumnKind = core.KIP
-			}
-		}
-		emit := func(h core.Hit) {
-			acc.add(core.Finding{ID: h.ID, Severity: h.Severity, Title: titles[h.ID], Fix: fixes[h.ID],
-				Locations: []core.LocationCount{{Location: lat}}, Examples: examples(h.Masked), Detail: encodingDetail(h)})
-		}
-		for _, d := range s.detectors {
-			d.Scan(l, lsc, emit)
-		}
-		if s.survivors != nil {
-			s.survivors.Scan(l, lsc, emit)
-		}
-		if !s.skip.skips("key.") {
-			var sib map[string]string
-			if settings != nil && singleFormat(p) {
-				parent := parentOf(inner)
-				if sib = sibs[parent]; sib == nil {
-					sib = keys.Siblings(settings, inner)
-					sibs[parent] = sib
-				}
-			}
-			for _, h := range keys.ScanValue(l, lat, sib) {
-				addKeyHit(h, acc, hits)
-			}
-		}
-		if s.findURL != nil {
-			for range s.findURL(l) {
-				id := core.FindingURLProduction
-				if siteURLOption(sc) {
-					id = core.FindingURLProductionSiteURL
-				}
-				acc.add(core.Finding{ID: id, Severity: urlSeverity(id), Title: titles[id], Fix: fixes[id],
-					Locations: []core.LocationCount{{Location: lat}}})
-			}
-		}
-	}
+	f.public = publicOption(sc)
 	switch formatOf(v) {
 	case "serialized", "json", "base64-serialized":
-		if err := leavesOf(v, leaf, nested.Options{}); err == nil {
+		if err := leavesOf(v, f.leafFn, nested.Options{}); err == nil {
 			return
 		}
 	}
-	leaf("", v)
+	f.leaf("", v)
+}
+
+// emit records one detector hit at the current leaf.
+func (f *field) emit(h core.Hit) {
+	f.acc.add(core.Finding{ID: h.ID, Severity: h.Severity, Title: titles[h.ID], Fix: fixes[h.ID],
+		Locations: []core.LocationCount{{Location: f.lat}}, Examples: examples(h.Masked), Detail: encodingDetail(h)})
+}
+
+// leaf scans one string leaf at path p (or the whole value when p is "").
+func (f *field) leaf(p string, l []byte) {
+	s := f.s
+	f.lat = f.at
+	f.lat.Path = p
+	lsc := f.sc
+	inner, key := keys.LeafKey(p)
+	if p != "" {
+		lsc.ColumnKind = ""
+		if ipKeys[strings.ToLower(key)] {
+			lsc.ColumnKind = core.KIP
+		}
+	}
+	if !f.public {
+		for _, d := range s.detectors {
+			d.Scan(l, lsc, f.emitFn)
+		}
+	}
+	if s.survivors != nil {
+		s.survivors.Scan(l, lsc, f.emitFn)
+	}
+	if !s.noKeys {
+		var sib map[string]string
+		if f.settings != nil && singleFormat(p) {
+			parent := parentOf(inner)
+			if sib = f.sibs[parent]; sib == nil {
+				sib = keys.Siblings(f.settings, inner)
+				if f.sibs == nil {
+					f.sibs = map[string]map[string]string{}
+				}
+				f.sibs[parent] = sib
+			}
+		}
+		for _, h := range keys.ScanValue(l, f.lat, sib) {
+			addKeyHit(h, f.acc, f.hits)
+		}
+	}
+	if s.findURL != nil {
+		for range s.findURL(l) {
+			id := core.FindingURLProduction
+			if siteURLOption(f.sc) {
+				id = core.FindingURLProductionSiteURL
+			}
+			f.acc.add(core.Finding{ID: id, Severity: urlSeverity(id), Title: titles[id], Fix: fixes[id],
+				Locations: []core.LocationCount{{Location: f.lat}}})
+		}
+	}
 }
 
 // addKeyHit turns a key hit into a finding: live keys by their own ID,
@@ -241,6 +299,61 @@ func siteURLOption(sc core.ScanContext) bool {
 	}
 	name, ok := sc.Row("option_name")
 	return ok && (string(name) == "siteurl" || string(name) == "home")
+}
+
+// publicOptionPrefixes are the option names under which WordPress caches
+// what it fetched from wordpress.org and plugin vendors: update checks
+// with plugin headers (author names and emails), feeds and the plugin
+// directory. They hold public data, never a customer's.
+var publicOptionPrefixes = []string{
+	"_site_transient_update_", "_site_transient_theme_roots", "_site_transient_wporg_",
+	"_site_transient_poptags_", "_site_transient_browser_", "_site_transient_php_check_",
+	"_site_transient_feed_", "_transient_feed_", "_transient_plugin_slugs", "_transient_wporg_",
+	"_transient_dash_", "_site_transient_community-events-", "_transient_timeout_",
+	"_site_transient_timeout_",
+}
+
+// publicOptions are whole option names of the same kind.
+var publicOptions = map[string]bool{
+	"active_plugins": true, "recently_activated": true, "uninstall_plugins": true,
+	"active_sitewide_plugins": true, "auto_update_plugins": true, "auto_update_themes": true,
+}
+
+// publicOption reports whether the value is an option or network option
+// that caches public plugin and wordpress.org data. The PII detectors
+// skip it; the survivors, key and URL checks still read it.
+func publicOption(sc core.ScanContext) bool {
+	if sc.Row == nil {
+		return false
+	}
+	key := ""
+	switch {
+	case hasSuffixFold(sc.Table, "options") && strings.EqualFold(sc.Column, "option_value"):
+		key = "option_name"
+	case hasSuffixFold(sc.Table, "sitemeta") && strings.EqualFold(sc.Column, "meta_value"):
+		key = "meta_key"
+	default:
+		return false
+	}
+	name, ok := sc.Row(key)
+	if !ok {
+		return false
+	}
+	if publicOptions[string(name)] {
+		return true
+	}
+	for _, p := range publicOptionPrefixes {
+		if bytes.HasPrefix(name, []byte(p)) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasSuffixFold is strings.HasSuffix ignoring ASCII case, without the
+// copy strings.ToLower makes.
+func hasSuffixFold(s, suffix string) bool {
+	return len(s) >= len(suffix) && strings.EqualFold(s[len(s)-len(suffix):], suffix)
 }
 
 // settingsOf reads a serialized or JSON value as settings, or nil.
