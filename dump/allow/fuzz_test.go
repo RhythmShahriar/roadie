@@ -50,6 +50,7 @@ var (
 		"SET NAMES gbk",
 		"SET character_set_client = big5",
 		"SET NAMES utf8mb4, @@session.character_set_client = 'cp932'",
+		"SET @a = 1, @@session.sql_log_bin = 0",
 	}
 	// Row statements whose head or tail is never kept.
 	mysqlBadRows = []string{

@@ -123,6 +123,21 @@ func TestCharsetVars(t *testing.T) {
 	}
 }
 
+// A SET that mixes a dropped clause with others is refused: dropping it
+// would drop the others too.
+func TestSetMixedDrop(t *testing.T) {
+	for _, text := range []string{
+		"SET @a = 1, @@session.sql_log_bin=0;",
+		"SET sql_log_bin = 0, foreign_key_checks = 0;",
+		"/*!40101 SET NAMES utf8mb4, sql_log_bin = 0 */;",
+	} {
+		d, err := check(text, Options{Name: "prod.sql"})
+		if d.Verdict != Refuse || err == nil || !strings.Contains(err.Error(), "holds a SET statement that mixes SET SQL_LOG_BIN with other settings") {
+			t.Errorf("%q: %+v %v", text, d, err)
+		}
+	}
+}
+
 // PostgreSQL client encodings in which 0x5c can end a character are
 // refused in SET and set_config, under any alias.
 func TestPGEncodingRefused(t *testing.T) {

@@ -579,11 +579,12 @@ func clauses(t toks) []toks {
 }
 
 // mysqlSet keeps a SET of the session settings dump tools write and the
-// user variables they save them in. A replication setting is dropped;
-// any other setting, a GLOBAL one, a value that
+// user variables they save them in. A replication setting is dropped
+// when it stands alone; any other setting, a GLOBAL one, a value that
 // runs a query or a client character set Roadie can't read is refused.
 func mysqlSet(st core.Statement, t toks, o Options) Decision {
 	cs := clauses(t[1:])
+	all := len(cs)
 	charset := toks(nil) // the value of SET NAMES or SET CHARACTER SET
 	switch {
 	case t.w(1) == "names", t.is(1, "character", "set"), t.w(1) == "charset":
@@ -617,6 +618,12 @@ func mysqlSet(st core.Statement, t toks, o Options) Decision {
 		case Drop:
 			out = d
 		}
+	}
+	if out.Verdict == Drop && all > 1 {
+		// Dropping the statement would drop its other assignments too,
+		// which the reader has already followed (a user variable a later
+		// SET sql_mode reads).
+		return refuse("a SET statement that mixes "+out.Kind+" with other settings", whyUnknown)
 	}
 	if out.Verdict != Keep {
 		return out
