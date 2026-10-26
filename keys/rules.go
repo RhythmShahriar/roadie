@@ -247,6 +247,25 @@ type keyToken struct {
 // never overlapping. Each start is tried against the few rules indexed
 // under its byte and a match is skipped whole, so the scan is linear.
 func findTokens(v []byte, ctxOf func() string) []keyToken {
+	return findTokensFrom(v, ctxSource{fn: ctxOf})
+}
+
+// ctxSource gives findTokens the context of a value on first use: from a
+// scanInput (the hot path, which builds no closure per value) or from fn.
+type ctxSource struct {
+	in *scanInput
+	fn func() string
+}
+
+func (c ctxSource) get() string {
+	if c.in != nil {
+		return c.in.context() + " " + c.in.name
+	}
+	return c.fn()
+}
+
+// findTokensFrom is findTokens with the context from src.
+func findTokensFrom(v []byte, src ctxSource) []keyToken {
 	var out []keyToken
 	ctx, built := "", false
 	runEnd := 0
@@ -270,7 +289,7 @@ func findTokens(v []byte, ctxOf func() string) []keyToken {
 			r := &tokenRules[ri]
 			if r.context != "" {
 				if !built {
-					ctx, built = ctxOf(), true
+					ctx, built = src.get(), true
 				}
 				if !strings.Contains(ctx, r.context) {
 					continue
@@ -620,10 +639,12 @@ type scanInput struct {
 	v    []byte
 	name string // lower-cased setting name: the last path key, the pair's name or the row's option or meta key
 	ctx  string // lower-cased row key, path and file, for context rules
-	// ctxOf, when set, builds ctx on first use: most values never need it.
-	ctxOf func() string
-	at    core.Location
-	sib   siblings
+	// lazy says ctx is still to be built from rowName and at on first
+	// use: most values never need it.
+	lazy    bool
+	rowName string
+	at      core.Location
+	sib     siblings
 }
 
 // scanValue is ScanValue.
@@ -635,7 +656,7 @@ func scanValue(v []byte, at core.Location, siblings map[string]string) []Hit {
 	if in.name == "" || isIndex(in.name) {
 		in.name = strings.ToLower(rowName)
 	}
-	in.ctxOf = func() string { return strings.ToLower(rowName + " " + at.Path + " " + at.File + " " + at.Table) }
+	in.rowName, in.lazy = rowName, true
 	return scan(in)
 }
 
@@ -681,19 +702,29 @@ func scanPairs(file string, pairs []core.Pair) []Hit {
 
 // context returns ctx, building it once.
 func (in *scanInput) context() string {
-	if in.ctxOf != nil {
-		in.ctx, in.ctxOf = in.ctxOf(), nil
+	if in.lazy {
+		in.ctx = strings.ToLower(in.rowName + " " + in.at.Path + " " + in.at.File + " " + in.at.Table)
+		in.lazy = false
 	}
 	return in.ctx
 }
 
-// scan runs the three rule sets in order on one value.
+// scan runs the three rule sets in order on one value. A short value that
+// is a placeholder as a whole has no key in it. That test runs only when
+// a rule found something, which keeps it off the hot path: most values
+// hold no key.
 func scan(in scanInput) []Hit {
-	if len(in.v) <= 64 && placeholder(string(in.v)) {
+	out := scanRules(in)
+	if len(out) > 0 && len(in.v) <= 64 && placeholder(string(in.v)) {
 		return nil
 	}
+	return out
+}
+
+// scanRules is scan without the placeholder test.
+func scanRules(in scanInput) []Hit {
 	var out []Hit
-	for _, t := range findTokens(in.v, func() string { return in.context() + " " + in.name }) {
+	for _, t := range findTokensFrom(in.v, ctxSource{in: &in}) {
 		val := string(in.v[t.start:t.end])
 		env := t.env
 		if env == "" {
@@ -806,10 +837,14 @@ func secretishName(name string) bool {
 
 // notSecretNames are settings whose names look secret to kit and whose
 // values are not credentials: WooCommerce's order key is in every order
-// email and URL; WordPress lock and session keys are bookkeeping.
+// email and URL; WordPress lock and session keys are bookkeeping;
+// WordPress session_tokens holds a sha256 of each login token (the token
+// itself lives only in the browser's cookie) with its expiry, IP and
+// user agent.
 var notSecretNames = map[string]bool{
 	"_order_key": true, "order_key": true, "_edit_lock": true, "session_key": true,
 	"_wp_session_key": true, "meta_key": true, "option_key": true, "_transient_key": true,
+	"session_tokens": true,
 }
 
 // newHit builds one hit, masked with core.MaskKey.

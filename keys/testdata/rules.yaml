@@ -133,3 +133,5 @@ cases:
   - {provider: generic, env: none, pairs: {AUTH_KEY: "{a:64}"}, target: AUTH_KEY, note: salts are config.salts}
   - {provider: generic, env: none, pairs: {SHIPPING_API_SECRET: "changeme"}, target: SHIPPING_API_SECRET}
   - {provider: generic, env: none, value: "Your password: see the email we sent", note: prose}
+  - {provider: generic, env: live, value: "{h:64}", row: "meta_key=myplugin_tokens", note: a token under a secret-looking meta key}
+  - {provider: generic, env: none, value: "{h:64}", row: "meta_key=session_tokens", note: WordPress keeps only a sha256 of each session token}
