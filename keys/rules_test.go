@@ -359,3 +359,25 @@ func BenchmarkScanValue(b *testing.B) {
 		}
 	}
 }
+
+// mayHoldToken lets through a run of 20 token characters with a letter
+// and a digit, a PEM key or a URL with a password; nothing else.
+func TestMayHoldToken(t *testing.T) {
+	for v, want := range map[string]bool{
+		"abcdefghij0123456789":                     true,
+		"x=abc_def.ghi-jkl+mn~o$p1":                true,
+		"-----BEGIN RSA PRIVATE KEY-----":          true,
+		"mysql://shop:" + "hunter2" + "@db/shop":   true,
+		"abcdefghij012345678":                      false,
+		"abcdefghijklmnopqrstuvwxyz":               false,
+		"01234567890123456789012":                  false,
+		"Thanks for your order, 2026-10-26 10:00.": false,
+		"abcdefghij 0123456789":                    false,
+		"https://shop.example/a@2x.png":            true,
+		"":                                         false,
+	} {
+		if got := mayHoldToken([]byte(v)); got != want {
+			t.Errorf("mayHoldToken(%q) = %v, want %v", v, got, want)
+		}
+	}
+}

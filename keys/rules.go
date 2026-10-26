@@ -801,25 +801,44 @@ func genericHits(in scanInput) []Hit {
 // characters from [A-Za-z0-9_.+=~$-] holding a letter and a digit; the
 // formats without one are a PEM private key and a URL with a password.
 func mayHoldToken(v []byte) bool {
-	run, letter, digit := 0, false, false
+	run, seen := 0, uint8(0)
 	for _, c := range v {
-		switch {
-		case c >= '0' && c <= '9':
-			digit = true
-		case c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z':
-			letter = true
-		case c == '_' || c == '.' || c == '+' || c == '=' || c == '~' || c == '$' || c == '-':
-		default:
-			run, letter, digit = 0, false, false
+		k := tokenClass[c]
+		if k == 0 {
+			run, seen = 0, 0
 			continue
 		}
 		run++
-		if run >= 20 && letter && digit {
+		seen |= k
+		if run >= 20 && seen&(classLetter|classDigit) == classLetter|classDigit {
 			return true
 		}
 	}
 	return bytes.Contains(v, []byte("PRIVATE KEY")) || bytes.Contains(v, []byte("://")) && bytes.IndexByte(v, '@') >= 0
 }
+
+// Byte classes for mayHoldToken. A table lookup per byte is what keeps
+// this pre-filter cheap on the plain text that makes up most of a dump.
+const (
+	classRun    = 1 << iota // in a token run, neither letter nor digit
+	classLetter             // A-Z, a-z
+	classDigit              // 0-9
+)
+
+// tokenClass maps each byte to its mayHoldToken class; 0 ends a run.
+var tokenClass = func() (t [256]uint8) {
+	for c := '0'; c <= '9'; c++ {
+		t[c] = classDigit
+	}
+	for c := 'a'; c <= 'z'; c++ {
+		t[c] = classLetter
+		t[c-'a'+'A'] = classLetter
+	}
+	for _, c := range "_.+=~$-" {
+		t[c] = classRun
+	}
+	return t
+}()
 
 // secretishName reports whether a setting name holds one of the words
 // kit's name rules look for, so the name=value form is worth building.
