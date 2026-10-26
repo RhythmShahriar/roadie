@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -430,5 +431,106 @@ func TestEnvironmentChecks(t *testing.T) {
 	}
 	if se, _, _ := st.Check(ctx, testutil.FakeSite(nil)); se.Status != "unknown" {
 		t.Errorf("no wp-config: %q", se.Status)
+	}
+}
+
+// TestGatewaysWithoutOrder: a store that never saved its gateway order
+// has no woocommerce_gateway_order. The unknown gateway is still found by
+// its settings option, checked and disabled; emails and shipping methods
+// with an enabled flag are not gateways.
+func TestGatewaysWithoutOrder(t *testing.T) {
+	ser := func(m map[string]string) string { return phpSer(m) }
+	noOrder := func() db {
+		d := prodDB()
+		var rows []map[string]string
+		for _, r := range d["wp_options"] {
+			if r["option_name"] != "woocommerce_gateway_order" {
+				rows = append(rows, r)
+			}
+		}
+		add := func(name string, v map[string]string) {
+			rows = append(rows, map[string]string{"option_id": strconv.Itoa(100 + len(rows)), "option_name": name, "option_value": ser(v), "autoload": "yes"})
+		}
+		add("woocommerce_customer_processing_order_settings", map[string]string{"enabled": "yes", "subject": "Thanks", "heading": "Order"})
+		add("woocommerce_cancelled_order_settings", map[string]string{"enabled": "yes", "recipient": "shop@example.org", "email_type": "html"})
+		add("woocommerce_flat_rate_settings", map[string]string{"enabled": "yes", "title": "Flat rate"})
+		add("woocommerce_flat_rate_3_settings", map[string]string{"title": "Flat rate", "cost": "5"})
+		add("woocommerce_analytics_settings", map[string]string{"enabled": "yes"})
+		d["wp_options"] = rows
+		return d
+	}
+	opts := map[string][]byte{}
+	for _, r := range noOrder()["wp_options"] {
+		if GatewayOptionsMatch(r["option_name"]) {
+			opts[r["option_name"]] = []byte(r["option_value"])
+		}
+	}
+	ids := SourceGatewayIDs(opts)
+	if !slices.Equal(ids, []string{"fancypay", "stripe", "woocommerce_payments"}) {
+		t.Fatalf("SourceGatewayIDs %v", ids)
+	}
+
+	o := fixtureOptions()
+	o.GatewayIDs = ids
+	status, found := check(t, fixtureSite(prodFiles(), noOrder()), o)
+	if status[core.FindingSideEffectGateways] != "on" || len(found[core.FindingSideEffectGateways]) != 4 {
+		t.Fatalf("production: %q %v, want on with 4 findings", status[core.FindingSideEffectGateways], found[core.FindingSideEffectGateways])
+	}
+
+	d := noOrder()
+	staging := fixtureSite(prodFiles(), d)
+	applyAll(t, staging, d, o)
+	status, found = check(t, staging, o)
+	if status[core.FindingSideEffectGateways] != "off" || len(found[core.FindingSideEffectGateways]) != 0 {
+		t.Errorf("staging: %q %v, want off", status[core.FindingSideEffectGateways], found[core.FindingSideEffectGateways])
+	}
+	for _, r := range d["wp_options"] {
+		switch r["option_name"] {
+		case "woocommerce_fancypay_settings":
+			if v := flat(t, r["option_value"]); v["enabled"] != "no" {
+				t.Errorf("unknown gateway left enabled: %v", v)
+			}
+		case "woocommerce_customer_processing_order_settings", "woocommerce_cancelled_order_settings", "woocommerce_flat_rate_settings", "woocommerce_analytics_settings":
+			if flat(t, r["option_value"])["enabled"] != "yes" {
+				t.Errorf("%s is not a gateway but was disabled", r["option_name"])
+			}
+		}
+	}
+
+	// Without the IDs from the source the check still sees the unknown
+	// gateway, so it never reports a live gateway as off.
+	o.GatewayIDs = nil
+	d = noOrder()
+	staging = fixtureSite(prodFiles(), d)
+	applyAll(t, staging, d, o)
+	status, found = check(t, staging, o)
+	if status[core.FindingSideEffectGateways] != "on" || len(found[core.FindingSideEffectGateways]) != 1 {
+		t.Errorf("no GatewayIDs: %q %v, want on with the unknown gateway", status[core.FindingSideEffectGateways], found[core.FindingSideEffectGateways])
+	}
+}
+
+func TestGatewayShaped(t *testing.T) {
+	for _, c := range []struct {
+		id   string
+		v    map[string]string
+		want bool
+	}{
+		{"fancypay", map[string]string{"enabled": "yes", "mode": "live"}, true},
+		{"bankpay", map[string]string{"enabled": "no", "title": "Bank", "description": "Pay"}, true},
+		{"acme", map[string]string{"enabled": "yes", "api_login": "x"}, true},
+		{"acme", map[string]string{"enabled": "yes", "merchant_id": "x"}, true},
+		{"acme", map[string]string{"title": "Acme"}, false},
+		{"acme", map[string]string{"enabled": "yes"}, false},
+		{"new_order", map[string]string{"enabled": "yes", "subject": "x"}, false},
+		{"customer_note", map[string]string{"enabled": "yes", "title": "x"}, false},
+		{"free_shipping", map[string]string{"enabled": "yes", "title": "Free"}, false},
+		{"flat_rate_12", map[string]string{"enabled": "yes", "title": "Flat"}, false},
+	} {
+		if got := gatewayShaped(c.id, []byte(phpSer(c.v))); got != c.want {
+			t.Errorf("gatewayShaped(%s, %v) = %v, want %v", c.id, c.v, got, c.want)
+		}
+	}
+	if gatewayShaped("acme", []byte("not serialized")) {
+		t.Error("a value that isn't serialized PHP is not a gateway")
 	}
 }

@@ -8,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/RhythmShahriar/roadie/codec/phpser"
 	"github.com/RhythmShahriar/roadie/core"
@@ -42,6 +44,100 @@ func GatewayIDs(order []byte) ([]string, error) {
 		}
 	})
 	return ids, err
+}
+
+// GatewayOptionsMatch accepts the option names SourceGatewayIDs reads:
+// woocommerce_gateway_order and every woocommerce_<id>_settings. The
+// engine can use it to pick the rows from the source's options table.
+func GatewayOptionsMatch(name string) bool {
+	return name == "woocommerce_gateway_order" || strings.HasPrefix(name, "woocommerce_") && strings.HasSuffix(name, "_settings") && len(name) > len("woocommerce__settings")
+}
+
+// SourceGatewayIDs returns the WooCommerce gateway IDs among the source's
+// options, option name to raw value: the keys of woocommerce_gateway_order
+// first, then every woocommerce_<id>_settings option shaped like a
+// gateway (see gatewayShaped), sorted. WooCommerce writes
+// woocommerce_gateway_order only once someone saves the gateway order, so
+// a store without it still has its gateways found. The result fills
+// Options.GatewayIDs.
+func SourceGatewayIDs(opts map[string][]byte) []string {
+	var out []string
+	if raw, ok := opts["woocommerce_gateway_order"]; ok {
+		ids, _ := GatewayIDs(raw)
+		for _, id := range ids {
+			if !slices.Contains(out, id) {
+				out = append(out, id)
+			}
+		}
+	}
+	var scanned []string
+	for name, raw := range opts {
+		if !GatewayOptionsMatch(name) || name == "woocommerce_gateway_order" {
+			continue
+		}
+		id := strings.TrimSuffix(strings.TrimPrefix(name, "woocommerce_"), "_settings")
+		if slices.Contains(out, id) || !gatewayShaped(id, raw) {
+			continue
+		}
+		scanned = append(scanned, id)
+	}
+	slices.Sort(scanned)
+	return append(out, scanned...)
+}
+
+// notGatewayIDs are WooCommerce settings with an enabled flag that are not
+// payment gateways: the legacy shipping methods.
+var notGatewayIDs = map[string]bool{
+	"flat_rate": true, "free_shipping": true, "local_pickup": true, "local_delivery": true, "international_delivery": true,
+	"legacy_flat_rate": true, "legacy_free_shipping": true, "legacy_local_pickup": true, "legacy_local_delivery": true, "legacy_international_delivery": true,
+}
+
+// emailKeys mark a WooCommerce email's settings (new_order, customer_*
+// and the ones extensions add), which also carry an enabled flag.
+var emailKeys = []string{"subject", "heading", "email_type", "recipient", "additional_content"}
+
+// gatewayKeys are settings keys a payment gateway has and a plain
+// integration rarely does. A key that contains one of gatewayKeyParts
+// counts too: API keys, secrets, tokens and merchant IDs.
+var (
+	gatewayKeys     = []string{"title", "description", "instructions", "testmode", "test_mode", "sandbox", "sandbox_on", "mode", "environment", "live_mode"}
+	gatewayKeyParts = []string{"key", "secret", "token", "merchant", "client_id", "api"}
+)
+
+// gatewayShaped reports a woocommerce_<id>_settings value that looks like
+// a payment gateway: it has an enabled flag and a gateway-shaped key, and
+// is neither an email nor a shipping method (legacy or one instance's
+// woocommerce_<method>_<n>_settings).
+func gatewayShaped(id string, raw []byte) bool {
+	if notGatewayIDs[id] || strings.HasPrefix(id, "customer_") {
+		return false
+	}
+	if i := strings.LastIndexByte(id, '_'); i >= 0 && i < len(id)-1 && strings.Trim(id[i+1:], "0123456789") == "" {
+		return false
+	}
+	v, err := settings(raw)
+	if err != nil {
+		return false
+	}
+	if _, ok := v["enabled"]; !ok {
+		return false
+	}
+	shaped := false
+	for k := range v {
+		if slices.Contains(emailKeys, k) {
+			return false
+		}
+		if slices.Contains(gatewayKeys, k) {
+			shaped = true
+			continue
+		}
+		for _, part := range gatewayKeyParts {
+			if strings.Contains(k, part) {
+				shaped = true
+			}
+		}
+	}
+	return shaped
 }
 
 func (o Options) gateways() []keys.Gateway {

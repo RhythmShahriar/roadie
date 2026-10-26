@@ -34,9 +34,10 @@ type Options struct {
 	// Salt makes one wp-config salt; nil is pseudo.Salt. Tests pass a
 	// fixed one for golden files.
 	Salt func() string
-	// GatewayIDs are the WooCommerce gateway IDs the source holds (the
-	// keys of woocommerce_gateway_order, see GatewayIDs). DataRules
-	// disables each one the gateway list doesn't know.
+	// GatewayIDs are the WooCommerce gateway IDs the source holds, from
+	// SourceGatewayIDs over its woocommerce_gateway_order and
+	// woocommerce_<id>_settings options. DataRules disables each one the
+	// gateway list doesn't know.
 	GatewayIDs []string
 	// AppKey makes one Laravel APP_KEY; nil is pseudo.AppKey. Tests pass a
 	// fixed one for golden files.

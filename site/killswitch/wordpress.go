@@ -724,7 +724,7 @@ func gatewaysStep(o Options) core.Step {
 				known[g.Option] = true
 			}
 			opts, err := wpdb.OptionsMatch(ctx, s, func(n string) bool {
-				return known[n] || n == "woocommerce_gateway_order" || strings.HasPrefix(n, "woocommerce_") && strings.HasSuffix(n, "_settings")
+				return known[n] || GatewayOptionsMatch(n)
 			})
 			if err != nil {
 				se.Status, se.How = "unknown", "the options table can't be read"
@@ -751,11 +751,9 @@ func gatewaysStep(o Options) core.Step {
 					bad(g.Option, g.ModePath, g.Name+" is enabled and not in test mode")
 				}
 			}
-			var ids []string
-			if raw, ok := opts["woocommerce_gateway_order"]; ok {
-				ids, _ = GatewayIDs(raw)
-			}
-			for _, gid := range ids {
+			// Without woocommerce_gateway_order the settings options are
+			// the only list, so an unknown gateway is still checked.
+			for _, gid := range SourceGatewayIDs(opts) {
 				opt := gatewayOption(gid)
 				raw, ok := opts[opt]
 				if knownGateway(o, gid) || !ok {
