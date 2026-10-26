@@ -80,7 +80,9 @@ func newEncoder(w io.Writer, o WriterOptions) (encoder, error) {
 }
 
 // counter counts the bytes that reach the file, checks the free space
-// every checkEvery bytes and turns a full disk into disk-full.
+// every checkEvery bytes against what is left of ExpectBytes (or the
+// write itself when the size is unknown) and turns a full disk into
+// disk-full.
 type counter struct {
 	dst    io.Writer
 	dir    string
@@ -93,7 +95,10 @@ func (c *counter) Write(p []byte) (int, error) {
 	if c.n+int64(len(p)) >= c.next {
 		c.next = c.n + int64(len(p)) + checkEvery
 		if free, ok := freeSpace(c.dir); ok {
-			need := int64(checkEvery)
+			// Without ExpectBytes the rest of the dump may be a few bytes:
+			// only this write must fit, and a later full disk is caught
+			// by its ENOSPC.
+			need := int64(len(p))
 			if c.expect > 0 {
 				need = max(c.expect-c.n, 0)
 			}

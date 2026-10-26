@@ -212,6 +212,40 @@ func TestDiskFullWhileWriting(t *testing.T) {
 	}
 }
 
+// Without ExpectBytes a nearly full disk isn't refused while the writes
+// still fit: the rest of the dump may be small.
+func TestDiskFreeUnknownSize(t *testing.T) {
+	dir := t.TempDir()
+	s, err := NewFileSink(filepath.Join(dir, "out.sql"), WriterOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setFree(t, 10<<20)
+	big := []byte("INSERT INTO `t` VALUES ('" + strings.Repeat("x", 1<<20) + "');\n")
+	for i := uint64(0); i < 80; i++ {
+		if err := s.Write(context.Background(), &core.Batch{Seq: i, Pass: &core.Statement{Kind: core.StmtOther, Text: big}}); err != nil {
+			t.Fatalf("batch %d: %v", i, err)
+		}
+	}
+	if err := s.Commit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// Less free space than one write is still disk-full.
+	s, err = NewFileSink(filepath.Join(dir, "out2.sql"), WriterOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setFree(t, 1<<10)
+	var werr error
+	for i := uint64(0); i < 80 && werr == nil; i++ {
+		werr = s.Write(context.Background(), &core.Batch{Seq: i, Pass: &core.Statement{Kind: core.StmtOther, Text: big}})
+	}
+	wantDiskFull(t, werr, dir)
+	if len(tempFiles(t, dir)) != 0 {
+		t.Fatal("temp file left")
+	}
+}
+
 type enospc struct{}
 
 func (enospc) Write([]byte) (int, error) {
