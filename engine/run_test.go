@@ -898,3 +898,83 @@ func TestRunSamePlace(t *testing.T) {
 		t.Errorf("plan of a staging guarded as %+v", g)
 	}
 }
+
+// An uncovered column stops copy and prepare after pass 1 and before the
+// kill switch, the maintenance page or the sink touch the target.
+func TestRunUncoveredLeavesTarget(t *testing.T) {
+	for _, mode := range []Mode{Copy, Prepare} {
+		t.Run(string(mode), func(t *testing.T) {
+			f := useRunFakes(t)
+			detectUncovered = func(tb *core.Table, covered map[string]bool, _ map[string][][]byte) []core.Uncovered {
+				for _, c := range tb.Columns {
+					if !covered[c.Name] {
+						return []core.Uncovered{{Table: tb.Name, Column: c.Name, Rate: 40}}
+					}
+				}
+				return nil
+			}
+			res, err := Run(context.Background(), f.job(mode))
+			if code, exit := errCode(err); code != core.ErrUncovered || exit != 1 {
+				t.Fatalf("err %v", err)
+			}
+			if len(f.applied()) != 0 || f.rec.index("sink") >= 0 || len(f.staging.Writes()) != 0 {
+				t.Errorf("an uncovered stop still did %v, writes %v", f.rec.all(), f.staging.Writes())
+			}
+			if res.TargetState != core.Untouched || res.Err == nil || res.Err.State != core.Untouched {
+				t.Errorf("state %s err %+v", res.TargetState, res.Err)
+			}
+		})
+	}
+}
+
+// A run that stops after a step changed the target says mixed, not
+// untouched: the kill switch already edited the site.
+func TestRunStoppedAfterStepIsMixed(t *testing.T) {
+	f := useRunFakes(t)
+	f.staging.SinkFunc = func() (core.Sink, error) { return nil, errors.New("access denied for user 'staging'") }
+	res, err := Run(context.Background(), f.job(Copy))
+	if err == nil || !strings.Contains(err.Error(), "access denied") {
+		t.Fatalf("err %v", err)
+	}
+	if got := f.applied(); len(got) == 0 || res.TargetState != core.Mixed || res.Target.State != core.Mixed {
+		t.Errorf("applied %v state %s", got, res.TargetState)
+	}
+}
+
+// prepare reads the staging it writes, never a source: from the config.
+func TestRunPrepareIgnoresSource(t *testing.T) {
+	f := useRunFakes(t)
+	f.prod.SourceFunc = func([]string) (core.Source, error) {
+		t.Error("prepare read production")
+		return nil, errors.New("no")
+	}
+	j := f.job(Prepare)
+	j.From = prodEP
+	res, err := Run(context.Background(), j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.guards) != 1 || f.guards[0].From.Raw != stagingEP.Raw || f.guards[0].FromSite != f.guards[0].ToSite {
+		t.Errorf("guard %+v", f.guards)
+	}
+	if len(f.opened) != 2 || res.Source.Display != stagingEP.Display {
+		t.Errorf("opened %d sites, source %+v", len(f.opened), res.Source)
+	}
+}
+
+// prepare --only noindex reads no data, yet a Laravel staging still gets
+// PRD 13.2's noindex line.
+func TestRunOnlyNoindexLaravel(t *testing.T) {
+	f := useRunFakes(t)
+	f.staging.StackName = core.StackLaravel
+	j := f.job(Prepare)
+	j.Opts.Only = []string{"noindex"}
+	res, err := Run(context.Background(), j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Stack.Name != core.StackLaravel || !slices.Contains(res.NotCovered, notCoveredLaravel) {
+		t.Errorf("stack %q not covered %q", res.Stack.Name, res.NotCovered)
+	}
+}
+

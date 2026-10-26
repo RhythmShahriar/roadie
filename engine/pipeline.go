@@ -299,6 +299,14 @@ type pipeline struct {
 	// result is filled in place when set, so the orchestration's fields
 	// stay; nil starts a new one.
 	result *core.Result
+	// beforeWrite runs once pass 1 has passed its checks and before pass
+	// 2 reads a batch: the orchestration applies the file-level kill
+	// switch, shows the maintenance page and opens the sink there, so a
+	// stop in pass 1 (an uncovered column, a url-map error) leaves the
+	// target untouched. nil keeps the sink set at the start.
+	beforeWrite func(ctx context.Context) error
+	// aborted is set once the sink was told to take its writes back.
+	aborted bool
 }
 
 // output is a run's result plus what verify and the orchestration need.
@@ -345,6 +353,13 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 	defer func() {
 		if cerr := p.in.close(); err == nil && cerr != nil {
 			err = cerr
+		}
+	}()
+	// Any stop takes back what the sink holds, also one before the first
+	// write: a file sink may already have its temp file.
+	defer func() {
+		if err != nil {
+			p.abort(ctx, out)
 		}
 	}()
 	if limit := memoryLimit(p.opts.MaxMemory); limit > 0 {
@@ -410,6 +425,11 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 			return out, err
 		}
 	}
+	if p.beforeWrite != nil {
+		if err := p.beforeWrite(ctx); err != nil {
+			return out, err
+		}
+	}
 	t, src, err := p.transform(ctx, idx, final, plan, known, faker, out)
 	if src != nil {
 		fp := src.Fingerprint()
@@ -452,9 +472,10 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 
 // abort takes back what pass 2 wrote, as far as the sink can.
 func (p *pipeline) abort(ctx context.Context, out *output) {
-	if p.sink == nil {
+	if p.sink == nil || p.aborted {
 		return
 	}
+	p.aborted = true
 	_ = p.sink.Abort(context.WithoutCancel(ctx))
 	out.Result.TargetState = p.sink.State()
 }
