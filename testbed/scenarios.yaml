@@ -1,0 +1,774 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Every testbed scenario of PRD 22.2, read by testbed/bench (the harness)
+# and checked by TestManifest (testbed/manifest). Expectations match by
+# finding ID and error code, never by wording.
+#
+# Fields:
+#   id, kind (copy, prepare, verify, env), stack, title
+#   input         the fixture under testbed/fixtures (seeded into
+#                 runtime/fixtures/<input>/); from_outputs for g05
+#   good          a clean input: the control pass verifies it five times
+#   run           host (default), staging-wp, laravel or runner: where
+#                 rhythm-roadie runs (a container run is on the sealed network)
+#   setup         what the harness prepares first (manifest/manifest.go lists
+#                 the steps); scenario setup runs once, case setup per case
+#   command       rhythm-roadie's arguments; ${placeholders} as below
+#   output        where the oracle reads the result: db (a dump path or the
+#                 database service to dump with the real dump tool) and tree
+#                 (a folder or the service whose site to copy out)
+#   verify        gate 4: a fresh `rhythm-roadie verify` with these arguments
+#   boot, drill   the boot check and the side-effect drill on staging after
+#   wp_checks     WP-CLI checks on staging after the run (php: for wp eval,
+#                 wp: for a command); each must exit 0
+#   joins         join columns whose matching row count must not change
+#   import_into   load the output into a scratch database on mysql (8.4)
+#                 and/or mariadb (11.4); the import must succeed
+#   absent        paths (globs) that must not exist afterwards on this
+#                 machine or in the run's container
+#   expect        the gates: exit_code, error_code, finding_ids, canaries
+#                 (gate 1), integrity or rows_only (gate 2), sinkhole
+#                 (gate 3), verify_exit (gate 4), target_state, unchanged,
+#                 no_finished_output
+#   forbid        finding IDs that must not appear
+#   pending       why a scenario or case can't run (it is reported, not scored)
+#   partial       parts of a scenario the testbed can't check yet, reported
+#                 next to its score
+#   cases         several runs of one scenario (named), scored together
+#
+# Placeholders: ${in} the seeded fixture folder, ${site} the site Roadie
+# works on, ${work} the scenario's work folder (each as the run sees it),
+# ${staging_url} (http://staging-wp), ${production_url}
+# (https://shop.example.com), ${confirm} (the target name typed for
+# --confirm-target), ${ssh_source} (the sshd container's site),
+# ${staging_dsn} (staging-db; the password comes from the environment),
+# ${output} (a kept r-scenario output, g05 only).
+version: 1
+
+x-wp-copy: &wp-copy [copy, --from, "${in}/db.sql", --to, "${site}", --url, "${staging_url}", --confirm-target, "${confirm}", --yes, --json]
+x-wp-verify: &wp-verify ["${site}", --from, "${in}/db.sql", --fail-on, medium, --json]
+x-wp-out: &wp-out {db: staging-db, tree: staging-wp}
+x-four-gates: &four-gates {exit_code: 0, canaries: 0, integrity: true, sinkhole: 0, verify_exit: 0, target_state: replaced}
+x-clean-copy: &clean-copy [exact.survivors, pii.email, pii.phone, pii.card, url.production-siteurl, key.stripe-live, side-effect.mail, side-effect.webhooks, side-effect.gateways]
+x-prepare: &prepare [prepare, "${site}", --production-url, "${production_url}", --config, "${work}/roadie.yaml", --confirm-target, "${confirm}", --json]
+x-dump-copy: &dump-copy [copy, --from, "${in}/db.sql", --to, "${work}/out.sql", --url, "${staging_url}", --json]
+x-dump-verify: &dump-verify ["${work}/out.sql", --from, "${in}/db.sql", --fail-on, medium, --json]
+
+scenarios:
+  # ------------------------------------------------------------------ copy
+  - id: r01
+    kind: copy
+    stack: woocommerce
+    title: WooCommerce HPOS shop with PII in orders, addresses, meta, lookup and notes
+    input: r01
+    run: staging-wp
+    setup: [staging-site]
+    command: *wp-copy
+    output: *wp-out
+    verify: *wp-verify
+    boot: true
+    drill: true
+    wp_checks:
+      - name: order fakes match user fakes
+        php: 'global $wpdb; $n = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}wc_orders o JOIN {$wpdb->users} u ON u.ID = o.customer_id WHERE o.billing_email <> u.user_email"); exit($n > 0 ? 1 : 0);'
+    expect: *four-gates
+    forbid: *clean-copy
+
+  - id: r02
+    kind: copy
+    stack: woocommerce
+    title: HPOS compatibility mode on (orders in posts and HPOS tables)
+    input: r02
+    run: staging-wp
+    setup: [staging-site]
+    command: *wp-copy
+    output: *wp-out
+    verify: *wp-verify
+    boot: true
+    drill: true
+    wp_checks:
+      - name: wp wc hpos verify_cot_data is clean
+        wp: [wc, hpos, verify_cot_data, --verbose]
+    expect: *four-gates
+    forbid: *clean-copy
+
+  - id: r03
+    kind: copy
+    stack: woocommerce
+    title: legacy shop with woocommerce_sessions and payment tokens
+    input: r03
+    run: staging-wp
+    setup: [staging-site]
+    command: *wp-copy
+    output: *wp-out
+    verify: *wp-verify
+    boot: true
+    drill: true
+    wp_checks:
+      - name: saved payment tokens are blank
+        php: 'global $wpdb; $n = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}woocommerce_payment_tokens WHERE token <> \"\""); exit($n > 0 ? 1 : 0);'
+    expect: *four-gates
+    forbid: *clean-copy
+
+  - id: r04
+    kind: copy
+    stack: woocommerce
+    title: Action Scheduler args, extended_args and the 191-byte boundary
+    input: r04
+    run: staging-wp
+    setup: [staging-site]
+    command: *wp-copy
+    output: *wp-out
+    verify: *wp-verify
+    boot: true
+    drill: true
+    wp_checks:
+      - name: every action's args is its JSON or md5(extended_args) and as_has_scheduled_action finds it
+        php: 'global $wpdb; foreach ($wpdb->get_results("SELECT hook, args, extended_args FROM {$wpdb->prefix}actionscheduler_actions WHERE status = \"pending\"") as $r) { $full = $r->extended_args ? $r->extended_args : $r->args; if ($r->extended_args && $r->args !== md5($r->extended_args)) { exit(2); } if (! $r->extended_args && strlen($r->args) > 191) { exit(3); } if (! as_has_scheduled_action($r->hook, json_decode($full, true))) { exit(1); } } exit(0);'
+    expect: *four-gates
+    forbid: *clean-copy
+
+  - id: r05
+    kind: copy
+    stack: woocommerce
+    title: Subscriptions with live Stripe IDs, production WP_SITEURL and WP_HOME, a renewal due
+    input: r05
+    run: staging-wp
+    setup: [staging-site]
+    command: [copy, --from, "${in}/db.sql", --to, "${site}", --url, "${staging_url}", --confirm-target, "${confirm}", --target-is-staging, "${confirm}", --yes, --json]
+    output: *wp-out
+    verify: *wp-verify
+    boot: true
+    drill: true
+    wp_checks:
+      - name: Subscriptions runs in staging mode
+        php: 'exit(class_exists("WCS_Staging") && WCS_Staging::is_duplicate_site() ? 0 : 1);'
+      - name: WP_HOME and WP_SITEURL name staging
+        php: 'exit(WP_HOME === "http://staging-wp" && WP_SITEURL === "http://staging-wp" ? 0 : 1);'
+    expect: *four-gates
+    forbid: [exact.survivors, pii.email, url.production-siteurl, side-effect.subscriptions, side-effect.gateways]
+
+  - id: r06
+    kind: copy
+    stack: wordpress
+    title: Gravity Forms fields known from form JSON, notes, notifications and an upload
+    input: r06
+    run: staging-wp
+    setup: [staging-site]
+    command: *wp-copy
+    output: {db: staging-db}
+    # The uploaded CV is listed (uploads.personal, medium for form
+    # uploads), so gate 4 fails on high here instead of medium.
+    verify: ["${site}", --from, "${in}/db.sql", --fail-on, high, --json]
+    boot: true
+    drill: true
+    expect:
+      exit_code: 0
+      canaries: 0
+      integrity: true
+      sinkhole: 0
+      verify_exit: 0
+      target_state: replaced
+      finding_ids: [uploads.personal]
+    forbid: [exact.survivors, pii.email, pii.phone]
+    partial:
+      - "the CV under uploads/gravity_forms/ is listed, not rewritten: the oracle checks the database only"
+
+  - id: r07
+    kind: copy
+    stack: wordpress
+    title: WP Mail Logging and FluentSMTP logs with bodies and reset links
+    input: r07
+    run: staging-wp
+    setup: [staging-site]
+    command: *wp-copy
+    output: *wp-out
+    verify: *wp-verify
+    boot: true
+    drill: true
+    expect: *four-gates
+    forbid: *clean-copy
+
+  - id: r08
+    kind: copy
+    stack: wordpress
+    title: serialized torture with a broken value
+    input: r08
+    run: staging-wp
+    setup: [staging-site]
+    command: *wp-copy
+    output: *wp-out
+    verify: *wp-verify
+    boot: true
+    drill: true
+    expect:
+      exit_code: 0
+      canaries: 0
+      integrity: true
+      sinkhole: 0
+      verify_exit: 0
+      target_state: replaced
+      finding_ids: [data.unparseable]
+    forbid: [exact.survivors, pii.email]
+
+  - id: r09
+    kind: copy
+    stack: wordpress
+    title: production URLs in JSON, blocks, URL-encoded and protocol-relative forms
+    input: r09
+    run: staging-wp
+    setup: [staging-site]
+    command: *wp-copy
+    output: *wp-out
+    verify: *wp-verify
+    boot: true
+    drill: true
+    wp_checks:
+      - name: the lookalike, the other subdomain, the third party and the email domain are unchanged
+        php: 'global $wpdb; foreach (array("https://shop.example.com.au/", "https://myshop.example.com/", "https://www.royalmail.com/track-your-item", "hello@shop.example.com") as $s) { if (! $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_content LIKE %s", "%" . $wpdb->esc_like($s) . "%"))) { exit(1); } } exit(0);'
+      - name: no production URL is left in any decoded form
+        php: 'global $wpdb; foreach (array("https://shop.example.com/", "https:\\/\\/shop.example.com\\/", "https%3A%2F%2Fshop.example.com", "//shop.example.com/wp-content") as $s) { if ($wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_value LIKE %s", "%" . $wpdb->esc_like($s) . "%")) || $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_content LIKE %s OR guid LIKE %s", "%" . $wpdb->esc_like($s) . "%", "%" . $wpdb->esc_like($s) . "%"))) { exit(1); } } exit(0);'
+    expect: *four-gates
+    forbid: [url.production, url.production-siteurl]
+
+  - id: r10
+    kind: copy
+    stack: woocommerce
+    title: multisite in subdirectories with blogs 1, 2 and 11, Woo on blog 2
+    input: r10
+    run: staging-wp
+    multisite: subdirectory
+    setup: [staging-site]
+    command: *wp-copy
+    output: *wp-out
+    verify: *wp-verify
+    boot: true
+    drill: true
+    wp_checks:
+      - name: wp_blogs names the staging host for every blog
+        php: 'global $wpdb; $n = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->blogs} WHERE domain <> \"staging-wp\""); exit($n > 0 ? 1 : 0);'
+    expect: *four-gates
+    forbid: *clean-copy
+
+  - id: r11
+    kind: copy
+    stack: wordpress
+    title: multisite on subdomains with a mapped domain on blog 3
+    input: r11
+    run: staging-wp
+    multisite: subdomain
+    setup: [staging-site]
+    output: *wp-out
+    verify: *wp-verify
+    boot: true
+    drill: true
+    cases:
+      - name: mapped
+        command: [copy, --from, "${in}/db.sql", --to, "${site}", --url, "${staging_url}", --url-map, "fr.shop.example.com=fr.staging-wp,gifts.example.net=gifts.staging-wp", --confirm-target, "${confirm}", --yes, --json]
+        wp_checks:
+          - name: each blog's host is its own staging host
+            php: 'global $wpdb; $want = array("staging-wp", "fr.staging-wp", "gifts.staging-wp"); $got = $wpdb->get_col("SELECT domain FROM {$wpdb->blogs} ORDER BY blog_id"); exit($got === $want ? 0 : 1);'
+        expect: *four-gates
+        forbid: [url.production, url.production-siteurl]
+      - name: unmapped
+        setup: [snapshot]
+        command: *wp-copy
+        expect: {exit_code: 2, error_code: url-map, unchanged: true}
+
+  - id: r12
+    kind: copy
+    stack: woocommerce
+    title: live keys everywhere, test keys in a second gateway
+    input: r12
+    run: staging-wp
+    setup: [staging-site]
+    command: [copy, --from, "${in}/db.sql", --to, "${site}", --url, "${staging_url}", --confirm-target, "${confirm}", --target-is-staging, "${confirm}", --yes, --json]
+    output: *wp-out
+    verify: *wp-verify
+    boot: true
+    drill: true
+    wp_checks:
+      - name: Stripe runs in test mode with the test keys
+        php: '$s = get_option("woocommerce_stripe_settings"); exit(is_array($s) && $s["testmode"] === "yes" ? 0 : 1);'
+    expect: *four-gates
+    forbid: [key.stripe-live, key.paypal-live, key.mailgun-live, key.twilio-live, key.stripe-webhook-live, key.live-mode, side-effect.gateways]
+
+  - id: r15
+    kind: copy
+    stack: laravel
+    title: Laravel on MySQL with jobs, notifications, sessions, .env keys and an encrypted cast
+    input: r15
+    run: laravel
+    setup: [laravel-site]
+    command: [copy, --from, "${in}/db.sql", --to, "${site}", --url, "http://laravel", --confirm-target, laravel, --yes, --json]
+    output: {db: laravel-db, tree: laravel-site}
+    verify: ["${site}", --from, "${in}/db.sql", --fail-on, medium, --json]
+    expect:
+      exit_code: 0
+      canaries: 0
+      integrity: true
+      verify_exit: 0
+      target_state: replaced
+      finding_ids: [data.encrypted]
+    forbid: [exact.survivors, pii.email, key.stripe-live, key.ses-live]
+    partial:
+      - "mail captured by Echo: the fixture app has no Laravel framework installed, so its mailer can't run"
+      - "gate 3 (drill): the Laravel app has no queue worker or scheduler to drill"
+
+  - id: r16
+    kind: copy
+    stack: sql
+    title: generic SQL CRM with email as a join key and a column the config forgot
+    input: r16
+    joins:
+      - {left: contacts.email, right: deals.contact_email}
+      - {left: contacts.email, right: tickets.requester_email}
+    cases:
+      - name: stops
+        command: [copy, --from, "${in}/db.sql", --to, "${work}/out.sql", --config, "${in}/files/roadie.yaml", --json]
+        expect: {exit_code: 1, error_code: uncovered, finding_ids: [uncovered-column], no_finished_output: true}
+      - name: allowed
+        command: [copy, --from, "${in}/db.sql", --to, "${work}/out.sql", --config, "${in}/files/roadie.yaml", --allow-uncovered, --json]
+        output: {db: "${work}/out.sql"}
+        verify: ["${work}/out.sql", --config, "${in}/files/roadie.yaml", --json]
+        expect: {exit_code: 1, finding_ids: [uncovered-column], rows_only: true, verify_exit: 1}
+
+  - id: r17
+    kind: copy
+    stack: woocommerce
+    title: large generated dump with a 50 MB row, hex blobs, a DELIMITER trigger and canaries past 4 GiB
+    input: r17
+    perf: true
+    command: [copy, --from, "${in}/db.sql.gz", --to, "${work}/out.sql.gz", --url, "${staging_url}", --keep-routines, --json]
+    output: {db: "${work}/out.sql.gz"}
+    verify: ["${work}/out.sql.gz", --from, "${in}/db.sql.gz", --fail-on, medium, --json]
+    expect: {exit_code: 0, canaries: 0, integrity: true, verify_exit: 0}
+    forbid: [exact.survivors, pii.email]
+    partial:
+      - "gate 2 replays a sample of the serialized cells (testbed/gen lists every 1,000th) through PHP, not all of them"
+
+  - id: r18
+    kind: copy
+    stack: woocommerce
+    title: every dump format Roadie reads, imported into MySQL 8.4 and MariaDB 11.4
+    input: r18
+    import_into: [mysql, mariadb]
+    cases:
+      - name: mysqldump
+        command: *dump-copy
+        output: {db: "${work}/out.sql"}
+        verify: *dump-verify
+        expect: {exit_code: 0, canaries: 0, integrity: true, verify_exit: 0}
+      - name: skip-extended-insert
+        command: [copy, --from, "${in}/skip-extended.sql", --to, "${work}/out.sql", --url, "${staging_url}", --json]
+        output: {db: "${work}/out.sql"}
+        verify: ["${work}/out.sql", --from, "${in}/skip-extended.sql", --fail-on, medium, --json]
+        expect: {exit_code: 0, canaries: 0, integrity: true, verify_exit: 0}
+      - name: mariadb-dump
+        command: [copy, --from, "${in}/mariadb.sql", --to, "${work}/out.sql", --url, "${staging_url}", --json]
+        output: {db: "${work}/out.sql"}
+        verify: ["${work}/out.sql", --from, "${in}/mariadb.sql", --fail-on, medium, --json]
+        expect: {exit_code: 0, canaries: 0, integrity: true, verify_exit: 0}
+      - name: phpmyadmin
+        command: [copy, --from, "${in}/phpmyadmin.sql", --to, "${work}/out.sql", --url, "${staging_url}", --json]
+        output: {db: "${work}/out.sql"}
+        verify: ["${work}/out.sql", --from, "${in}/phpmyadmin.sql", --fail-on, medium, --json]
+        expect: {exit_code: 0, canaries: 0, integrity: true, verify_exit: 0}
+      - name: latin1
+        command: [copy, --from, "${in}/latin1.sql", --to, "${work}/out.sql", --url, "${staging_url}", --json]
+        output: {db: "${work}/out.sql"}
+        verify: ["${work}/out.sql", --from, "${in}/latin1.sql", --fail-on, medium, --json]
+        expect: {exit_code: 0, canaries: 0, integrity: true, verify_exit: 0}
+      # Written at make up by the real tools in the containers (make formats).
+      - name: real-mysqldump
+        command: [copy, --from, "${in}/tool-mysqldump.sql", --to, "${work}/out.sql", --url, "${staging_url}", --json]
+        output: {db: "${work}/out.sql"}
+        verify: ["${work}/out.sql", --from, "${in}/tool-mysqldump.sql", --fail-on, medium, --json]
+        expect: {exit_code: 0, canaries: 0, integrity: true, verify_exit: 0}
+      - name: real-mariadb-dump
+        command: [copy, --from, "${in}/tool-mariadb-dump.sql", --to, "${work}/out.sql", --url, "${staging_url}", --json]
+        output: {db: "${work}/out.sql"}
+        verify: ["${work}/out.sql", --from, "${in}/tool-mariadb-dump.sql", --fail-on, medium, --json]
+        expect: {exit_code: 0, canaries: 0, integrity: true, verify_exit: 0}
+      - name: real-wp-db-export
+        command: [copy, --from, "${in}/tool-wp-db-export.sql", --to, "${work}/out.sql", --url, "${staging_url}", --json]
+        output: {db: "${work}/out.sql"}
+        verify: ["${work}/out.sql", --from, "${in}/tool-wp-db-export.sql", --fail-on, medium, --json]
+        expect: {exit_code: 0, canaries: 0, integrity: true, verify_exit: 0}
+
+  - id: r19
+    kind: copy
+    stack: woocommerce
+    title: copy from the sshd container; no raw production data on the local disk
+    input: r01
+    setup: [prod-db]
+    cases:
+      - name: watched
+        command: [copy, --from, "${ssh_source}", --to, "${work}/out.sql", --url, "${staging_url}", --json]
+        action: {name: watch}
+        output: {db: "${work}/out.sql"}
+        verify: *dump-verify
+        expect: {exit_code: 0, canaries: 0, integrity: true, verify_exit: 0}
+      - name: unknown-host-key
+        setup: [unknown-host]
+        command: [copy, --from, "${ssh_source}", --to, "${work}/out.sql", --url, "${staging_url}", --json]
+        expect: {exit_code: 3, error_code: ssh-host-key, no_finished_output: true}
+
+  - id: r28
+    kind: copy
+    stack: sql
+    title: PostgreSQL pg_dump -Fp of a Prisma-style schema with columns config
+    input: r28
+    command: [copy, --from, "${in}/db.sql", --to, "${work}/out.sql", --config, "${in}/files/roadie.yaml", --json]
+    output: {db: "${work}/out.sql"}
+    verify: ["${work}/out.sql", --from, "${in}/db.sql", --config, "${in}/files/roadie.yaml", --fail-on, medium, --json]
+    expect: {exit_code: 0, canaries: 0, rows_only: true, verify_exit: 0}
+    forbid: [exact.survivors, pii.email]
+
+  # --------------------------------------------------------------- prepare
+  - id: r13
+    kind: prepare
+    stack: woocommerce
+    title: side effects armed on a running staging, traffic during prepare, host cron every 30 s
+    input: r13
+    run: staging-wp
+    setup: [staging-site, staging-db, config, host-cron, traffic]
+    command: *prepare
+    output: *wp-out
+    verify: *wp-verify
+    boot: true
+    drill: true
+    expect: {exit_code: 0, canaries: 0, integrity: true, sinkhole: 0, verify_exit: 0, target_state: replaced}
+    forbid: [side-effect.mail, side-effect.cron, side-effect.action-scheduler, side-effect.webhooks, side-effect.gateways]
+
+  - id: r14
+    kind: prepare
+    stack: woocommerce
+    title: wp-config traps (environment, cron, getenv, CRLF and BOM, production DB and Redis hosts)
+    input: r14
+    run: staging-wp
+    setup: [staging-site, staging-db, config, traffic]
+    command: *prepare
+    output: *wp-out
+    # DB_HOST's fallback and WP_REDIS_HOST still name production, so a
+    # fresh verify fails on config.points-at-production by design.
+    verify: *wp-verify
+    wp_checks:
+      - name: the environment is staging and WP-Cron is off (defines replaced in place)
+        php: 'exit(wp_get_environment_type() === "staging" && defined("DISABLE_WP_CRON") && DISABLE_WP_CRON ? 0 : 1);'
+      - name: the Echo connector is active
+        php: 'exit(file_exists(WPMU_PLUGIN_DIR . "/rhythm-echo.php") ? 0 : 1);'
+      - name: wp-config.php still starts with its BOM and keeps CRLF line endings
+        php: '$c = file_get_contents(ABSPATH . "wp-config.php"); exit(strncmp($c, "\xEF\xBB\xBF", 3) === 0 && substr_count($c, "\r\n") > 10 && substr_count($c, "WP_ENVIRONMENT_TYPE") === 1 ? 0 : 1);'
+    expect:
+      exit_code: 1
+      canaries: 0
+      integrity: true
+      sinkhole: 0
+      verify_exit: 1
+      finding_ids: [config.points-at-production]
+    forbid: [config.environment, side-effect.cron]
+
+  - id: r21
+    kind: prepare
+    stack: woocommerce
+    title: prepare twice, then with another stable key
+    input: r01
+    run: staging-wp
+    stable_key: true
+    setup: [staging-site, staging-db, config]
+    output: *wp-out
+    verify: *wp-verify
+    cases:
+      - name: first
+        command: *prepare
+        expect: {exit_code: 0, canaries: 0, integrity: true, verify_exit: 0, target_state: replaced}
+      - name: twice
+        command: *prepare
+        action: {name: twice}
+        expect: {exit_code: 0}
+      - name: rekey
+        command: *prepare
+        action: {name: rekey}
+        expect: {exit_code: 0}
+
+  # ------------------------------------------------------------------- env
+  - id: r20
+    kind: env
+    stack: woocommerce
+    title: Ctrl-C at 40%, SSH cut at 60%, disk full
+    input: r01
+    setup: [prod-db]
+    cases:
+      - name: interrupt
+        command: *dump-copy
+        action: {name: interrupt, at: 0.4}
+        expect: {exit_code: 130, target_state: untouched, no_finished_output: true}
+      - name: ssh-cut
+        command: [copy, --from, "${ssh_source}", --to, "${work}/out.sql", --url, "${staging_url}", --json]
+        action: {name: ssh-cut, at: 0.6}
+        expect: {exit_code: 3, target_state: untouched, no_finished_output: true}
+      - name: disk-full
+        command: *dump-copy
+        action: {name: disk-full}
+        expect: {exit_code: 3, error_code: disk-full, target_state: untouched, no_finished_output: true}
+
+  - id: r22
+    kind: env
+    stack: woocommerce
+    title: Echo down while sealed
+    input: r01
+    run: staging-wp
+    setup: [staging-site, staging-db, config, echo-down]
+    command: *prepare
+    drill: true
+    wp_checks:
+      - name: the connector fails closed (wp_mail returns false)
+        php: 'exit(wp_mail("drill@example.invalid", "testbed r22", "testbed r22") ? 1 : 0);'
+    expect: {exit_code: 1, sinkhole: 0, finding_ids: [side-effect.mail]}
+
+  - id: r23
+    kind: env
+    stack: woocommerce
+    title: egress drill on a prepared staging (wp_mail, wp_remote_post, cURL, mail(), SMTP socket, fsockopen)
+    input: r01
+    run: staging-wp
+    setup: [staging-site, egress-plugin]
+    command: *wp-copy
+    action: {name: egress}
+    drill: true
+    expect: {exit_code: 0, sinkhole: 0}
+
+  - id: r24
+    kind: env
+    stack: wordpress
+    title: hostile dumps
+    input: r24
+    run: staging-wp
+    setup: [staging-site]
+    absent: ["/tmp/roadie-r24-*"]
+    cases:
+      - name: bang
+        setup: [snapshot]
+        command: [copy, --from, "${in}/bang.sql", --to, "${site}", --url, "${staging_url}", --confirm-target, "${confirm}", --yes, --json]
+        expect: {exit_code: 3, error_code: dump-refused, unchanged: true}
+      - name: system
+        setup: [snapshot]
+        command: [copy, --from, "${in}/system.sql", --to, "${site}", --url, "${staging_url}", --confirm-target, "${confirm}", --yes, --json]
+        expect: {exit_code: 3, error_code: dump-refused, unchanged: true}
+      - name: source
+        setup: [snapshot]
+        command: [copy, --from, "${in}/source.sql", --to, "${site}", --url, "${staging_url}", --confirm-target, "${confirm}", --yes, --json]
+        expect: {exit_code: 3, error_code: dump-refused, unchanged: true}
+      - name: use-mysql
+        setup: [snapshot]
+        command: [copy, --from, "${in}/usemysql.sql", --to, "${site}", --url, "${staging_url}", --confirm-target, "${confirm}", --yes, --json]
+        expect: {exit_code: 3, error_code: dump-refused, unchanged: true}
+      # GRANT is dropped with a plan line (PRD 10.5), not refused.
+      - name: grant
+        command: [copy, --from, "${in}/grant.sql", --to, "${site}", --url, "${staging_url}", --confirm-target, "${confirm}", --yes, --json]
+        wp_checks:
+          - name: no grant reached the server
+            php: 'global $wpdb; $g = implode("\n", $wpdb->get_col("SHOW GRANTS")); exit(stripos($g, "ALL PRIVILEGES ON *.*") === false ? 0 : 1);'
+        expect: {exit_code: 0}
+      - name: load-data
+        setup: [snapshot]
+        command: [copy, --from, "${in}/loaddata.sql", --to, "${site}", --url, "${staging_url}", --confirm-target, "${confirm}", --yes, --json]
+        expect: {exit_code: 3, error_code: dump-refused, unchanged: true}
+      - name: into-outfile
+        setup: [snapshot]
+        command: [copy, --from, "${in}/outfile.sql", --to, "${site}", --url, "${staging_url}", --confirm-target, "${confirm}", --yes, --json]
+        expect: {exit_code: 3, error_code: dump-refused, unchanged: true}
+      - name: trigger
+        setup: [snapshot]
+        command: [copy, --from, "${in}/trigger.sql", --to, "${site}", --url, "${staging_url}", --confirm-target, "${confirm}", --yes, --json]
+        expect: {exit_code: 3, error_code: dump-refused, unchanged: true}
+      - name: gzip-bomb
+        setup: [snapshot]
+        make: gzip-bomb
+        command: [copy, --from, "${in}/bomb.sql.gz", --to, "${site}", --url, "${staging_url}", --confirm-target, "${confirm}", --yes, --json]
+        expect: {exit_code: 3, error_code: dump-bomb, unchanged: true}
+      - name: wpress
+        setup: [snapshot]
+        make: wpress
+        command: [copy, --from, "${in}/archive.sql", --to, "${site}", --url, "${staging_url}", --confirm-target, "${confirm}", --yes, --json]
+        expect: {exit_code: 2, error_code: dump-format, unchanged: true}
+
+  - id: r25
+    kind: env
+    stack: woocommerce
+    title: production refusals before any write
+    input: r01
+    run: staging-wp
+    setup: [staging-site, staging-db, config]
+    cases:
+      - name: production-match
+        setup: [production-config, snapshot]
+        command: [copy, --from, "${in}/db.sql", --to, "${site}", --config, "${work}/roadie.yaml", --url, "${staging_url}", --confirm-target, "${confirm}", --yes, --json]
+        expect: {exit_code: 3, error_code: target-is-production, unchanged: true}
+      - name: same-database
+        setup: [snapshot]
+        command: [copy, --from, "${staging_dsn}", --to, "${site}", --url, "${staging_url}", --confirm-target, "${confirm}", --yes, --json]
+        expect: {exit_code: 3, error_code: target-is-source, unchanged: true}
+      - name: says-production
+        setup: [env-production, snapshot]
+        command: *wp-copy
+        expect: {exit_code: 3, error_code: target-says-production, unchanged: true}
+      # The override passes this guard, so the prepare below stops at the
+      # next one: the copy still calls itself production.
+      - name: says-production-override
+        setup: [env-production, snapshot]
+        command: [prepare, "${site}", --target-is-staging, "${confirm}", --confirm-target, "${confirm}", --json]
+        expect: {exit_code: 3, error_code: target-holds-production, unchanged: true}
+      - name: holds-production
+        setup: [snapshot]
+        command: [prepare, "${site}", --confirm-target, "${confirm}", --json]
+        expect: {exit_code: 3, error_code: target-holds-production, unchanged: true}
+      - name: wrong-confirm-target
+        setup: [snapshot]
+        command: [prepare, "${site}", --production-url, "${production_url}", --confirm-target, shop.example.com, --json]
+        expect: {exit_code: 2, error_code: prepare-confirm, unchanged: true}
+      - name: yes-without-confirm
+        setup: [snapshot]
+        command: [prepare, "${site}", --production-url, "${production_url}", --yes, --json]
+        expect: {exit_code: 2, error_code: prepare-confirm, unchanged: true}
+
+  - id: r26
+    kind: env
+    stack: woocommerce
+    title: SIGKILL at random points, 50 runs; verify never passes on a partial state
+    input: r01
+    cases:
+      - name: sigkill
+        command: *dump-copy
+        action: {name: sigkill, runs: 50}
+        verify: *dump-verify
+        expect: {exit_code: 0}
+
+  - id: r27
+    kind: env
+    stack: woocommerce
+    title: plan with a SELECT-only user and a file system snapshot
+    input: r01
+    run: staging-wp
+    setup: [staging-site, staging-db, config, readonly-user, snapshot]
+    command: [plan, "${site}", --production-url, "${production_url}", --config, "${work}/roadie.yaml", --json]
+    expect: {exit_code: 0, unchanged: true}
+
+  # ---------------------------------------------------------- verify (bad)
+  - id: v01
+    kind: verify
+    stack: woocommerce
+    title: a staging made by wp search-replace only
+    input: v01
+    command: [verify, "${in}/db.sql", --production, shop.example.com, --json]
+    expect: {exit_code: 1, finding_ids: [pii.email, key.stripe-live, url.production]}
+
+  - id: v02
+    kind: verify
+    stack: woocommerce
+    title: a generic tool skipped serialized and JSON values
+    input: v02
+    command: [verify, "${in}/db.sql", --production, shop.example.com, --json]
+    expect:
+      exit_code: 1
+      finding_ids: [pii.email, pii.ip]
+      locations: [wp_usermeta.meta_value, wp_actionscheduler_actions.args, wp_woocommerce_sessions.session_value]
+
+  - id: v03
+    kind: verify
+    stack: woocommerce
+    title: PII only in free text
+    input: v03
+    command: [verify, "${in}/db.sql", --production, shop.example.com, --json]
+    expect: {exit_code: 1, finding_ids: [pii.email]}
+
+  - id: v04
+    kind: verify
+    stack: woocommerce
+    title: clean data, live key only in wp-config.php
+    input: v04
+    setup: [site-dir, staging-db]
+    command: [verify, "${site}", --production, shop.example.com, --json]
+    expect: {exit_code: 1, finding_ids: [key.stripe-live], locations: ["file:wp-config.php"]}
+
+  - id: v05
+    kind: verify
+    stack: woocommerce
+    title: indexable and wired to the world
+    input: v05
+    setup: [site-dir, staging-db]
+    command: [verify, "${site}", --production, shop.example.com, --json]
+    expect: {exit_code: 1, finding_ids: [search.indexable, side-effect.gateways, side-effect.webhooks, side-effect.cron]}
+
+  - id: v06
+    kind: verify
+    stack: woocommerce
+    title: debug.log, wc-logs and an UpdraftPlus backup
+    input: v06
+    setup: [site-dir, staging-db]
+    command: [verify, "${site}", --production, shop.example.com, --json]
+    expect:
+      exit_code: 1
+      finding_ids: [uploads.personal]
+      locations:
+        - file:wp-content/debug.log
+        - file:wp-content/uploads/wc-logs/stripe-2026-09-30-4f1d2c.log
+        - file:wp-content/updraft/backup_2026-09-30-0300_Bean_Leaf_Coffee_1a2b3c4d5e6f-db.gz
+
+  - id: v07
+    kind: verify
+    stack: woocommerce
+    title: sha256 and md5 of real emails, verify --from prod
+    input: v07
+    command: [verify, "${in}/db.sql", --from, "${in}/prod.sql", --json]
+    expect: {exit_code: 1, finding_ids: [exact.survivors]}
+
+  # --------------------------------------------------------- verify (good)
+  - id: g01
+    kind: verify
+    stack: woocommerce
+    title: a clean small business with its own info@ on the allow list
+    input: g01
+    good: true
+    command: [verify, "${in}/db.sql", --config, "${in}/files/roadie.yaml", --fail-on, low, --json]
+    expect: {exit_code: 0}
+
+  - id: g02
+    kind: verify
+    stack: woocommerce
+    title: Woo sample data and WP-CLI users at example.com and .test
+    input: g02
+    good: true
+    command: [verify, "${in}/db.sql", --production, shop.example.com, --fail-on, low, --json]
+    expect: {exit_code: 0}
+
+  - id: g03
+    kind: verify
+    stack: woocommerce
+    title: CJK and RTL fake names, Arabic-Indic digits, fiction phones, IBAN-shaped references
+    input: g03
+    good: true
+    command: [verify, "${in}/db.sql", --production, shop.example.com, --fail-on, low, --json]
+    expect: {exit_code: 0}
+
+  - id: g04
+    kind: verify
+    stack: laravel
+    title: a clean Laravel app with test keys, MAIL_MAILER=log and APP_ENV=staging
+    input: g04
+    good: true
+    setup: [site-dir, laravel-db]
+    command: [verify, "${site}", --fail-on, low, --json]
+    expect: {exit_code: 0}
+
+  - id: g05
+    kind: verify
+    stack: mixed
+    title: every r-scenario output verified again in a fresh process, report check valid
+    from_outputs: true
+    good: true
+    command: [verify, "${output}", --fail-on, medium, --json]
+    action: {name: verify-all}
+    expect: {exit_code: 0}

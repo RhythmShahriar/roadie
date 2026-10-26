@@ -8,6 +8,8 @@
 #   make up                build, start, install the sites, seed the canaries and keys
 #   make down              stop and delete everything, volumes included
 #   make reset ID=r01      reseed one scenario and load its input, clear the logs
+#   make formats           r18's shop dumped by the real mysqldump, mariadb-dump
+#                          and wp db export (make up runs it)
 #   make seal              TestNetworkIsSealed against the running testbed
 #   make oracle ID=r01 DUMP=out.sql [TREE=dir]   judge an output
 #   make bench / reproduce the benchmark, once or twice with a diff
@@ -42,12 +44,12 @@ PHP_IMAGE := php:8.3-cli@sha256:98d555ff97b3865140ad31032508c3ca089fa97a8944b14c
 PHP       := docker run --rm -i --network none $(PHP_IMAGE) php
 SEED      ?= 1
 
-.PHONY: up down reset seal oracle bench reproduce binaries keys seed install load status logs
+.PHONY: up down reset seal oracle bench reproduce binaries keys seed install load formats status logs
 
 up: binaries keys seed ## build, start and seed everything
 	$(COMPOSE) build -q sinkhole prod-wp laravel sshd
 	$(COMPOSE) up -d --wait
-	$(MAKE) --no-print-directory install load ID=r01
+	$(MAKE) --no-print-directory install formats load ID=r01
 	@echo "prod-wp:    http://127.0.0.1:18920/"
 	@echo "staging-wp: http://127.0.0.1:18921/"
 	@echo "Laravel:    http://127.0.0.1:18922/"
@@ -101,6 +103,22 @@ load:
 		docker exec -i roadie-testbed-prod-db-1 sh -c 'MYSQL_PWD="$$MYSQL_PASSWORD" exec mysql -ushop shop' < $(RUNTIME)/fixtures/$(ID)/db.sql; \
 	fi
 	@echo "loaded $(ID)"
+
+# r18's real-tool cases: the shop loaded into a scratch database "formats"
+# on prod-db (MySQL 8.4) and staging-db (MariaDB 11.4), then dumped by
+# each tool as a user would run it. Root's password comes from the
+# container's own environment, never a command line.
+FORMATS := $(RUNTIME)/fixtures/r18
+formats: ## r18: the same shop dumped by mysqldump, mariadb-dump and wp db export
+	@test -f $(FORMATS)/db.sql || { echo "no $(FORMATS)/db.sql: run make seed" >&2; exit 1; }
+	@docker exec roadie-testbed-prod-db-1 sh -c 'MYSQL_PWD="$$MYSQL_ROOT_PASSWORD" exec mysql -uroot -e "DROP DATABASE IF EXISTS formats; CREATE DATABASE formats; GRANT ALL ON formats.* TO shop"'
+	@docker exec -i roadie-testbed-prod-db-1 sh -c 'MYSQL_PWD="$$MYSQL_PASSWORD" exec mysql -ushop formats' < $(FORMATS)/db.sql
+	@umask 077; docker exec roadie-testbed-prod-db-1 sh -c 'MYSQL_PWD="$$MYSQL_PASSWORD" exec mysqldump -ushop --single-transaction --no-tablespaces --hex-blob formats' > $(FORMATS)/tool-mysqldump.sql
+	@umask 077; docker exec -u roadie -e WORDPRESS_DB_NAME=formats roadie-testbed-sshd-1 wp --path=/var/www/html db export - --skip-plugins --skip-themes > $(FORMATS)/tool-wp-db-export.sql
+	@docker exec roadie-testbed-staging-db-1 sh -c 'MYSQL_PWD="$$MARIADB_ROOT_PASSWORD" exec mariadb -uroot -e "DROP DATABASE IF EXISTS formats; CREATE DATABASE formats; GRANT ALL ON formats.* TO shop"'
+	@docker exec -i roadie-testbed-staging-db-1 sh -c 'MYSQL_PWD="$$MARIADB_PASSWORD" exec mariadb -ushop formats' < $(FORMATS)/db.sql
+	@umask 077; docker exec roadie-testbed-staging-db-1 sh -c 'MYSQL_PWD="$$MARIADB_PASSWORD" exec mariadb-dump -ushop --single-transaction formats' > $(FORMATS)/tool-mariadb-dump.sql
+	@echo "formats: tool-mysqldump.sql, tool-mariadb-dump.sql and tool-wp-db-export.sql in $(FORMATS)/"
 
 reset: ## reseed one scenario (ID=r01), load its input and clear the sinkhole and stub logs
 	@test -n "$(ID)" || { echo "usage: make reset ID=r01" >&2; exit 2; }
