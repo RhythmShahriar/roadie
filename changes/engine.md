@@ -608,9 +608,9 @@ It hasn't run yet: the schema files in `profile/testdata/schemas/` were written 
 
 - A dump file is read twice. A stream (stdin, or an ssh or alias site that can stream its export) is copied to the encrypted spool in `<cache>/roadie/spool/` (folder 0700) while pass 1 reads it; pass 2 reads the spool. The spool is removed on success, error and Ctrl-C. A site or database without a stream is exported once per pass.
 - Pass 1 reads the schema, row counts, option names, siteurl and home per blog, multisite domains, HPOS mode, kept users, administrators, form definitions, order address part lengths, the uncovered-column samples and the known-value set for exact-mode verify. The rules are then compiled with what it found.
-- Pass 2 runs `--jobs` workers (default the CPUs, at most 8) with an ordered writer (window 2 x jobs batches); output order is input order.
-- `--one-pass` reads once: rules from every profile of the stack, URLs rewritten only for `production:` and `url_map` entries, no names from the known set in free text. It refuses `keep_users` (`--one-pass can't keep users: a dump has their user meta before the users table. Drop --one-pass or keep_users.`) and `--site` (`--one-pass can't limit the copy to --site: the blogs are known only after the whole dump is read. Drop one of them.`).
-- `--max-memory` sets Go's soft memory limit for the run.
+- Pass 2 runs `--jobs` workers (default the CPUs, at most 8) with an ordered writer; output order is input order. The window holds at most 2 x jobs batches and at most 96 MiB of batch memory (rows and values counted as held in memory), or a quarter of `--max-memory` when that is smaller; a batch larger than the window still goes when nothing else is in flight.
+- `--one-pass` reads once: rules from every profile of the stack, URLs rewritten only for `production:` and `url_map` entries, no names from the known set in free text. It refuses `keep_users` (`--one-pass can't keep users: a dump has their user meta before the users table. Drop --one-pass or keep_users.`) and `--site` (`--one-pass can't limit the copy to --site: the blogs are known only after the whole dump is read. Drop one of them.`). Its uncovered-column check runs after pass 2 has written: a dump file is removed and the message ends `The target is untouched.` while a site or database target the abort leaves mixed reports `mixed` in `data.target_state` and in the error; its message ends `The target is in a mixed state and may hold the column as it was in production: run the same command again once it has a rule, or without --one-pass to check before writing.` (`the columns as they were` and `they have` for several).
+- `--max-memory` sets Go's soft memory limit for the run. Without it the run sets 300 MiB (PRD 22.3), unless `GOMEMLIMIT` already set one; the limit in place before the run is put back after.
 
 ### Uncovered columns
 
@@ -631,13 +631,15 @@ Finding `uncovered-column` (medium): `wp_loyalty_members.email looks personal (9
 
 `copy --site 2` keeps the main site and blog 2: the tables of every other blog are dropped from the copy and listed with action `drop` in the plan and the report. A blog the network doesn't have: `--site 7: this network has no blog 7. Its blogs are 1, 2 and 3.` (exit 2).
 
+Users are limited to the members of the chosen blogs and the main site (a `<prefix>capabilities` or `<prefix><N>_capabilities` user meta row with a role) plus the network's super admins (`site_admins` in sitemeta) and kept users. Every other user and their user meta rows are dropped; the report counts them as rule `site-users`, action `delete-row`, on `<prefix>users`.`ID` and `<prefix>usermeta`.`user_id`. A dump without a usermeta table keeps every user, since nothing says who belongs where.
+
 ### Values
 
 - delete-row drops the row; fake, blank, null (blank when the column is NOT NULL), fixed and password replace the whole value. An empty value is never faked.
 - Every other string goes through the nested reader (serialized PHP and JSON): path rules per leaf, the free-text scrubber for text rules, then the URL rewrite and the live-key scan. A live key becomes `keys.test_keys` or is blanked (`keys.mode`).
 - A value shaped like serialized data that doesn't parse and holds personal-looking text is blanked with finding `data.unparseable` (medium); `on_unparseable: fail` stops: `data.unparseable: a value at wp_options widget_contact looks serialized, doesn't parse and holds personal-looking text; on_unparseable: fail stops here. Fix the value, or set on_unparseable: blank to blank such values.` (exit 3).
 - Kept users (`keep_users`): their users, usermeta and HPOS orders (with addresses, meta and operational data) stay as they were; finding `info.kept-users`: `1 kept users left as they are (keep_users)`. `--admin-password-env ROADIE_X` sets their password; errors: `--admin-password-env names ADMIN_PW; only ROADIE_ variables are read. Rename it ROADIE_ADMIN_PW.`, `--admin-password-env names ROADIE_X, which isn't set. Set it in the environment, or drop the flag.`, `--admin-password-env sets the password of kept users; keep_users names none.`
-- Row fixes: Action Scheduler args (JSON up to 191 bytes in `args`, longer in `extended_args` with its md5 in `args`) and the HPOS address index (`_billing_address_index` and `_shipping_address_index` rebuilt from the fake parts).
+- Row fixes: Action Scheduler args (JSON up to 191 bytes in `args`, longer in `extended_args` with its md5 in `args`) and the HPOS address index (`_billing_address_index` and `_shipping_address_index` rebuilt from the fake parts; an index with a part of 254 bytes or more keeps its own text rule).
 
 ## 5. `prepare`
 
@@ -667,7 +669,7 @@ Without `data`, `keys` and `urls`, only the tables the kill switch touches are e
   - wrong: `prepare-confirm: --confirm-target shop.com doesn't name this target, which is staging.shop.test. Pass --confirm-target staging.shop.test (the site's host) to go on.` (also on a terminal)
 - On a terminal, `prepare` always asks (also with `--yes`): `prepare rewrites this site's database while it runs. Visitors see a maintenance page for about a minute. Type the site's host to go on (staging.shop.test):`. Another answer: `prepare-confirm: the answer wasn't staging.shop.test, so nothing was changed.`
 - On a terminal, `copy` asks `Replace the database of /var/www/staging? [y/N]` unless `--yes`. No: `prepare-confirm: /var/www/staging wasn't replaced; nothing was changed.`
-- A staging that still calls itself by a URL that may be production's (`target-holds-production`) is asked about once on a terminal: `/var/www/staging still calls itself https://shop.com. Is https://shop.com the live site? Type yes to go on:`. `yes` takes that URL as `--production-url` and the guards run again; any other answer, or no terminal, keeps the refusal.
+- A staging that still calls itself by a URL that may be production's (`target-holds-production`) is asked about once on a terminal: `/var/www/staging still calls itself https://shop.com. Is https://shop.com the live site? Type yes to go on:`. `yes` takes that URL as `--production-url` and the guards run again; any other answer, or no terminal, keeps the refusal. The URL comes from the target's own data, so control and format characters (escape sequences, bidi overrides) are removed and it ends at the first space, at most 512 bytes, before the question shows it.
 - A dump file or stdout target is never asked about.
 
 ## 7. Kill switch, exposure and verify in a run
@@ -697,16 +699,28 @@ Without `data`, `keys` and `urls`, only the tables the kill switch touches are e
 
 Measured on 2026-10-26 on an i9-9900K (8 cores, 16 threads) while the other lanes built and tested on the same machine (load average 25 to 114), so the speeds are low bounds, not the PRD 22.3 figures. MB is the generated values' size, which runs about 20% under the asked size.
 
+Before the memory work:
+
 | Run | Load | Index pass | Transform pass | Peak RSS |
 |---|---|---|---|---|
-| `BenchmarkCopy200MB`, hashed Known in a map | 25 | 44 MB/s | 83 MB/s | 639 MB |
-| `TestCopyLarge` 200 MB, hashed Known in a map | 40 | 16 MB/s | 18 MB/s | 702 MB |
-| `TestCopyLarge` 2 GB, hashed Known in a map | 40 | 17 MB/s | 31 MB/s | 1,117 MB |
-| `TestCopyLarge` 200 MB, Known as a sorted slice | 114 | 14 MB/s | 20 MB/s | 739 MB |
-| `TestCopyLarge` 2 GB, Known as a sorted slice | 114 | 8 MB/s | 14 MB/s | 1,291 MB |
+| `BenchmarkCopy200MB` | 25 | 44 MB/s | 83 MB/s | 639 MB |
+| `TestCopyLarge` 200 MB | 40 | 16 MB/s | 18 MB/s | 702 MB |
+| `TestCopyLarge` 2 GB | 40 | 17 MB/s | 31 MB/s | 1,117 MB |
 | `BenchmarkCopy200MB` with `--max-memory 300MiB` | 40 | 13 MB/s | 14 MB/s | 320 MB |
 
-PRD 22.3's targets (index 300 MB/s, transform 100 MB/s, RSS 300 MB at 8 jobs and within 1.5x between 200 MB and 2 GB) are not met in these runs. What drives the numbers: the batches in flight (a window of 2 x 8 batches of 4 MB of SQL, held as one `core.Value` per field) and the Go heap's headroom set the base RSS; the per-order address part lengths (8-byte key, 22 bytes of lengths) and the known-value set grow with the shop; the index pass shares its goroutine with the generator. `--max-memory 300MiB` holds RSS at about 320 MB at a cost in speed. The numbers need a quiet machine and the real reader and faker at integration.
+After it (byte-bounded window, 300 MiB default soft limit, address lengths in a sorted slice, meta rules found by their where value):
+
+| Run | Load | Index pass | Transform pass | Peak RSS |
+|---|---|---|---|---|
+| `BenchmarkCopy200MB` | 50 | 36 to 38 MB/s | 37 to 40 MB/s | 302 MB |
+| `TestCopyLarge` 200 MB | 69 | 42 MB/s | 33 MB/s | 303 MB |
+| `TestCopyLarge` 2 GB | 69 | 19 MB/s | 13 MB/s | 367 MB |
+| `TestCopyLarge` 200 MB | 106 | 5 MB/s | 7 MB/s | 301 MB |
+| `TestCopyLarge` 2 GB | 106 | 9 MB/s | 6 MB/s | 390 MB |
+
+Memory: the 2 GB run now peaks at 1.21x to 1.30x the 200 MB run (inside PRD 22.3's 1.5x) and the 200 MB run sits at the 300 MB target. What changed: pass 2 counts each batch's memory (a 4 MB batch of short rows holds about 20 MB as one `core.Value` per field) and holds at most 96 MiB in flight; the run sets a 300 MiB soft limit when `--max-memory` and `GOMEMLIMIT` don't set one, so the heap no longer grows to twice what is live; the per-order address lengths are a sorted slice of 24-byte entries (one byte a part) instead of a map, about a third of the memory for the 2.4 million addresses of the 2 GB shop. What still grows with the shop: those address entries (about 57 MB at 2 GB) and the known-value set (8 bytes a value, 600,000 values at 2 GB).
+
+Speed: the CPU profile of the transform lost most of its rule matching (a meta table's value column has a rule per meta key; they are now found by the row's meta key, 5.1 s of CPU down to 0.7 s on the 200 MB run). The index pass shares one goroutine with the generator and the fakes stand in for the reader, the faker and the scrubber, so neither pass can be judged against PRD 22.3 (index 300 MB/s, transform 100 MB/s) until the real reader and faker are in and the machine is quiet. `BenchmarkCopy200MBDump` measures the real reader once the io lane is in.
 
 Generate a dump by hand: `go run ./engine/testdata/gen/dumpgen -size 200MiB -o shop.sql` (made-up people on example.com, phones in the 07700 900 range, IPs in documentation ranges, a live-shaped key assembled at run time).
 
