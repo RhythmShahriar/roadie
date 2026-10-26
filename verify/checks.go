@@ -226,15 +226,20 @@ func (r *run) siteHTTP(ctx context.Context) {
 	}
 	if !r.skip.skips(core.FindingSearchIndexable) {
 		noindex := hasNoindex(home.header.Values("X-Robots-Tag")) || metaNoindex(home.body)
-		allows := robots == nil || robots.status != http.StatusOK || robotsAllowAll(robots.body)
+		// A robots.txt that is missing or failed to fetch says nothing
+		// either way, so only one served with 200 that lets every crawler
+		// in counts against a page that does send noindex.
+		allows := robots != nil && robots.status == http.StatusOK && robotsAllowAll(robots.body)
 		if !noindex || allows {
 			why := "the home page has no noindex header or meta tag"
+			fix := "Run rhythm-roadie prepare --only exposure, or serve X-Robots-Tag: noindex."
 			if noindex {
 				why = "robots.txt lets every crawler in"
+				fix = "Run rhythm-roadie prepare --only exposure, or serve a robots.txt with User-agent: * and Disallow: /."
 			}
 			r.add(core.Finding{ID: core.FindingSearchIndexable, Severity: core.SeverityMedium,
 				Title:     "Search engines can index the staging site: " + why,
-				Fix:       "Run rhythm-roadie prepare --only exposure, or serve X-Robots-Tag: noindex.",
+				Fix:       fix,
 				Locations: []core.LocationCount{{Location: at}}})
 		}
 	}

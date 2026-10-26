@@ -118,6 +118,22 @@ func TestSiteNoindexAndAuth(t *testing.T) {
 	res = siteRun(t, Options{SiteURL: serve(t, half, false).URL})
 	if f := find(res, core.FindingSearchIndexable); f == nil || !strings.Contains(f.Title, "robots.txt") {
 		t.Errorf("robots allows: %+v", res.Findings)
+	} else if !strings.Contains(f.Fix, "Disallow: /") {
+		t.Errorf("robots fix: %q", f.Fix)
+	}
+
+	// Noindex on the page and no robots.txt (404): a missing robots.txt
+	// is no signal, which is the usual Laravel staging.
+	laravel := &siteHandler{header: map[string]string{"X-Robots-Tag": "noindex"}}
+	res = siteRun(t, Options{SiteURL: serve(t, laravel, false).URL})
+	if find(res, core.FindingSearchIndexable) != nil {
+		t.Errorf("noindex without robots.txt: %+v", res.Findings)
+	}
+	// No noindex and no robots.txt is still indexable.
+	bare := &siteHandler{body: "<html>shop</html>"}
+	res = siteRun(t, Options{SiteURL: serve(t, bare, false).URL})
+	if f := find(res, core.FindingSearchIndexable); f == nil || !strings.Contains(f.Title, "no noindex") {
+		t.Errorf("bare: %+v", res.Findings)
 	}
 
 	locked := &siteHandler{header: map[string]string{"WWW-Authenticate": `Basic realm="staging"`}, status: 401}
