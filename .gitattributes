@@ -1,0 +1,18 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Every text file checks out with LF on every OS, so golden files and the
+# README read the same on Windows (whose git turns LF into CRLF by
+# default) as they do on Linux and macOS.
+* text=auto eol=lf
+
+# Dumps are data: their bytes are compared and hashed, so git must never
+# touch their line ends. Compressed dumps are binary.
+*.sql -text
+*.sql.gz binary
+*.sql.zst binary
+
+# Fixtures that test CRLF handling keep their CRLF.
+**/testdata/crlf/** -text
+# PHP serialized fixtures count bytes; a changed line end breaks them.
+**/testdata/**/*.ser -text

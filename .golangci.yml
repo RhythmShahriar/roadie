@@ -1,0 +1,44 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+version: "2"
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - goheader
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+    - unconvert
+    - revive
+  settings:
+    revive:
+      rules:
+        # Every package says what it is for and every exported identifier
+        # carries a doc comment. Stuttering names are left alone: the lanes
+        # build against frozen API names that can't be renamed later.
+        - name: package-comments
+        - name: exported
+          arguments: [disableStutteringCheck]
+    goheader:
+      values:
+        regexp:
+          YEARS: '20\d\d(-20\d\d)?'
+      template: |-
+        Copyright (c) {{ YEARS }} Rhythm Shahriar <me@rhy.io>
+        SPDX-License-Identifier: MIT
+    errcheck:
+      exclude-functions: # terminal output; nothing useful to do if stdout is gone
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    misspell:
+      locale: US
+      ignore-rules: [authorised] # user-facing copy uses British English
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [errcheck, gosec, revive]
+formatters:
+  enable: [gofmt]

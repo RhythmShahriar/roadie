@@ -1,0 +1,31 @@
+/bin/
+/dist/
+/rhythm-roadie
+/rhythm-roadie.exe
+*.exe
+*.test
+*.out
+/coverage.*
+.DS_Store
+.idea/
+.vscode/
+
+# Local environment files: never commit secrets
+.env
+.env.*
+!.env.example
+# .env fixtures are test data, never real secrets.
+!**/testdata/**/.env
+!**/testdata/**/.env.*
+
+# What Roadie keeps per project: the consistency key, reports, backups and
+# the basic auth files stay out of git.
+.roadie/key
+.roadie/reports/
+.roadie/backups/
+.roadie/basic-auth/
+
+# Testbed and benchmark working data
+testbed/runtime/
+testbed/bench/work/
+*.spool
