@@ -596,6 +596,54 @@ func TestLocalBackup(t *testing.T) {
 	}
 }
 
+// Two backups in the same second never share a file. A backup that
+// fails leaves no file that looks like one.
+func TestLocalBackupSameSecond(t *testing.T) {
+	ctx := context.Background()
+	fixClock(t)
+	useFakeDB(t)
+	useFakeFileSink(t)
+	dir := t.TempDir()
+	var paths []string
+	for _, dsn := range []string{"mysql://shop@db.example/a", "mysql://shop@db.example/b", "postgres://app@pg.example/c"} {
+		e, _ := ParseEndpoint(dsn)
+		d, _ := Open(ctx, e, Options{BackupDir: dir})
+		p, restore, err := d.Backup(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(restore, shellWord(p)) {
+			t.Fatalf("restore %q doesn't name %s", restore, p)
+		}
+		paths = append(paths, filepath.Base(p))
+	}
+	want := []string{"2026-10-26T08-02-03.sql.gz", "2026-10-26T08-02-03-2.sql.gz", "2026-10-26T08-02-03-3.sql.gz"}
+	if strings.Join(paths, " ") != strings.Join(want, " ") {
+		t.Fatalf("paths %v, want %v", paths, want)
+	}
+	for _, p := range want {
+		if fi, err := os.Stat(filepath.Join(dir, p)); err != nil || fi.Size() == 0 {
+			t.Fatalf("%s: %v (replaced or empty)", p, err)
+		}
+	}
+
+	// A source that fails: the reserved name is removed again.
+	old := openDB
+	openDB = func(context.Context, core.Endpoint, db.Mode) (dbConn, error) {
+		return nil, errors.New("connection refused")
+	}
+	t.Cleanup(func() { openDB = old })
+	e, _ := ParseEndpoint("mysql://shop@db.example/d")
+	d, _ := Open(ctx, e, Options{BackupDir: dir})
+	if _, _, err := d.Backup(ctx); err == nil {
+		t.Fatal("backup with a broken source passed")
+	}
+	left, _ := filepath.Glob(filepath.Join(dir, "*"))
+	if len(left) != len(want) {
+		t.Fatalf("files after a failed backup: %v", left)
+	}
+}
+
 // TestLocalBackupRealSink writes through the io lane's file sink.
 func TestLocalBackupRealSink(t *testing.T) {
 	useFakeDB(t)
