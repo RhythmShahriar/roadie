@@ -90,6 +90,14 @@ func (s *scrubber) fake(kind core.FakeKind, v []byte) []byte {
 // one name word and gets a one-word fake of the kind Known reports. The
 // fake is keyed on the text as written, so a name in a note gets the
 // same fake as the same name in its column.
+//
+// A pair joined by white space that Known lacks but that reads as a
+// Roadie fake full name (Kylie Kim) is left whole, words and all: it is
+// most likely a fake from an earlier pass, and rewriting a word of it
+// because another customer is named Kim would make Scrub change its own
+// output. A real customer named Kylie Kim is still found, as Known then
+// holds the pair. A single list word on its own (Kylie) can't be told
+// apart from a real name Known holds and is rewritten again.
 func (s *scrubber) names(start, end int) {
 	if s.known == nil || start >= end {
 		return
@@ -101,13 +109,18 @@ func (s *scrubber) names(start, end int) {
 			b := [2]int{start + words[i+1][0], start + words[i+1][1]}
 			if gap := s.text[a[1]:b[0]]; pairGap(gap) {
 				s.pair = append(append(append(s.pair[:0], s.text[a[0]:a[1]]...), ' '), s.text[b[0]:b[1]]...)
-				if kind, _, ok := s.known.Contains(s.pair); ok && isNameKind(kind) {
+				kind, _, ok := s.known.Contains(s.pair)
+				if ok && isNameKind(kind) {
 					kind = core.KFullName
 					if !bytes.ContainsFunc(gap, unicode.IsSpace) {
 						kind = oneWordKind(s.known, s.text[a[0]:b[1]])
 					}
 					s.replace(a[0], b[1], s.fake(kind, s.text[a[0]:b[1]]))
 					i++
+					continue
+				}
+				if bytes.ContainsFunc(gap, unicode.IsSpace) && IsFake(core.KFullName, s.pair) {
+					i++ // a fake full name: keeps Scrub idempotent
 					continue
 				}
 			}

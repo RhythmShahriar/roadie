@@ -5,6 +5,7 @@ package pseudo
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -168,6 +169,46 @@ func TestScrubNamesAndPairs(t *testing.T) {
 	got, _ := Scrub([]byte("Called Zoë Ångström today."), nil, k, f)
 	if name := strings.TrimSuffix(strings.TrimPrefix(string(got), "Called "), " today."); len(strings.Fields(name)) != 2 || !IsFake(core.KFullName, []byte(name)) {
 		t.Errorf("pair became %q", got)
+	}
+}
+
+// TestScrubFakeOverlapsKnown covers a fake full name whose last name is
+// also a real customer's: a second pass must leave the fake alone.
+func TestScrubFakeOverlapsKnown(t *testing.T) {
+	f := mustFaker(t, testKey(8), Options{})
+	for i := range 50 {
+		real := fmt.Sprintf("Zara Quill%c%c", 'a'+i%26, 'a'+i/26)
+		fk := strings.Fields(fake(t, f, core.KFullName, strings.ToLower(real), core.FakeOpts{}))
+		last := fk[len(fk)-1]
+		k := NewKnown(testKey(8))
+		k.Add(core.KFullName, []byte(real))
+		k.Add(core.KFullName, []byte("Bob "+last)) // another customer shares the fake's last name
+		k.Seal()
+		note := "Met " + real + " today. Mr " + last + " rang."
+		got, n := Scrub([]byte(note), nil, k, f)
+		if n != 2 || strings.Contains(string(got), real) || strings.Contains(string(got), "Mr "+last+" ") {
+			t.Fatalf("Scrub(%q) = %q (%d)", note, got, n)
+		}
+		again, n2 := Scrub(got, nil, k, f)
+		if !bytes.Equal(again, got) || n2 != 0 {
+			t.Fatalf("not idempotent: %q then %q (%d)", got, again, n2)
+		}
+	}
+	// Negative: a fake-shaped pair that Known holds as a real name still
+	// goes.
+	k := NewKnown(testKey(8))
+	k.Add(core.KFullName, []byte("Kylie Kim"))
+	k.Add(core.KFullName, []byte("Bob Kim"))
+	k.Seal()
+	if got, n := Scrub([]byte("Met Kylie Kim today."), nil, k, f); n != 1 || strings.Contains(string(got), "Kylie Kim") {
+		t.Errorf("a known real Kylie Kim = %q (%d)", got, n)
+	}
+	// A fake pair Known lacks stays even when one word is a known name.
+	k = NewKnown(testKey(8))
+	k.Add(core.KFullName, []byte("Bob Kim"))
+	k.Seal()
+	if got, n := Scrub([]byte("Met Kylie Kim today. Ask Kim."), nil, k, f); n != 1 || !strings.HasPrefix(string(got), "Met Kylie Kim today. Ask ") {
+		t.Errorf("fake pair with a known word = %q (%d)", got, n)
 	}
 }
 
