@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -77,6 +78,9 @@ type run struct {
 	note map[string]string
 	// configs are the site's config files, read before the scan.
 	configs map[string]configRead
+	// unparsed counts serialized-looking values that didn't parse, by
+	// column (table, NUL, column).
+	unparsed map[string]int64
 }
 
 // add records a finding unless the baseline or an ignore entry hides it.
@@ -143,6 +147,7 @@ func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 		return nil, err
 	}
 	r.uncovered(tables, samples)
+	r.noteUnparsed()
 	if st != nil {
 		r.siteChecks(ctx, st)
 	}
@@ -256,6 +261,9 @@ type result struct {
 	hidden   int64
 	rows     int64
 	bytes    int64
+	// unparsed counts serialized-looking values that didn't parse, by
+	// column (table, NUL, column).
+	unparsed map[string]int64
 }
 
 // stream reads every batch and scans it on the worker pool. It returns
@@ -396,6 +404,12 @@ func (r *run) merge(res result) {
 	r.res.Coverage.RowsScanned += res.rows
 	r.res.Coverage.BytesScanned += res.bytes
 	r.res.Hidden += res.hidden
+	for col, n := range res.unparsed {
+		if r.unparsed == nil {
+			r.unparsed = map[string]int64{}
+		}
+		r.unparsed[col] += n
+	}
 	for _, f := range res.findings {
 		r.agg.Add(f)
 	}
@@ -491,5 +505,24 @@ func (r *run) uncovered(tables []*core.Table, samples map[string]map[string][][]
 				r.res.Uncovered = append(r.res.Uncovered, u)
 			}
 		}
+	}
+}
+
+// noteUnparsed lists the columns holding serialized-looking values that
+// didn't parse under coverage skipped. Verify reads such a value as plain
+// text, so an email inside it is still found, but one written escaped or
+// with a length prefix that broke the parse may not be. Only copy and
+// prepare report data.unparseable, since only they can blank the value.
+func (r *run) noteUnparsed() {
+	cols := make([]string, 0, len(r.unparsed))
+	for col := range r.unparsed {
+		cols = append(cols, col)
+	}
+	slices.Sort(cols)
+	for _, col := range cols {
+		n := r.unparsed[col]
+		t, c, _ := strings.Cut(col, "\x00")
+		r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, core.Skipped{Table: t + "." + c,
+			Reason: fmt.Sprintf("%d serialized-looking %s didn't parse; read as plain text, so data nested inside may be missed", n, plural(n, "value", "values"))})
 	}
 }

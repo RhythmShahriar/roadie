@@ -852,3 +852,64 @@ func TestRunCodeFilesUnreadable(t *testing.T) {
 		}
 	}
 }
+
+// A serialized-looking value that doesn't parse is read as text and its
+// column is listed under coverage; data.unparseable is copy's finding.
+func TestRunUnparsedNoted(t *testing.T) {
+	broken := `a:2:{s:5:"email";s:99:"ada.kowalczyk@gmail.com";}`
+	res := runJob(t, Job{Source: source(options(
+		[]string{"1", "widget_contact", broken},
+		[]string{"2", "widget_text", broken},
+		[]string{"3", "blogname", "a:b; not serialized at all"},
+		[]string{"4", "shop_settings", ser("enabled", "yes")},
+	))})
+	want := []core.Skipped{{Table: "wp_options.option_value",
+		Reason: "2 serialized-looking values didn't parse; read as plain text, so data nested inside may be missed"}}
+	if fmt.Sprint(res.Coverage.Skipped) != fmt.Sprint(want) {
+		t.Errorf("skipped %+v, want %+v", res.Coverage.Skipped, want)
+	}
+	if f := find(res, core.FindingPIIEmail); f == nil || f.Count != 2 {
+		t.Errorf("the text read missed the email: %v", ids(res))
+	}
+	if find(res, core.FindingDataUnparseable) != nil {
+		t.Errorf("verify reported data.unparseable: %v", ids(res))
+	}
+	res = runJob(t, Job{Source: source(options([]string{"1", "shop_settings", ser("enabled", "yes")}))})
+	if len(res.Coverage.Skipped) != 0 {
+		t.Errorf("a parsed value was noted: %+v", res.Coverage.Skipped)
+	}
+}
+
+func TestLooksSerialized(t *testing.T) {
+	for v, want := range map[string]bool{
+		`a:1:{s:1:"a";s:1:"b";}`:   true,
+		`a:2:{broken`:              false,
+		`O:8:"stdClass":0:{}`:      true,
+		`s:5:"hello";`:             true,
+		` i:42; `:                  true,
+		`b:1;`:                     true,
+		`N;`:                       true,
+		`s:5:"hello"}`:             false,
+		`a:b; not serialized`:      false,
+		`x:1;`:                     false,
+		`a:`:                       false,
+		`{"a":1}`:                  false,
+		`Time: 10:30; see you`:     false,
+		"":                         false,
+	} {
+		if got := looksSerialized([]byte(v)); got != want {
+			t.Errorf("looksSerialized(%q) = %v, want %v", v, got, want)
+		}
+	}
+}
+
+func FuzzLooksSerialized(f *testing.F) {
+	for _, s := range []string{`a:1:{s:1:"a";s:1:"b";}`, `s:5:"hello";`, "N;", " i:", "s:\"", ""} {
+		f.Add([]byte(s))
+	}
+	f.Fuzz(func(t *testing.T, b []byte) {
+		if looksSerialized(b) && len(bytes.TrimSpace(b)) < 2 {
+			t.Errorf("%q is too short to be serialized", b)
+		}
+	})
+}

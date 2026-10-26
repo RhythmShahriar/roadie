@@ -34,7 +34,11 @@ Every ID is a constant in `core/ids.go`. Severities are fixed unless the row say
 | `soundcheck.failed` | medium | `verify.SoundcheckFinding` for a Soundcheck exit 1 | Soundcheck not installed is a note, never a finding |
 | `info.ignore-expired` | info | an ignore entry past its `until` date | none |
 
-The side-effect checks of the site lane (`side-effect.cron` and the rest) run through `Job.Steps`; verify records their side effects and findings as they come.
+PRD 15.2 IDs verify doesn't raise itself:
+
+- `config.environment` and every `side-effect.*` except `side-effect.mail` with `--echo` (`side-effect.connector-changed`, `side-effect.cron`, `side-effect.action-scheduler`, `side-effect.webhooks`, `side-effect.gateways`, `side-effect.subscriptions`, `side-effect.automatewoo`, `side-effect.queue`, `side-effect.jetpack`, `side-effect.not-applicable`) come from the site lane's Steps through `Job.Steps`; verify records their side effects and findings as they come, each Step is one check, and `--skip side-effects` (or `config` for `config.environment`) leaves them out.
+- `data.unparseable` and `info.kept-users` are copy and prepare findings (engine lane).
+- `soundcheck.failed` comes from `verify.SoundcheckFinding` over the result of `verify.Soundcheck`, which the CLI runs.
 
 **Plugin update caches.** The PII detectors skip values of options and network options that cache public plugin and wordpress.org data: names starting `_site_transient_update_`, `_site_transient_theme_roots`, `_site_transient_wporg_`, `_site_transient_poptags_`, `_site_transient_browser_`, `_site_transient_php_check_`, `_site_transient_feed_`, `_transient_feed_`, `_transient_plugin_slugs`, `_transient_wporg_`, `_transient_dash_`, `_site_transient_community-events-`, `_transient_timeout_`, `_site_transient_timeout_`; also the whole names `active_plugins`, `recently_activated`, `uninstall_plugins`, `active_sitewide_plugins`, `auto_update_plugins`, `auto_update_themes`. Plugin headers there hold vendor emails. The survivors, key and URL checks still read them.
 
@@ -54,6 +58,7 @@ Every example passes through `core.Mask*`; no flag prints a raw value.
 - `--jobs` workers (default GOMAXPROCS); results merge in input order, so examples and locations are the same on every run.
 - Findings group by ID and table and column (or file), at most 3 examples and locations each.
 - A table that can't be read is listed under coverage skipped with its reason. When the input fails part way, the entry is `(input after <last table read>)` with the reason plus `; the tables after it weren't read`; before any table it is `(input)` with the reason. Zero rows read: exit 3 `nothing-scanned: verify read 0 rows from <target> (<why>). A verify that sees nothing can't pass; check the user's SELECT rights.`
+- A value that looks PHP serialized (WordPress's strict `is_serialized` test) but doesn't parse is read as plain text, so an email in it is still found; its column is listed under coverage skipped as `<table>.<column>`, `<n> serialized-looking value(s) didn't parse; read as plain text, so data nested inside may be missed`. verify never reports `data.unparseable`: only copy and prepare can blank such a value.
 - Code files (local sites only): `.php` under `wp-content/themes` and `wp-content/plugins`, depth 6, up to 2 MiB, live provider keys only, action `manual`, fix text PRD 17's key-manual sentence. Over ssh: coverage skipped `code files`, `not read over ssh (PRD 6.13 allowlist)`. A folder that can't be listed adds `code files`, `<folder> not listed: <error>`; unreadable files add `code files`, `<N> file(s) in <folder> not read; first <path>: <error>`. A missing folder adds nothing.
 - `--skip`: `emails`, `phones`, `names`, `addresses`, `ips`, `cards` (cards and IBANs), `keys`, `urls`, `side-effects`, `config`, `uploads`.
 

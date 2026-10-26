@@ -85,6 +85,7 @@ func (s *scanner) batch(w work) result {
 		}
 	}
 	res.findings = acc.Findings()
+	res.unparsed = f.unparsed
 	return res
 }
 
@@ -167,6 +168,9 @@ type field struct {
 	sibs     map[string]map[string]string
 	public   bool
 	lat      core.Location // the leaf being scanned, for emit
+	// unparsed counts serialized-looking values that didn't parse, by
+	// table, NUL, column.
+	unparsed map[string]int64
 	emitFn   func(core.Hit)
 	leafFn   func(string, []byte)
 }
@@ -197,6 +201,12 @@ func (f *field) value(v []byte, sc core.ScanContext, at core.Location) {
 		if err := leavesOf(v, f.leafFn, nested.Options{}); err == nil {
 			return
 		}
+	}
+	if looksSerialized(v) {
+		if f.unparsed == nil {
+			f.unparsed = map[string]int64{}
+		}
+		f.unparsed[sc.Table+"\x00"+sc.Column]++
 	}
 	f.leaf("", v)
 }
@@ -442,4 +452,30 @@ func encrypted(v []byte) bool {
 	}
 	_, tag := m["tag"]
 	return len(m) == 3 || len(m) == 4 && tag
+}
+
+// looksSerialized is WordPress's is_serialized test (strict): a value
+// PHP's maybe_unserialize would try to read. Such a value that nested
+// can't parse is noted under coverage.
+func looksSerialized(v []byte) bool {
+	v = bytes.TrimSpace(v)
+	if string(v) == "N;" {
+		return true
+	}
+	if len(v) < 4 || v[1] != ':' {
+		return false
+	}
+	last := v[len(v)-1]
+	if last != ';' && last != '}' {
+		return false
+	}
+	switch v[0] {
+	case 's':
+		return last == ';' && v[len(v)-2] == '"'
+	case 'a', 'O', 'E':
+		return last == '}' && bytes.IndexByte(v[2:], ':') > 0
+	case 'b', 'i', 'd':
+		return last == ';' && len(v) > 2
+	}
+	return false
 }
