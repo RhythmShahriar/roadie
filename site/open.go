@@ -224,27 +224,20 @@ func backupStamp() string { return now().UTC().Format("2006-01-02T15-04-05") }
 // localBackup writes src to <dir>/<UTC ts>.sql.gz, the folder 0700 and
 // the file 0600 (dump.NewFileSink writes 0600).
 func localBackup(ctx context.Context, dir string, dialect core.Dialect, src func(context.Context) (core.Source, error)) (string, error) {
-	if dir == "" {
-		wd, err := getwd()
-		if err != nil {
-			return "", err
-		}
-		dir = filepath.Join(wd, ".roadie", "backups")
-	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", fmt.Errorf("backup: %w", err)
-	}
-	if err := os.Chmod(dir, 0o700); err != nil { // #nosec G302 -- a folder needs x; 0700 keeps it private
-		return "", fmt.Errorf("backup: %w", err)
-	}
-	p, err := reserveBackup(dir, backupStamp())
+	dir, made, err := backupDir(dir)
 	if err != nil {
+		return "", err
+	}
+	p, err := reserveBackup(dir, backupStamp(), ".sql.gz")
+	if err != nil {
+		made()
 		return "", err
 	}
 	ok := false
 	defer func() {
 		if !ok {
 			_ = os.Remove(p) // the empty reservation, never a finished backup
+			made()
 		}
 	}()
 	s, err := src(ctx)
@@ -263,16 +256,92 @@ func localBackup(ctx context.Context, dir string, dialect core.Dialect, src func
 	return p, nil
 }
 
-// reserveBackup creates an empty <ts>.sql.gz (0600) with O_EXCL, so two
+// backupDir makes the backup folder (0700), .roadie/backups in the
+// working folder by default. cleanup removes it again when this call
+// made it and it is still empty, so a backup that fails leaves no
+// folder behind.
+func backupDir(dir string) (string, func(), error) {
+	if dir == "" {
+		wd, err := getwd()
+		if err != nil {
+			return "", func() {}, err
+		}
+		dir = filepath.Join(wd, ".roadie", "backups")
+	}
+	_, statErr := os.Stat(dir)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", func() {}, fmt.Errorf("backup: %w", err)
+	}
+	cleanup := func() {}
+	if errors.Is(statErr, fs.ErrNotExist) {
+		cleanup = func() { _ = os.Remove(dir) } // only an empty folder goes
+	}
+	if err := os.Chmod(dir, 0o700); err != nil { // #nosec G302 -- a folder needs x; 0700 keeps it private
+		cleanup()
+		return "", func() {}, fmt.Errorf("backup: %w", err)
+	}
+	return dir, cleanup, nil
+}
+
+// sqliteBackup copies a SQLite database file, with its write-ahead log
+// when there is one, into the backup folder (0600): Roadie writes no
+// SQLite dumps, and the file itself is the most faithful backup. It
+// returns the copy and the command that puts it back.
+func sqliteBackup(dir string, e core.Endpoint) (string, string, error) {
+	dir, made, err := backupDir(dir)
+	if err != nil {
+		return "", "", err
+	}
+	p, err := reserveBackup(dir, backupStamp(), ".sqlite")
+	if err != nil {
+		made()
+		return "", "", err
+	}
+	if err := copyFile(e.Path, p); err != nil {
+		_ = os.Remove(p)
+		made()
+		return "", "", fmt.Errorf("backup: %w", err)
+	}
+	restore := "cp " + shellWord(p) + " " + shellWord(e.Path)
+	if _, err := os.Stat(e.Path + "-wal"); err == nil {
+		if err := copyFile(e.Path+"-wal", p+"-wal"); err != nil {
+			_ = os.Remove(p)
+			made()
+			return "", "", fmt.Errorf("backup: %w", err)
+		}
+		restore += " && cp " + shellWord(p+"-wal") + " " + shellWord(e.Path+"-wal")
+	}
+	return p, restore, nil
+}
+
+// copyFile copies src to dst (0600), dst created or replaced.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src) // #nosec G304 -- the SQLite database the user named
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) // #nosec G304 -- a name Roadie built in the backup folder
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+// reserveBackup creates an empty <ts><ext> (0600) with O_EXCL, so two
 // backups started in the same second (two targets backed up from one
 // folder) never share a file and one never replaces the other. A taken
 // name gets -2, -3 and so on. The file sink renames its finished file
 // over the reservation.
-func reserveBackup(dir, ts string) (string, error) {
+func reserveBackup(dir, ts, ext string) (string, error) {
 	for n := 1; n <= 100; n++ {
-		name := ts + ".sql.gz"
+		name := ts + ext
 		if n > 1 {
-			name = fmt.Sprintf("%s-%d.sql.gz", ts, n)
+			name = fmt.Sprintf("%s-%d%s", ts, n, ext)
 		}
 		p := filepath.Join(dir, name)
 		f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- a name Roadie built in the backup folder

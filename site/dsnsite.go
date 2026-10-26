@@ -92,6 +92,9 @@ func (s *dsnSite) Backup(ctx context.Context) (string, string, error) {
 	if s.ro {
 		return "", "", core.ErrReadOnly
 	}
+	if s.ep.Driver == core.SQLite {
+		return sqliteBackup(s.o.BackupDir, s.ep)
+	}
 	p, err := localBackup(ctx, s.o.BackupDir, s.ep.Driver, func(ctx context.Context) (core.Source, error) {
 		return dbSource(ctx, s.ep, nil)
 	})

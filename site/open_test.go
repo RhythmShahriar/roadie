@@ -723,3 +723,43 @@ func TestExprSource(t *testing.T) {
 		}
 	}
 }
+
+// A SQLite target is backed up by copying its file (and write-ahead
+// log), 0600, with a cp line to restore it; a backup that fails leaves no
+// empty backup folder behind.
+func TestSQLiteBackup(t *testing.T) {
+	dir := t.TempDir()
+	db := filepath.Join(dir, "app.db")
+	if err := os.WriteFile(db, []byte("SQLite format 3\x00 the pages"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(db+"-wal", []byte("the log"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backups := filepath.Join(dir, "b", "backups")
+	s := openDSN(core.Endpoint{Kind: core.DSN, Driver: core.SQLite, Path: db}, Options{BackupDir: backups})
+	p, restore, err := s.Backup(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(p); string(b) != "SQLite format 3\x00 the pages" || !strings.HasSuffix(p, ".sqlite") {
+		t.Errorf("backup %s: %q", p, b)
+	}
+	if b, _ := os.ReadFile(p + "-wal"); string(b) != "the log" {
+		t.Errorf("wal %q", b)
+	}
+	if fi, err := os.Stat(p); err != nil || runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
+		t.Errorf("mode %v %v", fi, err)
+	}
+	if !strings.HasPrefix(restore, "cp "+shellWord(p)+" "+shellWord(db)) || !strings.Contains(restore, "-wal") {
+		t.Errorf("restore %q", restore)
+	}
+	missing := filepath.Join(dir, "c", "backups")
+	s = openDSN(core.Endpoint{Kind: core.DSN, Driver: core.SQLite, Path: filepath.Join(dir, "gone.db")}, Options{BackupDir: missing})
+	if _, _, err := s.Backup(context.Background()); err == nil {
+		t.Error("a missing database backed up")
+	}
+	if _, err := os.Stat(missing); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the empty backup folder stayed: %v", err)
+	}
+}
