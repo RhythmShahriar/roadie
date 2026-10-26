@@ -1,0 +1,91 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"os"
+	"os/exec"
+	"strings"
+	"testing"
+)
+
+// The tests run the binary as a child process: the test binary itself,
+// re-executed with ROADIE_TEST_MAIN=1 so TestMain calls main.
+func TestMain(m *testing.M) {
+	if os.Getenv("ROADIE_TEST_MAIN") == "1" {
+		os.Args = append([]string{"rhythm-roadie"}, os.Args[1:]...)
+		main()
+		return
+	}
+	os.Exit(m.Run())
+}
+
+// run runs rhythm-roadie with args offline and returns stdout, stderr and the exit code.
+func run(t *testing.T, args ...string) (string, string, int) {
+	t.Helper()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, args...) // #nosec G204 -- the test binary itself
+	cmd.Env = append(os.Environ(), "ROADIE_TEST_MAIN=1", "RHYTHM_OFFLINE=1", "RHYTHM_INVOKED_AS=", "CI=1",
+		"XDG_CONFIG_HOME="+t.TempDir(), "HOME="+t.TempDir(), "APPDATA="+t.TempDir())
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err = cmd.Run()
+	var ee *exec.ExitError
+	switch {
+	case errors.As(err, &ee):
+		return stdout.String(), stderr.String(), ee.ExitCode()
+	case err != nil:
+		t.Fatal(err)
+	}
+	return stdout.String(), stderr.String(), 0
+}
+
+func TestVersionJSON(t *testing.T) {
+	out, errOut, code := run(t, "version", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	var v struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal([]byte(out), &v); err != nil || v.Name != "rhythm-roadie" {
+		t.Fatalf("version --json = %q (%v)", out, err)
+	}
+}
+
+func TestHelpCopy(t *testing.T) {
+	out, errOut, code := run(t, "help", "copy")
+	if code != 0 || !strings.Contains(out+errOut, "rhythm-roadie copy") {
+		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, out, errOut)
+	}
+}
+
+func TestComplete(t *testing.T) {
+	out, _, code := run(t, "__complete", "co")
+	if code != 0 || !strings.Contains(out, "copy") || !strings.Contains(out, "config") {
+		t.Fatalf("exit %d: %q", code, out)
+	}
+}
+
+func TestUnknownCommand(t *testing.T) {
+	_, errOut, code := run(t, "cpy")
+	if code != 2 || !strings.Contains(errOut, "copy") {
+		t.Fatalf("exit %d: %q", code, errOut)
+	}
+}
+
+func TestStubsSayNotBuilt(t *testing.T) {
+	for _, c := range tool().Commands {
+		_, errOut, code := run(t, c.Name)
+		if code != 3 || !strings.Contains(errOut, "rhythm-roadie "+c.Name+": not built yet") {
+			t.Errorf("%s: exit %d: %q", c.Name, code, errOut)
+		}
+	}
+}
