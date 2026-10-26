@@ -340,6 +340,11 @@ func TestRunCopyToDumpFile(t *testing.T) {
 	if res.Verify == nil || res.Verify.Mode != "exact" || res.Verify.Soundcheck == nil {
 		t.Errorf("verify %+v", res.Verify)
 	}
+	for _, fd := range res.Verify.Findings {
+		if fd.ID == core.FindingSoundcheckFailed {
+			t.Errorf("a Soundcheck that exited 0 gave %+v", fd)
+		}
+	}
 	if !v.Opts.EchoSince.Equal(res.Started) {
 		t.Errorf("EchoSince %v, want the copy's start %v", v.Opts.EchoSince, res.Started)
 	}
@@ -1350,5 +1355,41 @@ func TestSinkTakesSourceDialect(t *testing.T) {
 	}
 	if len(got) != 3 || got[0].Target != core.Postgres || got[1].Target != core.Postgres || got[2].Target == core.Postgres {
 		t.Errorf("writer options %+v", got)
+	}
+}
+
+// A Soundcheck that exits 1 is the finding soundcheck.failed; one that
+// isn't installed is only a note.
+func TestRunSoundcheckFailed(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		sc   *core.SoundcheckResult
+		want bool
+	}{
+		{"exit 1", &core.SoundcheckResult{Ran: true, ExitCode: 1}, true},
+		{"exit 0", &core.SoundcheckResult{Ran: true}, false},
+		{"not installed", &core.SoundcheckResult{Note: verify.SoundcheckNotRun}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := useRunFakes(t)
+			runSoundcheck = func(context.Context, string, string) *core.SoundcheckResult { return c.sc }
+			out := filepath.Join(t.TempDir(), "staging.sql")
+			j := f.job(Copy)
+			j.To = core.Endpoint{Kind: core.DumpFile, Raw: out, Display: "staging.sql", Path: out}
+			j.Opts.ConfirmTarget, j.Opts.Soundcheck = "", true
+			res, err := Run(context.Background(), j)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := false
+			for _, fd := range res.AllFindings() {
+				if fd.ID == core.FindingSoundcheckFailed && fd.Severity == core.SeverityMedium {
+					got = true
+				}
+			}
+			if got != c.want {
+				t.Errorf("soundcheck.failed %v, want %v", got, c.want)
+			}
+		})
 	}
 }

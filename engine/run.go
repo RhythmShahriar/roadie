@@ -1201,6 +1201,11 @@ func (r *runner) verify(ctx context.Context, out *output, checks []core.Step) er
 	r.res.Verify = v
 	if v != nil && r.opts.Soundcheck && r.opts.URL != "" {
 		v.Soundcheck = runSoundcheck(ctx, r.opts.URL, r.cfg.SideEffects.Echo.URL)
+		// A Soundcheck that exits 1 is soundcheck.failed (PRD 15.2): a
+		// finding like any other, so --fail-on medium stops on it.
+		if f := verify.SoundcheckFinding(v.Soundcheck); f != nil {
+			v.Findings = append(v.Findings, *f)
+		}
 	}
 	return nil
 }

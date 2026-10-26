@@ -605,6 +605,9 @@ func (v *view) resultView(r *core.Result, j engine.Job, reportPath string, tm *t
 		v.checkLines(vr.Checks)
 	}
 	v.findingGroups(r.AllFindings())
+	if vr := r.Verify; vr != nil && vr.Soundcheck != nil && vr.Soundcheck.Note != "" {
+		v.setting("Soundcheck", vr.Soundcheck.Note)
+	}
 	v.verdictBox(r, j)
 	v.underBox(r, tm)
 	v.footer(r, j, reportPath)

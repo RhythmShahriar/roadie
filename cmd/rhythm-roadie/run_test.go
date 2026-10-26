@@ -20,6 +20,7 @@ import (
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/engine"
 	"github.com/RhythmShahriar/roadie/internal/testutil"
+	"github.com/RhythmShahriar/roadie/verify"
 )
 
 var (
@@ -659,5 +660,19 @@ func TestLocationsLineMerges(t *testing.T) {
 		{Location: core.Location{Table: "wp_options", Column: "option_value", Row: "option_name=b"}, Count: 1}}}
 	if got := locationsLine(f); strings.Count(got, " · ") != 1 {
 		t.Errorf("named rows: %q", got)
+	}
+}
+
+// A copy with --soundcheck shows Soundcheck's note when it didn't run.
+func TestCopySoundcheckNote(t *testing.T) {
+	r := copyPass()
+	r.Verify.Soundcheck = &core.SoundcheckResult{Note: verify.SoundcheckNotRun}
+	useFixture(t, r, nil, nil)
+	if out := screen(t, "copy", args(copyArgs, "--plain", "--soundcheck")...); !strings.Contains(out, verify.SoundcheckNotRun) {
+		t.Errorf("no Soundcheck note:\n%s", out)
+	}
+	useFixture(t, copyPass(), nil, nil)
+	if out := screen(t, "copy", args(copyArgs, "--plain")...); strings.Contains(out, "Soundcheck") {
+		t.Errorf("a Soundcheck line without --soundcheck:\n%s", out)
 	}
 }
