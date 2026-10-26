@@ -160,7 +160,7 @@ jobs:
           args: --yes
         env:
           ROADIE_SIGNING_KEY: ${{ secrets.ROADIE_SIGNING_KEY }}
-          ROADIE_STRIPE_TEST_SECRET: ${{ secrets.STRIPE_TEST_SECRET }}
+          ROADIE_STRIPE_TEST_SECRET: ${{ secrets.STRIPE_TEST_SECRET }}   # read by keys.test_keys in .roadie/config.yaml
       - uses: RhythmShahriar/soundcheck@v1
         with: {url: https://staging.shop.com, mode: run}
 ```
@@ -225,6 +225,6 @@ Found a vulnerability in Roadie itself? Please [report it privately](https://git
 
 ## License
 
-[MIT](LICENSE).
+Roadie's own code is [MIT](LICENSE). The `rhythm-roadie` binary also includes the [rhythm kit](https://github.com/RhythmShahriar/rhythm/tree/master/kit), which is AGPL-3.0-only.
 
 <p align="center"><sub>Part of <a href="https://github.com/RhythmShahriar/rhythm"><b>rhythm</b></a> · Useful ideas. Working systems.</sub></p>
