@@ -6,10 +6,11 @@
 // testbed, judges each with the independent oracle, the side-effect
 // drill, the boot check and Roadie's own verify, runs the control pass,
 // judges the other tools on the same inputs (testbed/tools, -tools) and
-// writes testbed/bench/work/results.json:
+// writes testbed/bench/work/results.json and docs/benchmark.md:
 //
 //	go run -tags testbed ./testbed/bench [-bin bin/rhythm-roadie] [-only r01,v01] [-tools all|none|wp-cli,...]
 //	go run -tags testbed ./testbed/bench -diff first/results.json second/results.json
+//	go run -tags testbed ./testbed/bench -render testbed/bench/work/results.json [-doc docs/benchmark.md]
 //	go run -tags testbed ./testbed/bench -drill [-for 5m]
 //
 // It needs the testbed up (make -C testbed up) and prints canary IDs and
@@ -58,7 +59,7 @@ type options struct {
 	drillFor                                      time.Duration
 	perRun                                        bool
 	baseline                                      string
-	tools, greenmask                              string
+	tools, greenmask, doc, render                 string
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -79,6 +80,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fl.StringVar(&o.baseline, "baseline", "", "an earlier results.json: fail when r17's MB/s drops more than 20% below it")
 	fl.StringVar(&o.tools, "tools", "all", "the other tools to judge after the scenarios: "+strings.Join(ToolNames(), ", ")+", all or none")
 	fl.StringVar(&o.greenmask, "greenmask", "0.2.26", "the Greenmask release judged (testbed/Makefile pins it)")
+	fl.StringVar(&o.doc, "doc", "", "where to write the benchmark page (default: docs/benchmark.md for a run of every scenario or -render, none with -only); none for no page")
+	fl.StringVar(&o.render, "render", "", "write the benchmark page from this results.json without running anything")
 	diff := fl.Bool("diff", false, "compare the scored parts of two results.json files (the arguments)")
 	drill := fl.Bool("drill", false, "run only the side-effect drill on the running staging and print gate 3")
 	fl.DurationVar(&o.drillFor, "for", 5*time.Minute, "with -drill: how long the drill runs")
@@ -103,6 +106,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case *drill:
 		return runDrill(ctx, o, stdout, stderr)
+	case o.render != "":
+		return renderDoc(o, stdout, stderr)
 	}
 	return runBench(ctx, o, stdout, stderr)
 }
@@ -188,9 +193,58 @@ func runBench(ctx context.Context, o options, stdout, stderr io.Writer) int {
 		}
 	}
 	fmt.Fprintln(stdout, "results:", path)
+	if doc := docPath(o); doc != "" {
+		if err := writeDocFile(abs(doc), res, f); err != nil {
+			fmt.Fprintln(stderr, "bench:", err)
+			return 3
+		}
+		fmt.Fprintln(stdout, "page:", doc)
+	}
 	if s.Outcomes[Missed] > 0 || s.Outcomes[Errored] > 0 || s.FalseAlarms > 0 || res.Run.Perf != nil && !res.Run.Perf.Pass {
 		return 1
 	}
+	return 0
+}
+
+// docPath is where the page goes: -doc, else docs/benchmark.md when the
+// run covers every scenario (a partial run never replaces the page).
+func docPath(o options) string {
+	switch {
+	case o.doc == "none":
+		return ""
+	case o.doc != "":
+		return o.doc
+	case o.only == "" || o.render != "":
+		return "docs/benchmark.md"
+	}
+	return ""
+}
+
+// renderDoc writes the page from an earlier results.json (-render).
+func renderDoc(o options, stdout, stderr io.Writer) int {
+	r, err := ReadResults(o.render)
+	if err != nil {
+		fmt.Fprintln(stderr, "bench:", err)
+		return 3
+	}
+	f, err := manifest.Load(filepath.Join(o.root, o.manifest))
+	if err != nil {
+		fmt.Fprintln(stderr, "bench:", err)
+		return 3
+	}
+	doc := docPath(o)
+	if doc == "" {
+		fmt.Fprintln(stderr, "bench: -render with -doc none writes nothing")
+		return 2
+	}
+	if !filepath.IsAbs(doc) {
+		doc = filepath.Join(o.root, doc)
+	}
+	if err := writeDocFile(doc, r, f); err != nil {
+		fmt.Fprintln(stderr, "bench:", err)
+		return 3
+	}
+	fmt.Fprintln(stdout, "page:", doc)
 	return 0
 }
 

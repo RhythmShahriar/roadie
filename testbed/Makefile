@@ -13,7 +13,8 @@
 #                          and wp db export (make up runs it)
 #   make seal              TestNetworkIsSealed against the running testbed
 #   make oracle ID=r01 DUMP=out.sql [TREE=dir]   judge an output
-#   make bench [ONLY=r01]  the benchmark into bench/work/results.json
+#   make bench [ONLY=r01]  the benchmark into bench/work/results.json and
+#                          docs/benchmark.md (BASELINE=<results.json> guards r17)
 #   make reproduce         the benchmark twice; fails if the score differs
 #   make drill             the side-effect drill alone on the running staging
 #   make tools             fetch the other tools the benchmark judges (make up runs it)
@@ -175,7 +176,9 @@ oracle: ## judge an output: make oracle ID=r01 DUMP=out.sql [TREE=dir]
 # and the control pass, into bench/work/results.json. rhythm-roadie is
 # built from this checkout without cgo, so the same binary runs here and
 # in every container. DRILL is how long the side-effect drill runs after
-# each copy and prepare (5m for the published numbers).
+# each copy and prepare (5m for the published numbers). BASELINE is an
+# earlier results.json: r17 then fails on a 20% throughput drop. A run of
+# every scenario also writes docs/benchmark.md (the generated page).
 DRILL ?= 5m
 BENCH := cd $(ROOT) && $(GO) run -tags testbed ./testbed/bench -bin testbed/$(RUNTIME)/bin/rhythm-roadie -php "$(PHP)" -seed $(SEED) -drill-for $(DRILL) -greenmask $(GREENMASK_VERSION)
 
@@ -184,11 +187,11 @@ roadie-bin:
 	cd $(ROOT) && CGO_ENABLED=0 GOOS=linux $(GO) build -o testbed/$(RUNTIME)/bin/rhythm-roadie ./cmd/rhythm-roadie
 
 bench: roadie-bin ## run the benchmark (needs make up); ONLY=r01,v01 for some
-	$(BENCH) $(if $(ONLY),-only $(ONLY))
+	$(BENCH) $(if $(ONLY),-only $(ONLY)) $(if $(BASELINE),-baseline $(abspath $(BASELINE)))
 
 reproduce: roadie-bin ## run the benchmark twice and fail if the score differs
-	$(BENCH) $(if $(ONLY),-only $(ONLY)) -work testbed/bench/work/first
-	$(BENCH) $(if $(ONLY),-only $(ONLY)) -work testbed/bench/work/second
+	$(BENCH) $(if $(ONLY),-only $(ONLY)) -doc none -work testbed/bench/work/first
+	$(BENCH) $(if $(ONLY),-only $(ONLY)) -doc none -work testbed/bench/work/second
 	cd $(ROOT) && $(GO) run -tags testbed ./testbed/bench -diff testbed/bench/work/first/results.json testbed/bench/work/second/results.json
 
 drill: ## the side-effect drill alone on the running staging (FOR=5m)
