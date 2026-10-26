@@ -170,7 +170,7 @@ func (r *report) htmlReport(n int) htmlReport {
 	}
 	for _, c := range d.Checks {
 		res := checkResult(c)
-		if c.Status == "fail" {
+		if c.Status == "fail" || c.Status == "warn" {
 			var titles []string
 			for _, f := range r.checkFindings(c.ID) {
 				titles = append(titles, findingTitle(f))
@@ -179,7 +179,7 @@ func (r *report) htmlReport(n int) htmlReport {
 				res = strings.Join(titles, "; ")
 			}
 		}
-		h.Checks = append(h.Checks, htmlCheck{Label: safe(CheckLabel(c.ID)), ID: safe(c.ID), Status: safe(c.Status), Result: safe(res)})
+		h.Checks = append(h.Checks, htmlCheck{Label: safe(CheckTitle(c.ID, c.Status)), ID: safe(c.ID), Status: safe(c.Status), Result: safe(res)})
 	}
 	for _, s := range severities {
 		fs := r.bySeverity(s)

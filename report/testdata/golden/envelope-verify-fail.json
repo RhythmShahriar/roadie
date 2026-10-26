@@ -167,6 +167,12 @@
         "checked": 41077
       },
       {
+        "id": "config.environment",
+        "status": "warn",
+        "checked": 1,
+        "detail": "1 hit under --fail-on high"
+      },
+      {
         "id": "keys",
         "status": "fail",
         "checked": 0,

@@ -32,7 +32,7 @@ table{border-collapse:collapse;width:100%;font-size:14px}
 th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
 th{color:var(--muted);font-weight:600}
 code{font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--card);padding:1px 4px;border-radius:4px;overflow-wrap:anywhere}
-.ok{color:var(--ok)}.bad{color:var(--bad)}.muted{color:var(--muted)}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.muted{color:var(--muted)}.warn{color:var(--warn)}
 .finding{border-left:4px solid var(--muted);padding:6px 12px;margin:8px 0;background:var(--card);border-radius:0 8px 8px 0}
 .finding.critical{border-color:var(--bad)}.finding.high{border-color:var(--high)}.finding.medium{border-color:var(--warn)}.finding.low{border-color:var(--low)}
 .badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:1px 6px;border-radius:4px;border:1px solid currentColor;margin-right:6px}
@@ -67,7 +67,7 @@ section.report+section.report{margin-top:48px;border-top:3px solid var(--line);p
 
 {{if .Checks}}<h2>Checks</h2>
 <table><tr><th>Check</th><th>Result</th><th>ID</th></tr>
-{{range .Checks}}<tr><td>{{.Label}}</td><td class="{{if eq .Status "pass"}}ok{{else if eq .Status "fail"}}bad{{else}}muted{{end}}">{{if eq .Status "pass"}}&#10003;{{else if eq .Status "fail"}}&#10007;{{else}}&#183;{{end}} {{.Result}}</td><td><code>{{.ID}}</code></td></tr>
+{{range .Checks}}<tr><td>{{.Label}}</td><td class="{{if eq .Status "pass"}}ok{{else if eq .Status "fail"}}bad{{else if eq .Status "warn"}}warn{{else}}muted{{end}}">{{if eq .Status "pass"}}&#10003;{{else if eq .Status "fail"}}&#10007;{{else if eq .Status "warn"}}!{{else}}&#183;{{end}} {{.Result}}</td><td><code>{{.ID}}</code></td></tr>
 {{end}}</table>{{end}}
 
 {{if .FindingsAny}}<h2>Findings</h2>

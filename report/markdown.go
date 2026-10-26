@@ -102,11 +102,13 @@ func (r *report) markdown(b *bytes.Buffer) {
 			switch c.Status {
 			case "fail":
 				mark = "❌"
+			case "warn":
+				mark = "⚠️"
 			case "skip":
 				mark = "➖"
 			}
 			result := checkResult(c)
-			if c.Status == "fail" {
+			if c.Status == "fail" || c.Status == "warn" {
 				var titles []string
 				for _, f := range r.checkFindings(c.ID) {
 					titles = append(titles, findingTitle(f))
@@ -115,7 +117,7 @@ func (r *report) markdown(b *bytes.Buffer) {
 					result = strings.Join(titles, "; ")
 				}
 			}
-			fmt.Fprintf(b, "| %s | %s %s |\n", md(CheckLabel(c.ID)), mark, md(result))
+			fmt.Fprintf(b, "| %s | %s %s |\n", md(CheckTitle(c.ID, c.Status)), mark, md(result))
 		}
 		b.WriteString("\n")
 	}

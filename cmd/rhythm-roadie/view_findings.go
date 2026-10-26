@@ -179,10 +179,10 @@ func findingDetails(f core.Finding, verbose bool) []string {
 	return out
 }
 
-// checkLines prints verify's checks with ✓ or ✗.
+// checkLines prints verify's checks with ✓, !, ✗ or ·.
 func (v *view) checkLines(checks []core.Check) {
 	for _, c := range checks {
-		label := report.CheckLabel(c.ID)
+		label := report.CheckTitle(c.ID, c.Status)
 		detail := c.Detail
 		if detail == "" && c.Checked > 0 {
 			detail = num(c.Checked) + " checked"
@@ -191,6 +191,8 @@ func (v *view) checkLines(checks []core.Check) {
 		switch c.Status {
 		case "fail":
 			glyph, color = "✗", lipgloss.Color(ui.Danger)
+		case "warn":
+			glyph, color = "!", lipgloss.Color(ui.Warn)
 		case "skip":
 			glyph, color = "·", lipgloss.Color(ui.Muted)
 			if detail == "" {

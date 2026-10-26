@@ -63,8 +63,8 @@ func (r *run) skipReason(id string) string {
 
 // checks lists one core.Check per detector and site check, sorted by ID:
 // fail when a finding of the check is at or above --fail-on (low when
-// --fail-on is none), pass when it ran without one, skip with the reason
-// when it didn't run. Checked counts the rows, files, pages or calls it
+// --fail-on is none), warn when it has findings below that, pass when
+// it ran without any, skip with the reason when it didn't run. Checked counts the rows, files, pages or calls it
 // looked at. Hidden findings don't fail a check.
 func (r *run) checks() []core.Check {
 	listed := map[string]bool{}
@@ -125,27 +125,34 @@ func (r *run) checks() []core.Check {
 			continue
 		}
 		c := core.Check{ID: id, Status: "pass", Checked: n, Detail: r.note[id]}
-		if hits := r.failingHits(id); hits > 0 {
+		if hits, all := r.hits(id); hits > 0 {
 			c.Status = "fail"
 			c.Detail = fmt.Sprintf("%d %s", hits, plural(hits, "hit", "hits"))
+		} else if all > 0 {
+			c.Status = "warn"
+			c.Detail = fmt.Sprintf("%d %s under --fail-on %s", all, plural(all, "hit", "hits"), r.j.Opts.FailOn)
 		}
 		out = append(out, c)
 	}
 	return out
 }
 
-// failingHits counts the hits of check id's findings that fail it.
-func (r *run) failingHits(id string) int64 {
-	var n int64
+// hits counts the hits of check id's findings that fail it and all of
+// its hits of low severity or above (an info finding is a note, which
+// warns of nothing; it still fails at --fail-on info).
+func (r *run) hits(id string) (failing, all int64) {
 	for _, f := range r.res.Findings {
 		if checkOf(f.ID) != id {
 			continue
 		}
 		if fo := r.j.Opts.FailOn; fo.Fails(f.Severity) || fo == core.SeverityNone && f.Severity >= core.SeverityLow {
-			n += f.Count
+			failing += f.Count
+		}
+		if f.Severity >= core.SeverityLow {
+			all += f.Count
 		}
 	}
-	return n
+	return failing, all
 }
 
 // checkOf returns the check a finding ID belongs to.

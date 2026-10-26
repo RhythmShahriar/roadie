@@ -305,13 +305,17 @@ func TestJUnit(t *testing.T) {
 		t.Fatal(err)
 	}
 	suite := s.Suites[0]
-	if suite.Name != "roadie.verify" || suite.Tests != 4 || suite.Fails != 2 || suite.Skipped != 1 {
+	if suite.Name != "roadie.verify" || suite.Tests != 5 || suite.Fails != 2 || suite.Skipped != 1 {
 		t.Fatalf("suite %+v", suite)
 	}
 	if f := suite.Cases[0].Failure; f == nil || f.Message != "3 real-looking emails" {
 		t.Errorf("failure %+v", f)
 	}
-	if f := suite.Cases[2].Failure; f == nil || f.Message != "Stripe live key" {
+	// A warning passes its case and says why in its output.
+	if c := suite.Cases[2]; c.Failure != nil || !strings.HasPrefix(c.SystemOut, "warning: 1 hit under --fail-on high") {
+		t.Errorf("warn case %+v", c)
+	}
+	if f := suite.Cases[3].Failure; f == nil || f.Message != "Stripe live key" {
 		t.Errorf("keys failure %+v", f)
 	}
 	b, _ = JUnit(signedEnvelope(t, copyError()))

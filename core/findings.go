@@ -100,7 +100,7 @@ type SideEffect struct {
 // Check is one verify check and its outcome.
 type Check struct {
 	ID      string
-	Status  string // "pass", "fail", "skip"
+	Status  string // "pass", "warn", "fail", "skip"
 	Checked int64
 	Detail  string
 }

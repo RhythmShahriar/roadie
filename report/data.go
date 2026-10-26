@@ -129,7 +129,7 @@ type SideEffect struct {
 // CheckData is one entry of data.checks.
 type CheckData struct {
 	ID      string `json:"id"`
-	Status  string `json:"status"` // pass, fail, skip
+	Status  string `json:"status"` // pass, warn, fail, skip
 	Checked int64  `json:"checked"`
 	Detail  string `json:"detail,omitempty"`
 }

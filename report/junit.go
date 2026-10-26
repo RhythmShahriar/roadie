@@ -43,6 +43,9 @@ type junitCase struct {
 	Failure   *junitProblem `xml:"failure"`
 	Error     *junitProblem `xml:"error"`
 	Skipped   *junitSkipped `xml:"skipped"`
+	// SystemOut carries a warning: findings below --fail-on pass the
+	// case, which JUnit has no other way to mark.
+	SystemOut string `xml:"system-out,omitempty"`
 }
 
 type junitProblem struct {
@@ -83,8 +86,16 @@ func JUnit(e *core.Envelope) ([]byte, error) {
 		s.Errors++
 	}
 	for _, c := range d.Checks {
+		// The case keeps one name whatever its outcome, so a CI's test
+		// history follows it from run to run.
 		jc := junitCase{Name: CheckLabel(c.ID) + " (" + c.ID + ")", Classname: junitSuiteName}
 		switch c.Status {
+		case "warn":
+			lines := []string{"warning: " + checkResult(c)}
+			for _, f := range r.checkFindings(c.ID) {
+				lines = append(lines, f.ID+" "+f.Severity.String()+": "+findingTitle(f))
+			}
+			jc.SystemOut = strings.Join(lines, "\n")
 		case "fail":
 			var titles, details []string
 			for _, f := range r.checkFindings(c.ID) {

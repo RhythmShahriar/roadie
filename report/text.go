@@ -97,6 +97,45 @@ var checkLabels = map[string]string{
 	core.FindingUncoveredColumn:      "Every personal-looking column covered",
 }
 
+// checkNames name verify's checks without a verdict, for a check that
+// has findings: "No real-looking emails" above its own findings would
+// read as reassurance.
+var checkNames = map[string]string{
+	core.FindingExactSurvivors:       "Pseudonymised values",
+	core.FindingPIIEmail:             "Real-looking emails",
+	core.FindingPIIPhone:             "Real-looking phones",
+	core.FindingPIIName:              "Real-looking names",
+	core.FindingPIIAddress:           "Real-looking addresses",
+	core.FindingPIIIP:                "Public IP addresses",
+	core.FindingPIICard:              "Card numbers",
+	core.FindingPIIIBAN:              "IBANs",
+	"keys":                           "Live keys",
+	core.FindingURLProduction:        "Production URLs",
+	core.FindingURLProductionSiteURL: "Site URL",
+	"side-effects":                   "Side effects",
+	core.FindingConfigEnvironment:    "WP_ENVIRONMENT_TYPE",
+	core.FindingSearchIndexable:      "Search engines",
+	core.FindingUploadsPersonal:      "Files in uploads",
+	core.FindingUncoveredColumn:      "Personal-looking columns",
+}
+
+// CheckTitle names a check as a list shows it with its status: the
+// label (a statement such as "No real-looking emails") when it passed
+// or was skipped, a plain name ("Real-looking emails") when it warns or
+// fails, so the line never says the opposite of its findings. A check
+// with neither is named by its ID.
+func CheckTitle(id, status string) string {
+	if status == "warn" || status == "fail" {
+		if n, ok := checkNames[id]; ok {
+			return n
+		}
+		if _, ok := checkLabels[id]; ok {
+			return id
+		}
+	}
+	return CheckLabel(id)
+}
+
 // CheckLabel names a check: "No real-looking emails" for pii.email. A
 // check without a label is named by its ID.
 func CheckLabel(id string) string {

@@ -16,11 +16,11 @@ Not stopped: a server crontab calling wp cron or artisan schedule:run, wp action
 
 VERIFY (exact)
 [ok] No pseudonymised value survives: 1.21 M hashes, every table and text
-[FAIL] No real-looking emails: 17,880 look real
+[FAIL] Real-looking emails: 17,880 look real
 [ok] No real-looking phones: 41,077 checked
 [ok] No live keys: DB, wp-config.php, .env
 [ok] No production URLs: 0 left of 3,912
-[FAIL] Side effects off: 3 of 4
+[FAIL] Side effects: 3 of 4
 
 CRITICAL  1
 [CRITICAL] Mail goes out for real (side-effect.mail)

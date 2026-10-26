@@ -257,9 +257,11 @@ func TestChecksListIsStableAndSorted(t *testing.T) {
 			t.Errorf("hidden findings failed the check: %+v", c)
 		}
 	}
+	// Findings under --fail-on warn: the check doesn't fail, nor does it
+	// pass as if there were none.
 	res = runJob(t, Job{Source: source(people()), Opts: Options{FailOn: core.SeverityCritical}})
 	for _, c := range res.Checks {
-		if c.ID == core.FindingPIIEmail && c.Status != "pass" {
+		if c.ID == core.FindingPIIEmail && (c.Status != "warn" || c.Detail != "2 hits under --fail-on critical") {
 			t.Errorf("--fail-on critical: %+v", c)
 		}
 	}
