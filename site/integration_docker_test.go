@@ -8,6 +8,7 @@ package site
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -33,6 +34,13 @@ const (
 	ksWooCommerce = "9.8.5"
 	ksWPMailSMTP  = "4.10.3"
 )
+
+// ksZipSHA256 pins the plugin zips from ROADIE_PLUGIN_ZIPS, as
+// site/testdata/fetch-plugin-zips.sh does.
+var ksZipSHA256 = map[string]string{
+	"woocommerce." + ksWooCommerce + ".zip": "9008e72eacda8f3bda01d0b704502eaddd8bc147651d61bd9aa7a015bf583964",
+	"wp-mail-smtp." + ksWPMailSMTP + ".zip": "39fdb36add56c42ae803684cf94053320e4ba1262d24933d2eb16c215266c6a4",
+}
 
 // sinkPHP listens on 2525 (SMTP) and 8080 (HTTP) and prints one line per
 // connection: the sink the kill switch must keep every message from.
@@ -223,6 +231,10 @@ func TestKillSwitchInWordPress(t *testing.T) {
 	if _, err := run(t, "", "docker", "info"); err != nil {
 		t.Skip("docker isn't running")
 	}
+	zips := os.Getenv("ROADIE_PLUGIN_ZIPS")
+	if zips == "" {
+		t.Skip("set ROADIE_PLUGIN_ZIPS to a folder of the pinned plugin zips (site/testdata/fetch-plugin-zips.sh)")
+	}
 	ctx := context.Background()
 	echoBin := buildEcho(t)
 
@@ -261,14 +273,11 @@ func TestKillSwitchInWordPress(t *testing.T) {
 	// wp-config.php to wp config create, so it holds literal defines.
 	must(t, "", "docker", "run", "-d", "--name", wpName, "--network", netName, "-v", html+":/var/www/html", ksWordPress)
 
-	// ROADIE_PLUGIN_ZIPS names a folder of <slug>.<version>.zip files to
-	// install from, for a run without internet access in the containers.
-	zips := os.Getenv("ROADIE_PLUGIN_ZIPS")
+	// ROADIE_PLUGIN_ZIPS names the folder of <slug>.<version>.zip files
+	// the plugins install from; the test itself never downloads.
 	wpIn := func(stdin string, args ...string) (string, error) {
 		base := []string{"run", "--rm", "--network", netName, "-v", html + ":/var/www/html", "--user", "33:33"}
-		if zips != "" {
-			base = append(base, "-v", zips+":/zips:ro")
-		}
+		base = append(base, "-v", zips+":/zips:ro")
 		if stdin != "" {
 			base = append(base, "-i")
 		}
@@ -334,11 +343,14 @@ func TestKillSwitchInWordPress(t *testing.T) {
 	install := func(slug, version string) {
 		t.Helper()
 		zip := slug + "." + version + ".zip"
-		if _, err := os.Stat(filepath.Join(zips, zip)); zips != "" && err == nil {
-			wp("plugin", "install", "/zips/"+zip, "--activate")
-			return
+		b, err := os.ReadFile(filepath.Join(zips, zip)) // #nosec G304 -- the tester's own folder
+		if err != nil {
+			t.Fatalf("ROADIE_PLUGIN_ZIPS: %v", err)
 		}
-		wp("plugin", "install", slug, "--version="+version, "--activate")
+		if sum := sha256.Sum256(b); hex.EncodeToString(sum[:]) != ksZipSHA256[zip] {
+			t.Fatalf("%s: sha256 %x, want %s", zip, sum, ksZipSHA256[zip])
+		}
+		wp("plugin", "install", "/zips/"+zip, "--activate")
 	}
 	install("woocommerce", ksWooCommerce)
 	install("wp-mail-smtp", ksWPMailSMTP)

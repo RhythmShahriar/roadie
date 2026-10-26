@@ -9,8 +9,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,33 +58,17 @@ if ( class_exists( 'WooCommerce' ) && ! class_exists( 'WC_Subscriptions_Core_Plu
 }
 `
 
-// fetchZip returns a local copy of z, verified against its pinned
-// SHA-256. ROADIE_PLUGIN_ZIPS names a folder of <slug>.<version>.zip
-// files for a run without internet access; otherwise the zip is
-// downloaded from its pinned URL.
+// fetchZip returns a local copy of z from the ROADIE_PLUGIN_ZIPS folder
+// of <slug>.<version>.zip files, verified against its pinned SHA-256.
+// The test never downloads: the nightly workflow fetches the zips in a
+// step of its own (site/testdata/fetch-plugin-zips.sh).
 func fetchZip(t *testing.T, dir string, z pinnedZip) string {
 	t.Helper()
 	name := z.slug + "." + z.version + ".zip"
 	dst := filepath.Join(dir, name)
-	var b []byte
-	if zips := os.Getenv("ROADIE_PLUGIN_ZIPS"); zips != "" {
-		var err error
-		if b, err = os.ReadFile(filepath.Join(zips, name)); err != nil { // #nosec G304 -- the tester's own folder
-			t.Fatalf("ROADIE_PLUGIN_ZIPS: %v", err)
-		}
-	} else {
-		c := &http.Client{Timeout: 5 * time.Minute}
-		resp, err := c.Get(z.url) // #nosec G107 -- a pinned URL, checked by SHA-256 below
-		if err != nil {
-			t.Fatalf("download %s: %v", name, err)
-		}
-		defer func() { _ = resp.Body.Close() }()
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("download %s: %s", name, resp.Status)
-		}
-		if b, err = io.ReadAll(io.LimitReader(resp.Body, 200<<20)); err != nil {
-			t.Fatalf("download %s: %v", name, err)
-		}
+	b, err := os.ReadFile(filepath.Join(pluginZips(t), name)) // #nosec G304 -- the tester's own folder
+	if err != nil {
+		t.Fatalf("ROADIE_PLUGIN_ZIPS: %v (the pinned zip is %s)", err, z.url)
 	}
 	sum := sha256.Sum256(b)
 	if got := hex.EncodeToString(sum[:]); got != z.sha256 {
@@ -96,6 +78,17 @@ func fetchZip(t *testing.T, dir string, z pinnedZip) string {
 		t.Fatal(err)
 	}
 	return dst
+}
+
+// pluginZips is the ROADIE_PLUGIN_ZIPS folder; without it the test
+// skips, since tests never reach the internet.
+func pluginZips(t *testing.T) string {
+	t.Helper()
+	zips := os.Getenv("ROADIE_PLUGIN_ZIPS")
+	if zips == "" {
+		t.Skip("set ROADIE_PLUGIN_ZIPS to a folder of the pinned plugin zips (site/testdata/fetch-plugin-zips.sh)")
+	}
+	return zips
 }
 
 func docker(t *testing.T, args ...string) string {
@@ -119,6 +112,7 @@ func TestMuPluginInWordPress(t *testing.T) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker not on PATH")
 	}
+	pluginZips(t)
 	zipDir := t.TempDir()
 	zips := []string{fetchZip(t, zipDir, zipWooCommerce), fetchZip(t, zipDir, zipSubscriptionsCore)}
 
