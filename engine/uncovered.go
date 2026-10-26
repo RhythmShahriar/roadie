@@ -168,6 +168,15 @@ func uncoveredFinding(u core.Uncovered, n int) core.Finding {
 // uncoveredError is the PRD 17 uncovered stop: copy and prepare write
 // nothing while a personal-looking column has no rule.
 func uncoveredError(us []core.Uncovered) *core.Error {
+	return uncoveredErrorIn(us, core.Untouched)
+}
+
+// uncoveredErrorIn is uncoveredError for a target in state st. With
+// --one-pass the check runs after pass 2 has written every row, so a
+// database target the sink couldn't take back is already Mixed and may
+// hold the uncovered columns as they were; the message must say so and
+// never claim the target is untouched.
+func uncoveredErrorIn(us []core.Uncovered, st core.TargetState) *core.Error {
 	names := make([]string, len(us))
 	for i, u := range us {
 		names[i] = u.Table + "." + u.Column
@@ -176,9 +185,18 @@ func uncoveredError(us []core.Uncovered) *core.Error {
 	if len(us) == 1 {
 		what, them, it = "column looks", "it", "it"
 	}
-	return &core.Error{Code: core.ErrUncovered, Exit: 1, State: core.Untouched, Msg: fmt.Sprintf(
-		"uncovered: %d %s personal and no rule covers %s: %s. Add %s under columns: (rhythm-roadie explain uncovered-column), or --allow-uncovered to copy and list them as findings. The target is untouched.",
-		len(us), what, them, strings.Join(names, ", "), it)}
+	tail := "The target is untouched."
+	if st != core.Untouched {
+		held, has := "the columns as they were", "they have"
+		if len(us) == 1 {
+			held, has = "the column as it was", "it has"
+		}
+		tail = fmt.Sprintf("The target is in a %s state and may hold %s in production: run the same command again once %s a rule, or without --one-pass to check before writing.",
+			st, held, has)
+	}
+	return &core.Error{Code: core.ErrUncovered, Exit: 1, State: st, Msg: fmt.Sprintf(
+		"uncovered: %d %s personal and no rule covers %s: %s. Add %s under columns: (rhythm-roadie explain uncovered-column), or --allow-uncovered to copy and list them as findings. %s",
+		len(us), what, them, strings.Join(names, ", "), it, tail)}
 }
 
 // thousands writes n with comma separators, as the PRD's messages do.

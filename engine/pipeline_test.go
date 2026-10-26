@@ -546,6 +546,47 @@ func TestPipelineUncovered(t *testing.T) {
 	}
 }
 
+// fileLikeSink is a recording sink whose Abort takes everything back,
+// as a dump-file sink does by removing its temp file.
+type fileLikeSink struct{ *testutil.Sink }
+
+func (s fileLikeSink) State() core.TargetState {
+	if s.Aborted() {
+		return core.Untouched
+	}
+	return s.Sink.State()
+}
+
+// With --one-pass the uncovered check runs after pass 2 wrote, so a
+// database target the abort leaves mixed is reported as mixed in the
+// error and the result, never as untouched; a file target the abort
+// takes back stays untouched.
+func TestPipelineOnePassUncoveredState(t *testing.T) {
+	useFakes(t)
+	fakeUncovered(t)
+	p, sink, _ := fixture(t, Copy, "wp_", loyalty(10), nil, Options{OnePass: true})
+	out, err := p.run(context.Background())
+	var ce *core.Error
+	if !errors.As(err, &ce) || ce.Code != core.ErrUncovered || ce.Exit != 1 {
+		t.Fatalf("err %v", err)
+	}
+	if len(sink.Batches()) == 0 || !sink.Aborted() || sink.Committed() {
+		t.Fatalf("wrote %d batches, aborted %v", len(sink.Batches()), sink.Aborted())
+	}
+	if ce.State != core.Mixed || out.Result.TargetState != core.Mixed || strings.Contains(ce.Msg, "untouched") ||
+		!strings.HasSuffix(ce.Msg, "The target is in a mixed state and may hold the columns as they were in production: run the same command again once they have a rule, or without --one-pass to check before writing.") {
+		t.Errorf("state %s, result %s, msg %q", ce.State, out.Result.TargetState, ce.Msg)
+	}
+
+	p, sink, _ = fixture(t, Copy, "wp_", loyalty(10), nil, Options{OnePass: true})
+	p.sink = fileLikeSink{sink}
+	out, err = p.run(context.Background())
+	if !errors.As(err, &ce) || ce.State != core.Untouched || out.Result.TargetState != core.Untouched ||
+		!strings.HasSuffix(ce.Msg, "The target is untouched.") {
+		t.Errorf("file target: err %v, result %s", err, out.Result.TargetState)
+	}
+}
+
 // A dump with no stack and no columns: stack (exit 2) before writing.
 func TestPipelineNoStack(t *testing.T) {
 	useFakes(t)

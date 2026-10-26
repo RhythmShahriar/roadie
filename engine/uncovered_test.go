@@ -176,6 +176,11 @@ func TestUncoveredError(t *testing.T) {
 	if !strings.HasPrefix(one.Msg, "uncovered: 1 column looks personal and no rule covers it: customers.email. Add it under columns:") {
 		t.Errorf("got %q", one.Msg)
 	}
+	mixed := uncoveredErrorIn([]core.Uncovered{{Table: "customers", Column: "email"}}, core.Mixed)
+	if mixed.State != core.Mixed || strings.Contains(mixed.Msg, "untouched") ||
+		!strings.HasSuffix(mixed.Msg, "The target is in a mixed state and may hold the column as it was in production: run the same command again once it has a rule, or without --one-pass to check before writing.") {
+		t.Errorf("mixed: %+v", mixed)
+	}
 	if !errors.Is(two, &core.Error{Code: core.ErrUncovered}) {
 		t.Error("errors.Is by code")
 	}

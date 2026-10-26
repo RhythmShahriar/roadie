@@ -423,7 +423,11 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 		uncov = p.uncovered(schema, final, idx)
 		if len(uncov.Uncovered) > 0 && p.mode != Plan && !p.opts.AllowUncovered {
 			p.abort(ctx, out)
-			return out, uncoveredError(uncov.Uncovered)
+			st := core.Untouched
+			if p.sink != nil {
+				st = p.sink.State()
+			}
+			return out, uncoveredErrorIn(uncov.Uncovered, st)
 		}
 	}
 	p.fill(out, idx, final, schema, plan, uncov, t)
