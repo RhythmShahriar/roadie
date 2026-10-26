@@ -1,0 +1,12 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  Production URLs in every form a page builder and WordPress store them:
+  Elementor JSON with escaped slashes, block attributes, URL-encoded
+  redirect targets, protocol-relative assets, a serialized copy and a
+  www variant; next to a lookalike shop.example.com.au link, a
+  myshop.example.com link, an email at the production domain and a
+  third-party link, all of which must stay as they are.
+stack: wordpress
+canaries: false

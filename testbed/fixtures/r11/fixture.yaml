@@ -1,0 +1,10 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  Multisite on subdomains: shop.example.com, fr.shop.example.com and a
+  third blog on its own mapped domain gifts.example.net. Each host must
+  go to its own staging host; without a url_map entry for the mapped
+  domain the copy stops with url-map.
+stack: wordpress
+canaries: true

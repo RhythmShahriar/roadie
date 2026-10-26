@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  Multisite in subdirectories with blogs 1, 2 and 11 (so wp_1_ and wp_11_
+  prefixes can't be mixed up), WooCommerce on blog 2, network users and
+  site_admins in wp_sitemeta.
+stack: woocommerce
+canaries: true

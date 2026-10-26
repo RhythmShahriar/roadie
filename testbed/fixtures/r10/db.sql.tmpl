@@ -1,0 +1,26 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r10: a subdirectory network at shop.example.com with /fr/ (blog 2, the
+shop) and /blog/ (blog 11). */ -}}
+{{template "head"}}
+{{- template "wp_multisite" "wp_"}}
+LOCK TABLES `wp_blogs` WRITE;
+INSERT INTO `wp_blogs` VALUES (1,1,'shop.example.com','/','2026-01-01 00:00:00','2026-07-01 00:00:00',1,0,0,0,0,0),(2,1,'shop.example.com','/fr/','2026-01-02 00:00:00','2026-07-01 00:00:00',1,0,0,0,0,0),(11,1,'shop.example.com','/blog/','2026-01-03 00:00:00','2026-07-01 00:00:00',1,0,0,0,0,0);
+UNLOCK TABLES;
+LOCK TABLES `wp_site` WRITE;
+INSERT INTO `wp_site` VALUES (1,'shop.example.com','/');
+UNLOCK TABLES;
+LOCK TABLES `wp_sitemeta` WRITE;
+INSERT INTO `wp_sitemeta` VALUES (1,1,'site_name','Bean & Leaf Network'),(2,1,'admin_email','{{sql (canary "email" "netadmin" "wp_sitemeta.meta_value")}}'),(3,1,'site_admins','{{sql (printf "a:2:{i:0;s:9:\"shopowner\";i:1;%s}" (ser (canary "email" "superadmin" "wp_sitemeta.meta_value")))}}'),(4,1,'siteurl','https://shop.example.com/');
+UNLOCK TABLES;
+{{template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+{{template "users" (dict "p" "wp_" "n" 60 "tag" "n" "base" 1)}}UNLOCK TABLES;
+{{template "wp_usermeta" "wp_"}}
+LOCK TABLES `wp_usermeta` WRITE;
+{{template "usermeta" (dict "p" "wp_" "n" 60 "tag" "n" "base" 1 "meta" 0)}}UNLOCK TABLES;
+{{template "blog" (dict "p" "wp_" "url" "https://shop.example.com" "tag" "b1-" "n" 30 "woo" false)}}
+{{- template "blog" (dict "p" "wp_2_" "url" "https://shop.example.com/fr" "tag" "b2-" "n" 40 "woo" true)}}
+{{- template "blog" (dict "p" "wp_11_" "url" "https://shop.example.com/blog" "tag" "b11-" "n" 30 "woo" false)}}
+{{- template "tail"}}
