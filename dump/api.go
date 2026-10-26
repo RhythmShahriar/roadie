@@ -83,25 +83,31 @@ func NewStreamSink(w io.Writer, o WriterOptions) core.Sink {
 }
 
 // Spool is an encrypted temporary file holding a copy of the input, so a
-// second pass can read production again without a second export.
-type Spool struct{} // its fields are unexported and added by the owning lane
+// second pass can read production again without a second export. It is
+// written in 1 MiB AES-256-GCM chunks under a key from crypto/rand that
+// only this process holds, so the file is unreadable once the process is
+// gone. The caller removes it on success, error and cancel.
+type Spool struct{ spool }
 
-// NewSpool creates a spool in dir.
+// NewSpool creates dir (0700) when missing and a '<16 hex>.spool' file
+// (0600) in it.
 func NewSpool(dir string) (*Spool, error) {
-	return nil, core.ErrNotBuilt
+	return newSpool(dir)
 }
 
-// Writer returns the writer that fills the spool.
+// Writer returns the writer that fills the spool. Close it before the
+// first Reader; it is the same writer on every call.
 func (s *Spool) Writer() io.WriteCloser {
-	return nil
+	return s.writer()
 }
 
-// Reader returns a reader over the spool; it may be called more than once.
+// Reader returns a reader over the spool; it may be called more than
+// once. A chunk that was changed, reordered or cut off gives an error.
 func (s *Spool) Reader() (io.ReadCloser, error) {
-	return nil, core.ErrNotBuilt
+	return s.reader()
 }
 
-// Remove deletes the spool.
+// Remove deletes the spool file. A second call does nothing.
 func (s *Spool) Remove() error {
-	return core.ErrNotBuilt
+	return s.remove()
 }
