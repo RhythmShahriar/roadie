@@ -24,8 +24,9 @@ var aliasFiles = []string{"wp-cli.yml", "wp-cli.local.yml"}
 // ErrNoAlias is wrapped when an alias is in no wp-cli.yml.
 var ErrNoAlias = errors.New("WP-CLI alias not found")
 
-// sshAliasRE is WP-CLI's ssh value: [ssh:][user@]host[:port][/path].
-var sshAliasRE = regexp.MustCompile(`^(?:ssh:)?(?:([^@/\s]+)@)?(\[[^\]]+\]|[^:/\s]+)(?::([0-9]*))?(/.*)?$`)
+// sshAliasRE is WP-CLI's ssh value: [ssh:][user@]host[:port][/path or
+// ~path]. A host never holds '~', as in WP-CLI.
+var sshAliasRE = regexp.MustCompile(`^(?:ssh:)?(?:([^@/\s]+)@)?(\[[^\]]+\]|[^:/~\s]+)(?::([0-9]*))?([/~].*)?$`)
 
 // ResolveAlias finds alias ("@prod") in wp-cli.yml or wp-cli.local.yml
 // in dir or the nearest folder above it that has either file, as WP-CLI
@@ -69,7 +70,6 @@ func ResolveAlias(dir, alias string) (core.Endpoint, error) {
 	}
 	sshVal, _ := entry["ssh"].(string)
 	pathVal, _ := entry["path"].(string)
-	e := core.Endpoint{Alias: "@" + name, Display: "@" + name, Raw: "@" + name}
 	if sshVal == "" {
 		if pathVal == "" {
 			return core.Endpoint{}, fmt.Errorf("@%s in %s has neither ssh nor path", name, filepath.Base(from))
@@ -77,9 +77,15 @@ func ResolveAlias(dir, alias string) (core.Endpoint, error) {
 		if !filepath.IsAbs(pathVal) {
 			pathVal = filepath.Join(cfgDir, pathVal)
 		}
-		e.Kind, e.Path = core.LocalSite, pathVal
-		return e, nil
+		return core.Endpoint{Kind: core.LocalSite, Alias: "@" + name, Display: "@" + name, Raw: "@" + name, Path: pathVal}, nil
 	}
+	return aliasSSH(name, sshVal, pathVal)
+}
+
+// aliasSSH turns an alias's ssh value (and its path key, which wins over
+// the path in the ssh value) into an SSHSite endpoint.
+func aliasSSH(name, sshVal, pathVal string) (core.Endpoint, error) {
+	e := core.Endpoint{Alias: "@" + name, Display: "@" + name, Raw: "@" + name}
 	m := sshAliasRE.FindStringSubmatch(sshVal)
 	if m == nil || strings.Contains(sshVal, "://") || strings.HasPrefix(sshVal, "docker") || strings.HasPrefix(sshVal, "vagrant") {
 		return core.Endpoint{}, fmt.Errorf("@%s: ssh: %q is not user@host[:port]/path (Roadie runs only ssh aliases)", name, sshVal)
@@ -103,6 +109,14 @@ func ResolveAlias(dir, alias string) (core.Endpoint, error) {
 	}
 	if e.Path == "" {
 		return core.Endpoint{}, fmt.Errorf("@%s: ssh: %q names no site folder (add /path, or a path: key)", name, sshVal)
+	}
+	// WP-CLI reads host~/www as a folder in the ssh user's home. Every
+	// remote command single-quotes the folder, so '~' would never expand.
+	if !strings.HasPrefix(e.Path, "/") || strings.HasPrefix(e.Path, "/~") {
+		return core.Endpoint{}, fmt.Errorf("@%s: give the absolute folder on the host, such as /home/deploy/www, not %q; Roadie doesn't expand '~'", name, e.Path)
+	}
+	if strings.ContainsFunc(e.Path, func(r rune) bool { return r < ' ' || r == 0x7f }) {
+		return core.Endpoint{}, fmt.Errorf("@%s: the site folder %q holds a control character", name, e.Path)
 	}
 	return e, nil
 }
