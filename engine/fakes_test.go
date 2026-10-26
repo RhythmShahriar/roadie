@@ -291,7 +291,7 @@ type fakes struct {
 	spool *memSpool
 }
 
-func useFakes(t *testing.T) *fakes {
+func useFakes(t testing.TB) *fakes {
 	t.Helper()
 	f := &fakes{known: testutil.FakeKnown(), spool: &memSpool{}}
 	saved := []func(){}
