@@ -7,7 +7,7 @@ import "testing"
 
 // The address index merges scattered writes of one address (a later
 // part wins), finds every address after seal, says nothing before seal
-// or for an address it never saw, and refuses one with a part too long
+// or for an address it never saw and refuses one with a part too long
 // to record.
 func TestAddrIndex(t *testing.T) {
 	a := newAddrIndex()

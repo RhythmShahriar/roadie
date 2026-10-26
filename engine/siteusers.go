@@ -108,7 +108,7 @@ func (s *siteUsers) seal(kept *keptUsers) {
 func (s *siteUsers) limits() bool { return s != nil && s.metaSeen }
 
 // drops reports whether a row of table is a user or user meta row copy
-// --site leaves out, and the column that names the user.
+// --site leaves out and the column that names the user.
 func (s *siteUsers) drops(table, prefix string, get func(string) ([]byte, bool)) (string, bool) {
 	if !s.limits() {
 		return "", false
@@ -128,7 +128,7 @@ func (s *siteUsers) drops(table, prefix string, get func(string) ([]byte, bool))
 
 // serializedStrings returns the string elements of a PHP serialized
 // value, as s:<len>:"<bytes>"; tokens. It reads by the length, so a
-// quote inside a string doesn't end it, and stops at the first token it
+// quote inside a string doesn't end it and stops at the first token it
 // can't read.
 func serializedStrings(v []byte) []string {
 	var out []string
