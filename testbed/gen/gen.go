@@ -270,6 +270,8 @@ func (w *writer) table(name string, end, big int64, last bool) error {
 	if name == "wp_options" {
 		add("(1,'siteurl','https://shop.example.com','on')")
 		add("(2,'home','https://shop.example.com','on')")
+		// A WooCommerce shop says so in its options, as a real one does.
+		add("(4,'woocommerce_version','9.8.5','on')")
 		flush()
 		// The big row: a serialized cached report, alone in its statement.
 		const line = "Bean & Leaf order export line, nothing personal here. "
