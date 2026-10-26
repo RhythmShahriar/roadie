@@ -882,20 +882,20 @@ func TestRunUnparsedNoted(t *testing.T) {
 
 func TestLooksSerialized(t *testing.T) {
 	for v, want := range map[string]bool{
-		`a:1:{s:1:"a";s:1:"b";}`:   true,
-		`a:2:{broken`:              false,
-		`O:8:"stdClass":0:{}`:      true,
-		`s:5:"hello";`:             true,
-		` i:42; `:                  true,
-		`b:1;`:                     true,
-		`N;`:                       true,
-		`s:5:"hello"}`:             false,
-		`a:b; not serialized`:      false,
-		`x:1;`:                     false,
-		`a:`:                       false,
-		`{"a":1}`:                  false,
-		`Time: 10:30; see you`:     false,
-		"":                         false,
+		`a:1:{s:1:"a";s:1:"b";}`: true,
+		`a:2:{broken`:            false,
+		`O:8:"stdClass":0:{}`:    true,
+		`s:5:"hello";`:           true,
+		` i:42; `:                true,
+		`b:1;`:                   true,
+		`N;`:                     true,
+		`s:5:"hello"}`:           false,
+		`a:b; not serialized`:    false,
+		`x:1;`:                   false,
+		`a:`:                     false,
+		`{"a":1}`:                false,
+		`Time: 10:30; see you`:   false,
+		"":                       false,
 	} {
 		if got := looksSerialized([]byte(v)); got != want {
 			t.Errorf("looksSerialized(%q) = %v, want %v", v, got, want)
