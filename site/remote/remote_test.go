@@ -48,6 +48,8 @@ var sample = map[Template][]string{
 	Backup:         {"2026-10-26T14-02-03"},
 	Write:          {"/srv/s/wp-config.php.roadie-tmp", "/srv/s/wp-config.php.roadie-tmp", "/srv/s/wp-config.php"},
 	WriteMode:      {"/srv/s/x.tmp", "0640", "/srv/s/x.tmp", "/srv/s/x.tmp", "/srv/s/x"},
+	WriteKeep:      {"/srv/s/x.tmp", "1001", "33", "/srv/s/x.tmp", "33", "/srv/s/x.tmp", "0644", "/srv/s/x.tmp", "/srv/s/x.tmp", "/srv/s/x"},
+	Stat:           {"/srv/s/wp-config.php"},
 	Mkdir:          {"/srv/s/wp-content/mu-plugins"},
 	Remove:         {"/srv/s/robots.txt.roadie-tmp"},
 	EvalFile:       nil,
@@ -106,6 +108,9 @@ func TestExactCommands(t *testing.T) {
 		{MySQLDump, []string{"shop"}, "mysqldump --defaults-extra-file=/dev/stdin --single-transaction --skip-triggers --no-tablespaces --hex-blob 'shop'"},
 		{Backup, []string{"2026-10-26T14-02-03"}, "umask 077 && mkdir -p ~/.roadie-backups && { ~/bin/wp --path='/var/www/shop' db export - --skip-plugins --skip-themes --single-transaction || echo 'roadie: wp db export failed' >&2; } | gzip > ~/.roadie-backups/2026-10-26T14-02-03.sql.gz"},
 		{EvalFile, nil, "~/bin/wp --path='/var/www/shop' eval-file -"},
+		{Stat, []string{"/srv/shop/wp-config.php"}, "ls -lnLd -- '/srv/shop/wp-config.php'"},
+		{WriteKeep, []string{"/s/.x.t", "1001", "33", "/s/.x.t", "33", "/s/.x.t", "0644", "/s/.x.t", "/s/.x.t", "/s/x"},
+			"umask 077 && cat > '/s/.x.t' && { chown 1001:33 -- '/s/.x.t' 2>/dev/null || chgrp 33 -- '/s/.x.t' 2>/dev/null || :; } && chmod 0644 -- '/s/.x.t' && mv -f -- '/s/.x.t' '/s/x'"},
 	}
 	for _, tt := range tests {
 		got, err := r.Command(tt.t, tt.args...)
@@ -128,6 +133,8 @@ func TestBadArguments(t *testing.T) {
 		{OptionGet, []string{"admin_email"}},
 		{Find, []string{"/x", "1; id"}},
 		{WriteMode, []string{"/a", "777", "/a", "/a", "/b"}},
+		{WriteKeep, []string{"/a", "-1", "33", "/a", "33", "/a", "0644", "/a", "/a", "/b"}},
+		{WriteKeep, []string{"/a", "1001", "33;id", "/a", "33", "/a", "0644", "/a", "/a", "/b"}},
 		{Backup, []string{"../../etc/passwd"}},
 		{Cat, []string{"/a\nb"}},
 		{Cat, nil},

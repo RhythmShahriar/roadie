@@ -91,8 +91,11 @@ func (s *sshSite) ReadFile(ctx context.Context, rel string) ([]byte, error) {
 	return b, err
 }
 
-// WriteFile streams b into a temp file next to rel with umask 077, sets
-// its mode and renames it into place.
+// WriteFile streams b into a temp file next to rel with umask 077 and
+// renames it into place. Over an existing file it keeps that file's mode
+// and, where the ssh user may set them, its owner and group, so a
+// wp-config.php the web server reads stays readable; perm is only for a
+// new file.
 func (s *sshSite) WriteFile(ctx context.Context, rel string, b []byte, perm fs.FileMode) error {
 	if s.ro {
 		return core.ErrReadOnly
@@ -104,13 +107,62 @@ func (s *sshSite) WriteFile(ctx context.Context, rel string, b []byte, perm fs.F
 	if err := s.r.Run(ctx, nil, io.Discard, remote.Mkdir, path.Dir(p)); err != nil {
 		return err
 	}
+	old, err := s.r.Output(ctx, nil, remote.Stat, p)
+	exists := !missing(err)
+	if err != nil && exists {
+		return err
+	}
 	var rnd [6]byte
 	if _, err := rand.Read(rnd[:]); err != nil {
 		return err
 	}
 	tmp := path.Join(path.Dir(p), "."+path.Base(p)+".roadie-"+hex.EncodeToString(rnd[:]))
-	mode := fmt.Sprintf("%04o", perm.Perm())
-	return s.r.Run(ctx, bytes.NewReader(b), io.Discard, remote.WriteMode, tmp, mode, tmp, tmp, p)
+	if !exists {
+		mode := fmt.Sprintf("%04o", perm.Perm())
+		return s.r.Run(ctx, bytes.NewReader(b), io.Discard, remote.WriteMode, tmp, mode, tmp, tmp, p)
+	}
+	st, err := parseLs(old)
+	if err != nil {
+		return fmt.Errorf("write %s: %w", rel, err)
+	}
+	mode := fmt.Sprintf("%04o", st.mode)
+	return s.r.Run(ctx, bytes.NewReader(b), io.Discard, remote.WriteKeep,
+		tmp, st.uid, st.gid, tmp, st.gid, tmp, mode, tmp, tmp, p)
+}
+
+// lsStat is what WriteFile keeps from an existing remote file.
+type lsStat struct {
+	mode     fs.FileMode
+	uid, gid string
+}
+
+// parseLs reads the first line of POSIX "ls -lnLd" (-L reads through a symlink): a mode string such as
+// -rw-r--r-- (an ACL mark after it is ignored), the link count, then the
+// numeric owner and group. Set-id and sticky bits are dropped: a site
+// file never needs them.
+func parseLs(out []byte) (lsStat, error) {
+	line, _, _ := bytes.Cut(out, []byte("\n"))
+	f := strings.Fields(string(line))
+	if len(f) < 4 || len(f[0]) < 10 || f[0][0] != '-' {
+		return lsStat{}, fmt.Errorf("can't read the file's mode from ls output %q", line)
+	}
+	var mode fs.FileMode
+	for i, c := range f[0][1:10] {
+		bit := fs.FileMode(1) << (8 - i)
+		switch {
+		case c == rune("rwx"[i%3]) || i%3 == 2 && (c == 's' || c == 't'):
+			mode |= bit
+		case c == '-' || i%3 == 2 && (c == 'S' || c == 'T'):
+		default:
+			return lsStat{}, fmt.Errorf("can't read the file's mode from ls output %q", line)
+		}
+	}
+	for _, id := range f[2:4] {
+		if _, err := strconv.ParseUint(id, 10, 32); err != nil {
+			return lsStat{}, fmt.Errorf("can't read the file's owner from ls output %q", line)
+		}
+	}
+	return lsStat{mode: mode, uid: f[2], gid: f[3]}, nil
 }
 
 func (s *sshSite) Remove(ctx context.Context, rel string) error {

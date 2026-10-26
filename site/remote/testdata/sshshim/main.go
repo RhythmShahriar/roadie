@@ -10,6 +10,9 @@
 //	SHIM_STDOUT  file copied to stdout
 //	SHIM_STDERR  text written to stderr
 //	SHIM_EXIT    exit code
+//	SHIM_MATCH   a remote command prefix; a call whose last argument
+//	             starts with it answers with SHIM_MATCH_STDOUT (a file),
+//	             SHIM_MATCH_STDERR and SHIM_MATCH_EXIT instead
 package main
 
 import (
@@ -52,11 +55,15 @@ func main() {
 			os.Exit(98)
 		}
 	}
-	if p := os.Getenv("SHIM_STDOUT"); p != "" {
+	prefix := "SHIM_"
+	if m := os.Getenv("SHIM_MATCH"); m != "" && len(os.Args) > 1 && strings.HasPrefix(os.Args[len(os.Args)-1], m) {
+		prefix = "SHIM_MATCH_"
+	}
+	if p := os.Getenv(prefix + "STDOUT"); p != "" {
 		b, _ := os.ReadFile(p)
 		_, _ = os.Stdout.Write(b)
 	}
-	_, _ = os.Stderr.WriteString(os.Getenv("SHIM_STDERR"))
-	code, _ := strconv.Atoi(os.Getenv("SHIM_EXIT"))
+	_, _ = os.Stderr.WriteString(os.Getenv(prefix + "STDERR"))
+	code, _ := strconv.Atoi(os.Getenv(prefix + "EXIT"))
 	os.Exit(code)
 }

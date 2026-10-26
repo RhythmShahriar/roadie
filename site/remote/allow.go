@@ -36,6 +36,8 @@ const (
 	Backup    Template = "backup"
 	Write     Template = "write"
 	WriteMode Template = "write with mode"
+	WriteKeep Template = "write keeping mode and owner"
+	Stat      Template = "ls -lnLd"
 	Mkdir     Template = "mkdir -p"
 	Remove    Template = "rm -f"
 	EvalFile  Template = "wp eval-file"
@@ -43,7 +45,7 @@ const (
 
 // template is the shape of one command. In format, each verb takes one
 // argument from Build: %q a single-quoted word, %n a number, %m a file
-// mode, %t a backup timestamp, %o an option name, %v the rest of the
+// mode, %i a numeric user or group id, %t a backup timestamp, %o an option name, %v the rest of the
 // arguments as single-quoted words (zero or more). %w is the WP-CLI
 // binary with --path and takes no argument.
 type template struct {
@@ -80,6 +82,11 @@ var templates = map[Template]template{
 	Backup:    {format: "umask 077 && mkdir -p ~/.roadie-backups && { %w db export - --skip-plugins --skip-themes --single-transaction || echo '" + backupFailed + "' >&2; } | gzip > ~/.roadie-backups/%t.sql.gz", target: true},
 	Write:     {format: "umask 077 && cat > %q && mv -f -- %q %q", target: true},
 	WriteMode: {format: "umask 077 && cat > %q && chmod %m -- %q && mv -f -- %q %q", target: true},
+	// WriteKeep replaces an existing file: it gives the temp file the old
+	// owner and group where the ssh user may (a non-root user can often
+	// keep only the group, or neither), then the old mode.
+	WriteKeep: {format: "umask 077 && cat > %q && { chown %i:%i -- %q 2>/dev/null || chgrp %i -- %q 2>/dev/null || :; } && chmod %m -- %q && mv -f -- %q %q", target: true},
+	Stat:      {format: "ls -lnLd -- %q", target: true},
 	Mkdir:     {format: "mkdir -p -- %q", target: true},
 	Remove:    {format: "rm -f -- %q", target: true},
 	EvalFile:  {format: "%w eval-file -", target: true},
@@ -145,7 +152,7 @@ func build(t Template, wp, root string, args []string) (string, error) {
 		return args[next-1], nil
 	}
 	for i := 0; i < len(f); i++ {
-		if f[i] != '%' || i+1 >= len(f) || !strings.ContainsRune("qnmtovw", rune(f[i+1])) {
+		if f[i] != '%' || i+1 >= len(f) || !strings.ContainsRune("qnmitovw", rune(f[i+1])) {
 			b.WriteByte(f[i])
 			continue
 		}
@@ -184,6 +191,11 @@ func build(t Template, wp, root string, args []string) (string, error) {
 		case 'm':
 			if len(a) != 4 || a[0] != '0' || strings.Trim(a, "01234567") != "" {
 				return "", fmt.Errorf("%w: %s takes a mode like 0644, not %q", ErrNotAllowed, t, a)
+			}
+			b.WriteString(a)
+		case 'i':
+			if _, err := strconv.ParseUint(a, 10, 32); err != nil {
+				return "", fmt.Errorf("%w: %s takes a numeric id, not %q", ErrNotAllowed, t, a)
 			}
 			b.WriteString(a)
 		case 't':
@@ -236,6 +248,7 @@ var allowRE = func() map[Template]*regexp.Regexp {
 		'q': quotedRE,
 		'n': `[0-9]+`,
 		'm': `0[0-7]{3}`,
+		'i': `[0-9]+`,
 		't': `[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}`,
 		'o': `(?:siteurl|home)`,
 		'v': `(?: ` + quotedRE + `)*`,
@@ -292,6 +305,6 @@ func List(target bool) []string {
 
 // placeholder shows a format with readable placeholders.
 func placeholder(f string) string {
-	return strings.NewReplacer("%w", "wp --path=<path>", "%q", "<arg>", "%n", "<n>", "%m", "<mode>",
+	return strings.NewReplacer("%w", "wp --path=<path>", "%q", "<arg>", "%n", "<n>", "%m", "<mode>", "%i", "<id>",
 		"%t", "<UTC timestamp>", "%o", "<siteurl|home>", "%v", " [<table> ...]").Replace(f)
 }

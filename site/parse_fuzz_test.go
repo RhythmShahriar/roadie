@@ -4,8 +4,11 @@
 package site
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/RhythmShahriar/roadie/site/remote"
 )
 
 // FuzzParseFind: find output from a remote host never panics and every
@@ -42,5 +45,27 @@ func FuzzSplitWPHost(f *testing.F) {
 			t.Fatalf("socket %q", socket)
 		}
 		_ = port
+	})
+}
+
+// parseLs never panics, and what it accepts always builds an allowlisted
+// write command.
+func FuzzParseLs(f *testing.F) {
+	for _, s := range []string{"-rw-r--r-- 1 1001 33 10 Oct 26 10:00 /x\n", "-rwsr-xr-T 1 0 0", "drwx 1 0 0", "-"} {
+		f.Add([]byte(s))
+	}
+	r := &remote.Runner{Host: "h"}
+	f.Fuzz(func(t *testing.T, out []byte) {
+		st, err := parseLs(out)
+		if err != nil {
+			return
+		}
+		if st.mode&^0o777 != 0 {
+			t.Fatalf("mode %o", st.mode)
+		}
+		mode := fmt.Sprintf("%04o", st.mode)
+		if _, err := r.Command(remote.WriteKeep, "/t", st.uid, st.gid, "/t", st.gid, "/t", mode, "/t", "/t", "/p"); err != nil {
+			t.Fatal(err)
+		}
 	})
 }

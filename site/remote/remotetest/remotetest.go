@@ -61,6 +61,7 @@ func New(t testing.TB) *Shim {
 	t.Setenv("SHIM_STDERR", "")
 	t.Setenv("SHIM_EXIT", "0")
 	t.Setenv("SHIM_CANARY", "")
+	t.Setenv("SHIM_MATCH", "")
 	return s
 }
 
@@ -74,6 +75,20 @@ func (s *Shim) Reply(stdout []byte, stderr string, exit int) {
 	s.t.Setenv("SHIM_STDOUT", p)
 	s.t.Setenv("SHIM_STDERR", stderr)
 	s.t.Setenv("SHIM_EXIT", strconv.Itoa(exit))
+}
+
+// ReplyFor sets what calls whose remote command starts with prefix
+// print and exit with; every other call keeps the Reply answer.
+func (s *Shim) ReplyFor(prefix string, stdout []byte, stderr string, exit int) {
+	s.t.Helper()
+	p := filepath.Join(s.Dir, "match-stdout")
+	if err := os.WriteFile(p, stdout, 0o600); err != nil {
+		s.t.Fatal(err)
+	}
+	s.t.Setenv("SHIM_MATCH", prefix)
+	s.t.Setenv("SHIM_MATCH_STDOUT", p)
+	s.t.Setenv("SHIM_MATCH_STDERR", stderr)
+	s.t.Setenv("SHIM_MATCH_EXIT", strconv.Itoa(exit))
 }
 
 // Canary makes the shim fail with exit 99 when pw is in its argv.

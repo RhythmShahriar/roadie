@@ -9,6 +9,11 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -197,23 +202,72 @@ func TestSSHFiles(t *testing.T) {
 	if _, err := s.ReadFile(ctx, "x"); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("missing: %v", err)
 	}
+	// A new file gets the caller's mode.
 	sh.Reply(nil, "", 0)
+	sh.ReplyFor("ls ", nil, "ls: cannot access '/srv/shop/x': No such file or directory\n", 2)
 	n := len(sh.Calls())
 	if err := s.WriteFile(ctx, "wp-content/mu-plugins/roadie-staging.php", []byte("<?php // body"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	calls := sh.Calls()[n:]
-	if len(calls) != 2 || remoteCmd(calls[0]) != "mkdir -p -- '/srv/shop/wp-content/mu-plugins'" {
+	if len(calls) != 3 || remoteCmd(calls[0]) != "mkdir -p -- '/srv/shop/wp-content/mu-plugins'" ||
+		remoteCmd(calls[1]) != "ls -lnLd -- '/srv/shop/wp-content/mu-plugins/roadie-staging.php'" {
 		t.Fatalf("write calls %v", calls)
 	}
-	w := remoteCmd(calls[1])
+	w := remoteCmd(calls[2])
 	if !strings.HasPrefix(w, "umask 077 && cat > '/srv/shop/wp-content/mu-plugins/.roadie-staging.php.roadie-") ||
 		!strings.Contains(w, "&& chmod 0644 -- ") || !strings.HasSuffix(w, " '/srv/shop/wp-content/mu-plugins/roadie-staging.php'") {
 		t.Fatalf("write command %s", w)
 	}
-	if string(sh.Stdin(n+1)) != "<?php // body" {
-		t.Fatalf("stdin %q", sh.Stdin(n+1))
+	if string(sh.Stdin(n+2)) != "<?php // body" {
+		t.Fatalf("stdin %q", sh.Stdin(n+2))
 	}
+
+	// An existing file keeps its mode, owner and group, whatever the
+	// caller asks for (a deploy-owned 0644 wp-config.php that PHP-FPM
+	// reads as another user must stay readable).
+	sh.ReplyFor("ls ", []byte("-rw-r--r--+ 1 1001 33 3120 Oct 26 10:00 /srv/shop/wp-config.php\n"), "", 0)
+	n = len(sh.Calls())
+	if err := s.WriteFile(ctx, "wp-config.php", []byte("<?php // new"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	calls = sh.Calls()[n:]
+	if len(calls) != 3 {
+		t.Fatalf("write calls %v", calls)
+	}
+	w = remoteCmd(calls[2])
+	if !strings.Contains(w, "&& { chown 1001:33 -- ") || !strings.Contains(w, "|| chgrp 33 -- ") ||
+		!strings.Contains(w, "&& chmod 0644 -- ") || strings.Contains(w, "0640") {
+		t.Fatalf("write command %s", w)
+	}
+	if tm, ok := remote.Allowed(w); !ok || tm != remote.WriteKeep {
+		t.Fatalf("write command %s is %q in the allowlist", w, tm)
+	}
+
+	// ls output Roadie can't read, or an ls that failed for another
+	// reason, stops the write rather than guess a mode.
+	for _, bad := range []struct {
+		out, stderr string
+		exit        int
+	}{
+		{"drwxr-xr-x 2 0 0 4096 Oct 26 10:00 /srv/shop/wp-config.php\n", "", 0},
+		{"-rw-r--r-- 1 deploy www 10 x\n", "", 0},
+		{"garbage\n", "", 0},
+		{"", "ls: cannot access '/srv/shop/wp-config.php': Permission denied\n", 2},
+	} {
+		sh.ReplyFor("ls ", []byte(bad.out), bad.stderr, bad.exit)
+		n = len(sh.Calls())
+		if err := s.WriteFile(ctx, "wp-config.php", []byte("x"), 0o640); err == nil {
+			t.Errorf("ls %q: wrote anyway", bad.out)
+		}
+		for _, c := range sh.Calls()[n:] {
+			if strings.HasPrefix(remoteCmd(c), "umask") {
+				t.Errorf("ls %q: sent %s", bad.out, remoteCmd(c))
+			}
+		}
+	}
+	sh.ReplyFor("", nil, "", 0)
+	sh.Reply(nil, "", 0)
 	if err := s.WriteFile(ctx, "../etc/x", nil, 0o644); err == nil {
 		t.Fatal("wrote outside the site")
 	}
@@ -417,5 +471,82 @@ func TestSSHRefusedPaths(t *testing.T) {
 	}
 	if len(sh.Calls()) != 0 {
 		t.Fatalf("ssh ran for a refused path: %v", sh.Calls())
+	}
+}
+
+// The stat and write-keep commands run by a real POSIX sh keep an
+// existing file's mode, which parseLs reads from real ls output.
+func TestWriteKeepRunsUnderSh(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil || runtime.GOOS == "windows" {
+		t.Skip("no POSIX sh")
+	}
+	dir := t.TempDir()
+	p := filepath.Join(dir, "wp-config.php")
+	if err := os.WriteFile(p, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(p, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := &remote.Runner{Host: "h"}
+	run := func(cmd string, stdin string) []byte {
+		t.Helper()
+		c := exec.Command(sh, "-c", cmd) // #nosec G204 -- an allowlisted command on temp files
+		c.Stdin = strings.NewReader(stdin)
+		out, err := c.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s: %v: %s", cmd, err, out)
+		}
+		return out
+	}
+	statCmd, err := r.Command(remote.Stat, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := parseLs(run(statCmd, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.mode != 0o644 || st.uid != strconv.Itoa(os.Getuid()) || st.gid != strconv.Itoa(os.Getgid()) {
+		t.Fatalf("parseLs %+v", st)
+	}
+	tmp := filepath.Join(dir, ".wp-config.php.roadie-t")
+	cmd, err := r.Command(remote.WriteKeep, tmp, st.uid, st.gid, tmp, st.gid, tmp, "0644", tmp, tmp, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run(cmd, "new")
+	fi, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(p); string(b) != "new" || fi.Mode().Perm() != 0o644 {
+		t.Fatalf("after write: %q %v", b, fi.Mode())
+	}
+}
+
+func TestParseLs(t *testing.T) {
+	tests := []struct {
+		in   string
+		mode fs.FileMode
+		ok   bool
+	}{
+		{"-rw-r--r-- 1 1001 33 10 Oct 26 10:00 /x\n", 0o644, true},
+		{"-rw-r-----. 1 0 0 10 Oct 26 10:00 /x", 0o640, true},
+		{"-r-------- 1 1 2 10 Oct 26 10:00 /x", 0o400, true},
+		{"-rwsr-xr-T 1 1 2 10 Oct 26 10:00 /x", 0o754, true},
+		{"drwxr-xr-x 2 0 0 4096 Oct 26 10:00 /x", 0, false},
+		{"lrwxrwxrwx 1 0 0 4 Oct 26 10:00 /x -> /y", 0, false},
+		{"-rw-r--r-- 1 deploy www 10 x", 0, false},
+		{"-rw-r?-r-- 1 1 2 10 x", 0, false},
+		{"-rw-r--r--", 0, false},
+		{"", 0, false},
+	}
+	for _, tt := range tests {
+		st, err := parseLs([]byte(tt.in))
+		if (err == nil) != tt.ok || tt.ok && st.mode != tt.mode {
+			t.Errorf("parseLs(%q) = %+v, %v", tt.in, st, err)
+		}
 	}
 }
