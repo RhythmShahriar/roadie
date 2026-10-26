@@ -150,7 +150,7 @@ const (
 	hexLen          = 16 // email and login: 64 bits of the hash
 	minUniqueHex    = 12 // the shortest a fake for a unique column gets
 	urlHexLen       = 12 // a URL: never shorter, as URLs are unique
-	uniqueSuffixHex = 8 // the suffix a list kind gets in a unique column
+	uniqueSuffixHex = 8  // the suffix a list kind gets in a unique column
 	maxNicename     = 50
 )
 

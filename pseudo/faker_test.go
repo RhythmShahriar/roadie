@@ -431,15 +431,27 @@ func TestDOB(t *testing.T) {
 		"07/14/1984":          func(s string) bool { _, err := time.Parse("01/02/2006", s); return err == nil },
 		"19840714":            func(s string) bool { return len(s) == 8 && strings.HasPrefix(s, "1984") },
 		"0000-00-00":          func(s string) bool { return s == "0000-00-00" },
-		"1990-02-29":          func(s string) bool { _, err := time.Parse("2006-01-02", s); return err == nil && strings.HasPrefix(s, "1990-") },
+		"1990-02-29": func(s string) bool {
+			_, err := time.Parse("2006-01-02", s)
+			return err == nil && strings.HasPrefix(s, "1990-")
+		},
 		"1990-02-30 10:00:00": func(s string) bool { return strings.HasPrefix(s, "1990-") && strings.HasSuffix(s, " 10:00:00") },
-		"31.13.1990":          func(s string) bool { _, err := time.Parse("02.01.2006", s); return err == nil && strings.HasSuffix(s, "1990") },
-		"31/13/1990":          func(s string) bool { _, err := time.Parse("02/01/2006", s); return err == nil && strings.HasSuffix(s, "1990") },
-		"19901399":            func(s string) bool { _, err := time.Parse("20060102", s); return err == nil && strings.HasPrefix(s, "1990") },
-		"1990139912":          func(s string) bool { return len(s) == 10 && s != "1990139912" },
-		"born in spring 84":   func(s string) bool { return strings.HasPrefix(s, "born in spring ") && s != "born in spring 84" },
-		"fifth of May":        func(s string) bool { return s == "" },
-		"":                    func(s string) bool { return s == "" },
+		"31.13.1990": func(s string) bool {
+			_, err := time.Parse("02.01.2006", s)
+			return err == nil && strings.HasSuffix(s, "1990")
+		},
+		"31/13/1990": func(s string) bool {
+			_, err := time.Parse("02/01/2006", s)
+			return err == nil && strings.HasSuffix(s, "1990")
+		},
+		"19901399": func(s string) bool {
+			_, err := time.Parse("20060102", s)
+			return err == nil && strings.HasPrefix(s, "1990")
+		},
+		"1990139912":        func(s string) bool { return len(s) == 10 && s != "1990139912" },
+		"born in spring 84": func(s string) bool { return strings.HasPrefix(s, "born in spring ") && s != "born in spring 84" },
+		"fifth of May":      func(s string) bool { return s == "" },
+		"":                  func(s string) bool { return s == "" },
 	}
 	for in, ok := range cases {
 		if got := fake(t, f, core.KDOB, in, core.FakeOpts{}); !ok(got) {
