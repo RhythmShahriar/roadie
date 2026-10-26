@@ -299,6 +299,13 @@ func TestRunKey(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, Dir, "key")); !errors.Is(err, os.ErrNotExist) {
 		t.Error("per-run saved its key")
 	}
+	// No config means the defaults: per-run, nothing saved.
+	if _, src, stable, err := RunKey(dir, nil, false, nil); err != nil || src != KeyFromNew || stable {
+		t.Errorf("nil config: %s %v %v", src, stable, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, Dir, "key")); !errors.Is(err, os.ErrNotExist) {
+		t.Error("a nil config saved a key")
+	}
 	c.Pseudonymise.Consistency = "stable"
 	s1, src, stable, err := RunKey(dir, c, false, nil)
 	if err != nil || src != KeyFromNew || !stable {
