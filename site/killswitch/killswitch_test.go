@@ -452,7 +452,7 @@ func TestGatewaysWithoutOrder(t *testing.T) {
 			rows = append(rows, map[string]string{"option_id": strconv.Itoa(100 + len(rows)), "option_name": name, "option_value": ser(v), "autoload": "yes"})
 		}
 		add("woocommerce_customer_processing_order_settings", map[string]string{"enabled": "yes", "subject": "Thanks", "heading": "Order"})
-		add("woocommerce_cancelled_order_settings", map[string]string{"enabled": "yes", "recipient": "shop@example.org", "email_type": "html"})
+		add("woocommerce_failed_order_settings", map[string]string{"enabled": "yes", "recipient": "shop@example.org", "email_type": "html"})
 		add("woocommerce_flat_rate_settings", map[string]string{"enabled": "yes", "title": "Flat rate"})
 		add("woocommerce_flat_rate_3_settings", map[string]string{"title": "Flat rate", "cost": "5"})
 		add("woocommerce_analytics_settings", map[string]string{"enabled": "yes"})
@@ -490,7 +490,7 @@ func TestGatewaysWithoutOrder(t *testing.T) {
 			if v := flat(t, r["option_value"]); v["enabled"] != "no" {
 				t.Errorf("unknown gateway left enabled: %v", v)
 			}
-		case "woocommerce_customer_processing_order_settings", "woocommerce_cancelled_order_settings", "woocommerce_flat_rate_settings", "woocommerce_analytics_settings":
+		case "woocommerce_customer_processing_order_settings", "woocommerce_failed_order_settings", "woocommerce_flat_rate_settings", "woocommerce_analytics_settings":
 			if flat(t, r["option_value"])["enabled"] != "yes" {
 				t.Errorf("%s is not a gateway but was disabled", r["option_name"])
 			}
