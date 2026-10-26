@@ -159,6 +159,11 @@ func TestErrorScreens(t *testing.T) {
 		if n := strings.Count(out, msg); n != 1 {
 			t.Errorf("%s: message shown %d times\n%s", code, n, out)
 		}
+		// -q keeps the reason: a CI log says why the run stopped.
+		useFixture(t, r, nil, nil)
+		if quiet := screen(t, "copy", args(copyArgs, "-q")...); strings.Count(quiet, msg) != 1 {
+			t.Errorf("%s -q: message shown %d times\n%s", code, strings.Count(quiet, msg), quiet)
+		}
 		// With --json the message goes to stderr once and stdout is the report.
 		useFixture(t, r, nil, nil)
 		stdout, stderr, got := runCmd(t, "copy", args(copyArgs, "--json")...)

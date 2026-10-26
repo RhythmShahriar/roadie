@@ -858,6 +858,11 @@ func (v *view) stopView(r *core.Result, j engine.Job) {
 		word = "PLAN"
 	}
 	v.box(word, e.Code+state, "", sevColor(core.SeverityCritical))
+	if v.o.quiet {
+		// -q drops progress and settings, never the reason a run
+		// stopped: a CI log must say why it failed.
+		fmt.Fprintln(v.w, safe(e.Msg))
+	}
 	v.para(e.Msg)
 	v.blank()
 	if core.KnownID(e.Code) && e.Code != core.ErrCodeNotBuilt {
