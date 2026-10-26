@@ -925,3 +925,64 @@ func (w limitWorker) transform(context.Context, *core.Batch, *profile.Compiled) 
 	}
 	return &batchOut{}, nil
 }
+
+// mysqldump and wp db export write tables by name, so a network's
+// wp_blogs and wp_site rows come before wp_options says the prefix. The
+// blog hosts must still be read in pass 1: mapped ones rewritten and an
+// unmapped custom domain refused.
+func TestPipelineMultisiteDumpOrder(t *testing.T) {
+	useFakes(t)
+	oldOpen := openDump
+	openDump = dump.Open
+	t.Cleanup(func() { openDump = oldOpen })
+	file := filepath.Join(t.TempDir(), "network.sql")
+	text := "CREATE TABLE `wp_blogs` (`blog_id` bigint(20) NOT NULL, `site_id` bigint(20) NOT NULL, `domain` varchar(200) NOT NULL, `path` varchar(100) NOT NULL, `lang_id` int(11) NOT NULL);\n" +
+		"INSERT INTO `wp_blogs` VALUES (1,1,'shop.com','/',0),(2,1,'fr.shop.com','/',0),(3,1,'shop.de','/',0);\n" +
+		"CREATE TABLE `wp_options` (`option_id` bigint(20) NOT NULL, `option_name` varchar(191) NOT NULL, `option_value` longtext NOT NULL);\n" +
+		"INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.com'),(2,'home','https://shop.com');\n" +
+		"CREATE TABLE `wp_site` (`id` bigint(20) NOT NULL, `domain` varchar(200) NOT NULL, `path` varchar(100) NOT NULL);\n" +
+		"INSERT INTO `wp_site` VALUES (1,'shop.com','/');\n"
+	if err := os.WriteFile(file, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	defs, _ := profile.Builtin()
+	run := func(cfg *roadiecfg.Config) (*testutil.Sink, error) {
+		sink := testutil.FakeSink()
+		p := &pipeline{mode: Copy, cfg: cfg, defs: defs, sink: sink, opts: Options{URL: "https://staging.shop.test"},
+			in: &fileInput{path: file, o: dump.Options{Name: "network.sql"}}}
+		_, err := p.run(context.Background())
+		return sink, err
+	}
+	_, err := run(roadiecfg.Default())
+	var ce *core.Error
+	if !errors.As(err, &ce) || ce.Code != core.ErrURLMap || ce.Msg != "url-map: shop.de has no staging URL; add --url-map shop.de=shop.staging.shop.test." {
+		t.Fatalf("unmapped domain: %v", err)
+	}
+	cfg := roadiecfg.Default()
+	cfg.URLMap = map[string]string{"shop.de": "de.staging.shop.test"}
+	sink, err := run(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []string{"staging.shop.test", "fr.staging.shop.test", "de.staging.shop.test"} {
+		if v, _ := valueOf(t, sink, "wp_blogs", i, "domain"); v != want {
+			t.Errorf("blog %d domain %q, want %q", i+1, v, want)
+		}
+	}
+	if v, _ := valueOf(t, sink, "wp_site", 0, "domain"); v != "staging.shop.test" {
+		t.Errorf("network domain %q", v)
+	}
+}
+
+// An app's own "site" or "blogs" table is no WordPress core table.
+func TestGuessPrefixNetworkTables(t *testing.T) {
+	s := &core.Schema{Tables: []*core.Table{{Name: "app_site", Columns: []core.Column{{Name: "id"}, {Name: "domain"}}},
+		{Name: "blogs", Columns: []core.Column{{Name: "blog_id"}, {Name: "lang_id"}}}}}
+	if p, ok := guessPrefix(s); ok {
+		t.Errorf("guessed %q from app tables", p)
+	}
+	s.Tables = append(s.Tables, &core.Table{Name: "wp_sitemeta", Columns: []core.Column{{Name: "meta_id"}, {Name: "site_id"}, {Name: "meta_key"}}})
+	if p, ok := guessPrefix(s); !ok || p != "wp_" {
+		t.Errorf("guessed %q %v from wp_sitemeta", p, ok)
+	}
+}

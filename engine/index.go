@@ -20,14 +20,28 @@ import (
 	"github.com/RhythmShahriar/roadie/site/killswitch"
 )
 
-// wpCore maps the WordPress core tables to a column only that table has,
+// wpCore maps the WordPress core tables to columns only that table has,
 // so the prefix can be guessed from whichever core table a dump shows
 // first (mysqldump writes tables by name, so wp_2_commentmeta comes
-// before wp_options).
-var wpCore = map[string]string{
-	"users": "user_login", "usermeta": "umeta_id", "posts": "post_author", "postmeta": "meta_id",
-	"comments": "comment_ID", "commentmeta": "comment_id", "options": "option_name", "links": "link_id",
-	"terms": "term_group", "termmeta": "meta_id", "term_taxonomy": "term_taxonomy_id", "term_relationships": "term_taxonomy_id",
+// before wp_options and a network's wp_blogs and wp_site come before
+// both). The network tables need two columns each, since an app's own
+// "site" or "blogs" table must not pass for WordPress (nor give an
+// empty prefix).
+var wpCore = map[string][]string{
+	"users": {"user_login"}, "usermeta": {"umeta_id"}, "posts": {"post_author"}, "postmeta": {"meta_id"},
+	"comments": {"comment_ID"}, "commentmeta": {"comment_id"}, "options": {"option_name"}, "links": {"link_id"},
+	"terms": {"term_group"}, "termmeta": {"meta_id"}, "term_taxonomy": {"term_taxonomy_id"}, "term_relationships": {"term_taxonomy_id"},
+	"blogs": {"blog_id", "lang_id"}, "site": {"domain", "path"}, "sitemeta": {"site_id", "meta_key"},
+}
+
+// hasCols reports whether a table has every one of cols.
+func hasCols(t *core.Table, cols []string) bool {
+	for _, c := range cols {
+		if t.Col(c) < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // blogCore are the core tables every multisite blog has its own copy of.
@@ -43,9 +57,9 @@ func guessPrefix(s *core.Schema) (string, bool) {
 	}
 	best, found := "", false
 	for _, t := range s.Tables {
-		for suffix, col := range wpCore {
+		for suffix, cols := range wpCore {
 			p, ok := strings.CutSuffix(t.Name, suffix)
-			if !ok || t.Col(col) < 0 {
+			if !ok || !hasCols(t, cols) || (p == "" && len(cols) > 1) {
 				continue
 			}
 			p = stripBlog(p)
