@@ -292,6 +292,19 @@ func TestSiteConfigUnresolved(t *testing.T) {
 	if err == nil || strings.Contains(err.Error(), "canary") || !strings.Contains(err.Error(), "from a PHP expression") {
 		t.Fatalf("%v (secret %q must not appear)", err, secret)
 	}
+	// Fallback and concatenation forms carry a literal: never echoed.
+	for _, expr := range []string{
+		"getenv('DB_PASSWORD') ?: '" + secret + "'",
+		"$_ENV['DB_PASSWORD'] ?? '" + secret + "'",
+		"getenv('DB_' . '" + secret + "')",
+	} {
+		cfg = strings.Replace(wpConfig("x"), "'x'", expr, 1)
+		s = openLocalT(t, writeTree(t, map[string]string{"wp-config.php": cfg}), Options{})
+		_, err = s.DBIdentity(ctx)
+		if err == nil || strings.Contains(err.Error(), "canary") || !strings.Contains(err.Error(), "from a PHP expression") {
+			t.Fatalf("%s: %v (secret must not appear)", expr, err)
+		}
+	}
 	// A missing setting and an unknown Laravel driver are site-config too.
 	s = openLocalT(t, writeTree(t, map[string]string{"wp-config.php": "<?php define('DB_NAME','x');"}), Options{})
 	if _, err := s.DBIdentity(ctx); !errors.Is(err, &core.Error{Code: core.ErrSiteConfig}) || !strings.Contains(err.Error(), "doesn't set DB_USER") {
@@ -630,5 +643,29 @@ func TestAliasSites(t *testing.T) {
 	}
 	if _, err := Open(ctx, core.Endpoint{Kind: core.WPAlias, Alias: "@nope", Display: "@nope"}, Options{}); !errors.Is(err, remote.ErrNoAlias) {
 		t.Fatalf("@nope: %v", err)
+	}
+}
+
+func TestExprSource(t *testing.T) {
+	lit := "S3" + "cretPw"
+	for in, want := range map[string]string{
+		"getenv('DB_PASSWORD')":                  "getenv('DB_PASSWORD')",
+		` getenv( "DB_PASSWORD" ) `:              `getenv( "DB_PASSWORD" )`,
+		"env('DB_PASSWORD')":                     "env('DB_PASSWORD')",
+		"$_ENV['DB_PASSWORD']":                   "$_ENV['DB_PASSWORD']",
+		`$_SERVER["DB_PASSWORD"]`:                `$_SERVER["DB_PASSWORD"]`,
+		"getenv('DB_PASSWORD') ?: '" + lit + "'": "a PHP expression",
+		"$_ENV['DB_PASSWORD'] ?? '" + lit + "'":  "a PHP expression",
+		"$_SERVER['X'] ?? '" + lit + "'":         "a PHP expression",
+		"getenv('" + lit + "')":                  "getenv('" + lit + "')",
+		"'" + lit + "'":                          "a PHP expression",
+		"getenv('A') . '" + lit + "'":            "a PHP expression",
+		"getenv($name)":                          "a PHP expression",
+		"getenv('A')\n?: '" + lit + "'":          "a PHP expression",
+		"defined('X') ? X : '" + lit + "'":       "a PHP expression",
+	} {
+		if got := exprSource(in); got != want {
+			t.Errorf("exprSource(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

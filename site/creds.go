@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -70,14 +71,18 @@ func missingSetting(file, name string, readOnly bool) error {
 		file, name, side, flagEnv)
 }
 
+// envSourceRe matches a define value that is one plain environment
+// lookup, such as getenv('DB_PASSWORD') or $_ENV["DB_PASSWORD"]. Only
+// that exact shape is quoted back: a fallback such as
+// getenv('X') ?: 'literal' or a concatenation can carry the secret itself.
+var envSourceRe = regexp.MustCompile(`^(?:(?:getenv|env)\(\s*['"][A-Za-z0-9_]+['"]\s*\)|\$_(?:ENV|SERVER)\[\s*['"][A-Za-z0-9_]+['"]\s*\])$`)
+
 // exprSource describes where a non-literal define gets its value without
 // echoing an arbitrary expression, which could hold the secret itself.
 func exprSource(v string) string {
 	t := strings.TrimSpace(v)
-	for _, p := range []string{"getenv(", "$_ENV[", "$_SERVER[", "env("} {
-		if strings.HasPrefix(t, p) && len(t) <= 80 && !strings.ContainsAny(t, "\n\r.") {
-			return t
-		}
+	if envSourceRe.MatchString(t) {
+		return t
 	}
 	return "a PHP expression"
 }
