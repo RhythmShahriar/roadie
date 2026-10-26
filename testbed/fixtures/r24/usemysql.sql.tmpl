@@ -1,0 +1,15 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r24 (usemysql): an ordinary dump with one hostile statement. */ -}}
+{{template "head"}}
+{{- template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+{{template "users" (dict "p" "wp_" "n" 5 "tag" "usemysql" "base" 1)}}UNLOCK TABLES;
+{{template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on');
+UNLOCK TABLES;
+USE mysql;
+INSERT INTO `user` (`Host`,`User`) VALUES ('%','roadie_r24');
+{{template "tail"}}

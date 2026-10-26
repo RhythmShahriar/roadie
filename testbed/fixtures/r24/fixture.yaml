@@ -1,0 +1,11 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  Hostile dumps, one file each: mysql client commands (\! and system),
+  source, USE mysql, a GRANT in a versioned comment, LOAD DATA LOCAL,
+  SELECT INTO OUTFILE and a trigger that writes real emails back. The
+  harness adds a gzip bomb and a .wpress archive renamed .sql. Every file
+  names a marker under /tmp/roadie-r24-* that must never appear.
+stack: wordpress
+canaries: true

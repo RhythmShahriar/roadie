@@ -1,0 +1,14 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r18 in mysqldump 8.4 form: the input loaded into the databases for the
+real tools' dumps (make formats). */ -}}
+{{template "head"}}
+{{- template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'blog_public','1','on');
+UNLOCK TABLES;
+{{template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+{{template "r18_users" (dict "ext" true)}}UNLOCK TABLES;
+{{template "tail"}}

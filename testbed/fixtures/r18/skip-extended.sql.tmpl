@@ -1,0 +1,16 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r18 as mysqldump --skip-extended-insert writes it: one INSERT per row. */ -}}
+{{template "head"}}
+{{- template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on');
+INSERT INTO `wp_options` VALUES (2,'home','https://shop.example.com','on');
+INSERT INTO `wp_options` VALUES (3,'blogname','Bean & Leaf Coffee','on');
+INSERT INTO `wp_options` VALUES (4,'blog_public','1','on');
+UNLOCK TABLES;
+{{template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+{{template "r18_users" (dict "ext" false)}}UNLOCK TABLES;
+{{template "tail"}}

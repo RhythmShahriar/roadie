@@ -1,0 +1,36 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r18 as mariadb-dump 11.4 writes it, sandbox line first. */ -}}
+/*M!999999\- enable the sandbox mode */ 
+-- MariaDB dump 10.19-11.4.8-MariaDB, for debian-linux-gnu (x86_64)
+--
+-- Host: localhost    Database: shop
+-- ------------------------------------------------------
+-- Server version	11.4.8-MariaDB-ubu2404
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET NAMES utf8mb4 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*M!100616 SET @OLD_NOTE_VERBOSITY=@@NOTE_VERBOSITY, NOTE_VERBOSITY=0 */;
+{{template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+/*!40000 ALTER TABLE `wp_options` DISABLE KEYS */;
+INSERT INTO `wp_options` VALUES
+(1,'siteurl','https://shop.example.com','on'),
+(2,'home','https://shop.example.com','on'),
+(3,'blogname','Bean & Leaf Coffee','on'),
+(4,'blog_public','1','on');
+/*!40000 ALTER TABLE `wp_options` ENABLE KEYS */;
+UNLOCK TABLES;
+{{template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+/*!40000 ALTER TABLE `wp_users` DISABLE KEYS */;
+{{template "r18_users" (dict "ext" true)}}/*!40000 ALTER TABLE `wp_users` ENABLE KEYS */;
+UNLOCK TABLES;
+/*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;
+{{template "tail"}}
