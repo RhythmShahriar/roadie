@@ -271,10 +271,10 @@ func (r *run) siteHTTP(ctx context.Context) {
 		allows := robots != nil && robots.status == http.StatusOK && robotsAllowAll(robots.body)
 		if !noindex || allows {
 			why := "the home page has no noindex header or meta tag"
-			fix := "Run rhythm-roadie prepare --only exposure, or serve X-Robots-Tag: noindex."
+			fix := "Run rhythm-roadie prepare --only noindex, or serve X-Robots-Tag: noindex."
 			if noindex {
 				why = "robots.txt lets every crawler in"
-				fix = "Run rhythm-roadie prepare --only exposure, or serve a robots.txt with User-agent: * and Disallow: /."
+				fix = "Run rhythm-roadie prepare --only noindex, or serve a robots.txt with User-agent: * and Disallow: /."
 			}
 			r.add(core.Finding{ID: core.FindingSearchIndexable, Severity: core.SeverityMedium,
 				Title:     "Search engines can index the staging site: " + why,

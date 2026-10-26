@@ -113,6 +113,9 @@ func TestSiteNoindexAndAuth(t *testing.T) {
 	res = siteRun(t, Options{SiteURL: serve(t, open, false).URL})
 	if f := find(res, core.FindingSearchIndexable); f == nil || f.Severity != core.SeverityMedium {
 		t.Errorf("indexable: %v", ids(res))
+	} else if !strings.Contains(f.Fix, "prepare --only noindex") {
+		// prepare's --only takes noindex, not exposure.
+		t.Errorf("indexable fix: %q", f.Fix)
 	}
 
 	// Noindex on the page but robots.txt lets every crawler in.
@@ -120,7 +123,7 @@ func TestSiteNoindexAndAuth(t *testing.T) {
 	res = siteRun(t, Options{SiteURL: serve(t, half, false).URL})
 	if f := find(res, core.FindingSearchIndexable); f == nil || !strings.Contains(f.Title, "robots.txt") {
 		t.Errorf("robots allows: %+v", res.Findings)
-	} else if !strings.Contains(f.Fix, "Disallow: /") {
+	} else if !strings.Contains(f.Fix, "Disallow: /") || !strings.Contains(f.Fix, "--only noindex") {
 		t.Errorf("robots fix: %q", f.Fix)
 	}
 
