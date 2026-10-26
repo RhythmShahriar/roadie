@@ -194,7 +194,7 @@ act action-run.sh run MODE=verify FAIL_ON=medium SUMMARY_DETAILS=true FAKE_EXIT=
 check "fail-on medium counts medium and up" out findings=5
 check "summary-details puts the full report in the summary" contains "$work/runner/summary" "wp_users_canary_table.user_email"
 act action-run.sh run MODE=verify FAIL_ON=none FAKE_REPORT="$fixtures/report-verify-fail.json"
-check "fail-on none counts every finding" out findings=7
+check "fail-on none counts 0: nothing fails the run" out findings=0
 
 # --- the --basic-auth password stays out of the job log --------------------
 # runner_view FILE prints FILE as the runner shows it in the job log: the

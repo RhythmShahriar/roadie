@@ -180,9 +180,13 @@ counts() {
 	jq -r '.summary | "\(.critical // 0) critical · \(.high // 0) high · \(.medium // 0) medium · \(.low // 0) low · \(.info // 0) info"' "$1"
 }
 
-# at_or_above ENVELOPE LEVEL counts the findings at or above LEVEL; none
-# counts them all.
+# at_or_above ENVELOPE LEVEL counts the findings at or above LEVEL. With
+# none no finding fails the run, so none counts 0.
 at_or_above() {
+	if [ "$2" = none ]; then
+		echo 0
+		return
+	fi
 	jq -r --arg l "$2" '
 		["critical", "high", "medium", "low", "info"] as $all
 		| (($all | index($l)) // 4) as $i
