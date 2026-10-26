@@ -244,6 +244,7 @@ type Lexer struct {
 	delim    []byte
 	plain    [256]bool // bytes the statement scan can skip over
 	mode     Mode
+	vars     Vars // the user variables the dump has set, for sql_mode
 	sandbox  bool
 	text     []byte
 	stmtLine int64
@@ -257,6 +258,9 @@ type Lexer struct {
 type Mode struct {
 	NoBackslashEscapes bool // backslashes in strings are plain bytes
 	ANSIQuotes         bool // "..." is an identifier, not a string
+	// Unknown is set after a statement changed sql_mode in a way Roadie
+	// can't follow exactly; the allowlist refuses that statement.
+	Unknown bool
 }
 
 // NewLexer reads a dump from r.
@@ -427,7 +431,7 @@ func (l *Lexer) done(st *Stmt) (*Stmt, error) {
 		st.Kind = KindClient
 	}
 	if st.Kind == core.StmtSet {
-		l.mode = SQLMode(Body(st.Text, l.mode), l.mode)
+		l.mode = SQLMode(st.Text, l.mode, &l.vars)
 	}
 	return st, nil
 }

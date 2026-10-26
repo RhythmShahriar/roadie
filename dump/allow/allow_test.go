@@ -169,6 +169,14 @@ func TestRefused(t *testing.T) {
 		{"DO SLEEP(10);", "holds a DO statement"},
 		{"HANDLER t OPEN;", "holds a HANDLER statement"},
 		{"\x00\x01;", "holds an unknown statement"},
+		{"SET sql_mode=CONCAT('NO_BACKSLASH','_ESCAPES');", "holds a SET sql_mode statement Roadie can't follow, which could change how the staging server reads quotes and backslashes in the rows after it."},
+		{"SET sql_mode='NO_BACKSLASH' '_ESCAPES';", "holds a SET sql_mode statement Roadie can't follow"},
+		{"SET SESSION sql_mode=0x4E4F5F4241434B534C4153485F45534341504553;", "holds a SET sql_mode statement Roadie can't follow"},
+		{"SET @@sql_mode=X'4E4F';", "holds a SET sql_mode statement Roadie can't follow"},
+		{"SET sql_mode=REPLACE('NO_BACKSLASH_XSCAPES','X','E');", "holds a SET sql_mode statement Roadie can't follow"},
+		{"SET sql_mode=2097152;", "holds a SET sql_mode statement Roadie can't follow"},
+		{"SET sql_mode=_utf8mb4'NO_BACKSLASH_ESCAPES';", "holds a SET sql_mode statement Roadie can't follow"},
+		{"SET NAMES utf8mb4, sql_mode=IFNULL(@a, @b);", "holds a SET sql_mode statement Roadie can't follow"},
 	} {
 		d, err := check(c.text, Options{Name: "prod.sql"})
 		var ce *core.Error
@@ -258,6 +266,10 @@ func TestKept(t *testing.T) {
 		"/*!50003 SET @saved_cs_client      = @@character_set_client */ ;",
 		"SET @MYSQLDUMP_TEMP_LOG_BIN = @@SESSION.SQL_LOG_BIN;",
 		"SET SESSION sql_mode = IFNULL(@OLD_SQL_MODE, '');",
+		"SET sql_mode = @OLD_SQL_MODE;",
+		"SET sql_mode = @`saved`.`mode`;",
+		"SET @@session.sql_mode = DEFAULT;",
+		"SET sql_mode = @@SESSION.sql_mode;",
 		"CREATE SEQUENCE `s` start with 1 minvalue 1 maxvalue 9223372036854775806 increment by 1 cache 1000 nocycle ENGINE=InnoDB;",
 		"SELECT SETVAL(`s`, 1001, 0);",
 		"DO SETVAL(`s`, 1001, 0);",
@@ -417,5 +429,21 @@ func TestFilterModeChange(t *testing.T) {
 	_, err := f.Add(&core.Batch{Pass: st}, mysql.Mode{NoBackslashEscapes: true})
 	if err == nil {
 		t.Fatal("kept a statement that reads as a SET of GRANT under the new mode")
+	}
+}
+
+// A statement after which the reader can't follow sql_mode is refused,
+// whatever it is.
+func TestFilterModeUnknown(t *testing.T) {
+	f := NewFilter(Options{Name: "prod.sql"})
+	st := &core.Statement{Kind: core.StmtSet, Text: []byte("SET sql_mode = @m;"), Line: 7}
+	_, err := f.Add(&core.Batch{Pass: st}, mysql.Mode{Unknown: true})
+	var ce *core.Error
+	if !errors.As(err, &ce) || ce.Line != 7 || !strings.Contains(ce.Msg, "holds a SET sql_mode statement Roadie can't follow") {
+		t.Fatalf("err = %v", err)
+	}
+	ok := NewFilter(Options{Name: "prod.sql"})
+	if _, err := ok.Add(&core.Batch{Pass: st}, mysql.Mode{NoBackslashEscapes: true}); err != nil {
+		t.Fatalf("a followed mode was refused: %v", err)
 	}
 }

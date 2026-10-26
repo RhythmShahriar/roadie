@@ -80,26 +80,98 @@ func TestSQLMode(t *testing.T) {
 	nb := Mode{NoBackslashEscapes: true}
 	aq := Mode{ANSIQuotes: true}
 	both := Mode{NoBackslashEscapes: true, ANSIQuotes: true}
+	unk := func(m Mode) Mode { m.Unknown = true; return m }
 	for _, c := range []struct {
 		in       string
 		cur, out Mode
 	}{
+		// Positive: the forms dump tools write are followed.
 		{"SET sql_mode='NO_BACKSLASH_ESCAPES'", Mode{}, nb},
 		{"SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO,NO_BACKSLASH_ESCAPES'", Mode{}, nb},
-		{"SET SQL_MODE=@OLD_SQL_MODE", nb, Mode{}},
 		{"SET SESSION sql_mode = 'ANSI'", Mode{}, aq},
 		{"SET @@session.sql_mode = \"ANSI_QUOTES,NO_BACKSLASH_ESCAPES\"", Mode{}, both},
-		{"SET sql_mode = CONCAT(@@sql_mode, ',ANSI_QUOTES')", nb, both},
 		{"SET sql_mode = ''", both, Mode{}},
+		{"SET sql_mode = DEFAULT", both, Mode{}},
+		{"SET sql_mode := @@sql_mode", nb, nb},
+		{"/*!40101 SET SQL_MODE='NO_BACKSLASH_ESCAPES' */", Mode{}, nb},
+		{"/*!50003 SET sql_mode = 'ONLY_FULL_GROUP_BY,NO_AUTO_CREATE_USER' */ ;", Mode{}, Mode{}},
 		{"SET GLOBAL sql_mode = 'NO_BACKSLASH_ESCAPES'", Mode{}, Mode{}},
 		{"SET @x = 'NO_BACKSLASH_ESCAPES'", Mode{}, Mode{}},
 		{"SET NAMES utf8mb4", nb, nb},
-		{"SET sql_mode = 'TRADITIONAL', NAMES utf8", nb, Mode{}},
 		{"SELECT 'NO_BACKSLASH_ESCAPES'", Mode{}, Mode{}},
-		{"SET sql_mode = 'NOT_ANSI_REALLY'", Mode{}, Mode{}},
+		{"SET SQL_MODE=@NEVER_SET", nb, nb}, // NULL: the server rejects the SET
+		// Negative: anything Roadie can't follow exactly is unknown.
+		{"SET sql_mode = CONCAT(@@sql_mode, ',ANSI_QUOTES')", nb, unk(nb)},
+		{"SET sql_mode = CONCAT('NO_BACKSLASH','_ESCAPES')", Mode{}, unk(Mode{})},
+		{"SET sql_mode = 'NO_BACKSLASH' '_ESCAPES'", Mode{}, unk(Mode{})},
+		{"SET sql_mode = 0x4E4F5F4241434B534C4153485F45534341504553", Mode{}, unk(Mode{})},
+		{"SET sql_mode = X'4E4F5F4241434B534C4153485F45534341504553'", Mode{}, unk(Mode{})},
+		{"SET sql_mode = REPLACE('NO_BACKSLASH_XSCAPES','X','E')", Mode{}, unk(Mode{})},
+		{"SET sql_mode = 2097152", Mode{}, unk(Mode{})},
+		{"SET sql_mode = '2097152'", Mode{}, unk(Mode{})},
+		{"SET sql_mode = _utf8mb4'NO_BACKSLASH_ESCAPES'", Mode{}, unk(Mode{})},
+		{"SET sql_mode = 'NO\\_BACKSLASH_ESCAPES'", Mode{}, unk(Mode{})},
+		{"SET sql_mode = 'ANSI_QUOTES, NO_BACKSLASH_ESCAPES'", Mode{}, unk(Mode{})},
+		{"SET sql_mode = 'NOT_ANSI_REALLY'", Mode{}, unk(Mode{})},
+		{"SET sql_mode = 'ORACLE'", Mode{}, unk(Mode{})},
+		{"SET sql_mode = 'TRADITIONAL', NAMES utf8", nb, unk(nb)},
+		{"SET sql_mode = 'NO_BACKSLASH_ESCAPES', time_zone = 'x'", Mode{}, unk(Mode{})},
+		{"SET sql_mode = 'NO_BACKSLASH_ESCAPES,NO_AUTO_CREATE_USER'", Mode{}, unk(Mode{})},
+		{"/*!99999 SET sql_mode='NO_BACKSLASH_ESCAPES' */", Mode{}, unk(Mode{})},
+		{"/*!80000 SET sql_mode='' */", nb, unk(nb)},
+		{"/*M!100100 SET sql_mode='NO_BACKSLASH_ESCAPES' */", Mode{}, unk(Mode{})},
+		{"/*!500001 SET sql_mode='NO_BACKSLASH_ESCAPES' */", Mode{}, unk(Mode{})},
+		{"SET GLOBAL max_connections = 10, sql_mode = 'NO_BACKSLASH_ESCAPES'", Mode{}, Mode{}},
+		{"SET sql_mode = 'NO_BACKSLASH_ESCAPES', sql_mode = @NEVER_SET", Mode{}, unk(Mode{})},
+		{"SET sql_mode = \"NO_BACKSLASH_ESCAPES\"", aq, unk(aq)},
 	} {
-		if got := SQLMode([]byte(c.in), c.cur); got != c.out {
+		if got := SQLMode([]byte(c.in), c.cur, nil); got != c.out {
 			t.Errorf("SQLMode(%q, %+v) = %+v, want %+v", c.in, c.cur, got, c.out)
+		}
+	}
+}
+
+// TestSQLModeVars follows sql_mode through the user variables a dump
+// saves it in, statement after statement.
+func TestSQLModeVars(t *testing.T) {
+	nb := Mode{NoBackslashEscapes: true}
+	unk := Mode{Unknown: true}
+	for _, c := range []struct {
+		name  string
+		stmts []string
+		want  Mode
+	}{
+		{"mysqldump save and restore", []string{
+			"/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_BACKSLASH_ESCAPES' */;",
+			"/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;",
+		}, Mode{}},
+		{"trigger save and restore", []string{
+			"/*!50003 SET @saved_sql_mode = @@sql_mode */ ;",
+			"/*!50003 SET sql_mode = 'NO_BACKSLASH_ESCAPES' */ ;",
+			"/*!50003 SET sql_mode = @saved_sql_mode */ ;",
+		}, Mode{}},
+		{"literal in a variable", []string{"SET @m = 'NO_BACKSLASH_ESCAPES';", "SET sql_mode = @m;"}, nb},
+		{"quoted variable name", []string{"SET @`M` = 'NO_BACKSLASH_ESCAPES';", "SET sql_mode = @'m';"}, nb},
+		{"IFNULL of a set variable", []string{"SET @OLD_SQL_MODE = 'NO_BACKSLASH_ESCAPES';", "SET SESSION sql_mode = IFNULL(@OLD_SQL_MODE, '');"}, nb},
+		{"IFNULL of an unset variable", []string{"SET sql_mode = 'NO_BACKSLASH_ESCAPES';", "SET SESSION sql_mode = IFNULL(@OLD_SQL_MODE, '');"}, Mode{}},
+		{"a saved literal is followed", []string{
+			"/*!40101 SET @OLD_SQL_MODE='NO_BACKSLASH_ESCAPES' */;",
+			"/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;",
+		}, nb},
+		// Negative.
+		{"gated variable", []string{"/*!99999 SET @m = 'NO_BACKSLASH_ESCAPES' */;", "SET sql_mode = @m;"}, unk},
+		{"variable from a query", []string{"SET @m = CONCAT('NO_BACKSLASH','_ESCAPES');", "SET sql_mode = @m;"}, unk},
+		{"variable set in the same statement", []string{"SET @m = 'NO_BACKSLASH_ESCAPES', sql_mode = @m;"}, unk},
+		{"variable set beside another setting", []string{"SET @m = 'NO_BACKSLASH_ESCAPES', time_zone = '+00:00';", "SET sql_mode = @m;"}, unk},
+		{"variable Roadie can't name", []string{"SET @'a''b' = 'x';", "SET sql_mode = @OLD;"}, unk},
+	} {
+		var v Vars
+		m := Mode{}
+		for _, s := range c.stmts {
+			m = SQLMode([]byte(s), m, &v)
+		}
+		if m != c.want {
+			t.Errorf("%s: mode %+v, want %+v", c.name, m, c.want)
 		}
 	}
 }

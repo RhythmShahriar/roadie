@@ -79,6 +79,11 @@ func checkMySQL(st core.Statement, o Options) Decision {
 	if st.Kind == mysql.KindClient || bytes.HasPrefix(text, []byte{'\\'}) {
 		return clientRefusal(text)
 	}
+	if o.Mode.Unknown {
+		// The reader couldn't follow the sql_mode this statement sets,
+		// so it can't tell where the strings after it end.
+		return refuse(labelSQLMode, whySQLMode)
+	}
 	t := trimDelims(lex(mysql.Body(st.Text, o.Mode), mysqlSyntax(o.Mode)))
 	if len(t) == 0 {
 		if st.Kind == mysql.KindUse {
@@ -669,10 +674,60 @@ func mysqlAssign(a toks) Decision {
 		}
 		return refuse(what, whySetting)
 	}
+	if name == "sql_mode" && !plainMode(value) {
+		return refuse(labelSQLMode, whySQLMode)
+	}
 	if !plainValue(value) {
 		return refuse("a SET statement that reads a query", whyQuery)
 	}
 	return keep()
+}
+
+// labelSQLMode names a SET of sql_mode that Roadie can't follow.
+const labelSQLMode = "a SET sql_mode statement Roadie can't follow"
+
+// whySQLMode is the danger of a sql_mode Roadie can't follow: the mode
+// decides where the server ends a string, so a row Roadie keeps as data
+// could end early on import and run the rest as statements.
+var whySQLMode = why{
+	"could change how the staging server reads quotes and backslashes in the rows after it",
+	"Export the dump again with mysqldump or mariadb-dump, which set sql_mode to a plain value.",
+}
+
+// plainMode reports whether a sql_mode value is one the reader follows:
+// one string literal, DEFAULT, @@sql_mode, a user variable or
+// IFNULL(@var, 'literal'). The reader still judges the variable and the
+// version comment around the statement.
+func plainMode(v toks) bool {
+	switch {
+	case len(v) == 1:
+		return v.kind(0) == str || v.w(0) == "default"
+	case v.p(0, '@') && v.p(1, '@'):
+		k := 2
+		if (v.w(k) == "session" || v.w(k) == "local") && v.p(k+1, '.') {
+			k += 2
+		}
+		return v.w(k) == "sql_mode" && k+1 == len(v)
+	case v.p(0, '@'):
+		return userVar(v, 1) == len(v)
+	case (v.w(0) == "ifnull" || v.w(0) == "coalesce") && v.p(1, '(') && v.p(2, '@'):
+		k := userVar(v, 3)
+		return k > 3 && v.p(k, ',') && v.kind(k+1) == str && v.p(k+2, ')') && k+3 == len(v)
+	}
+	return false
+}
+
+// userVar returns the index after the user variable name that starts at
+// t[i] (name, 'name' or a.b.c), or i when there is none.
+func userVar(t toks, i int) int {
+	if !t.name(i) && t.kind(i) != str {
+		return i
+	}
+	k := i + 1
+	for t.p(k, '.') && t.name(k+1) {
+		k += 2
+	}
+	return k
 }
 
 // plainValue reports whether a SET value holds only literals, variables

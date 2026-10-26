@@ -45,10 +45,11 @@ type sink struct {
 	drop     string // a DROP TABLE seen without its CREATE yet, quoted
 	dropFor  string
 	mode     mysql.Mode
-	verb     string // INSERT INTO, INSERT IGNORE INTO or REPLACE INTO
-	copyCmd  string // the COPY command of the open PostgreSQL statement
-	copyPos  []int  // value positions it sends
-	copyDump bool   // the stream's own COPY block: untouched lines go as they are
+	vars     mysql.Vars // the user variables the dump has set, for sql_mode
+	verb     string     // INSERT INTO, INSERT IGNORE INTO or REPLACE INTO
+	copyCmd  string     // the COPY command of the open PostgreSQL statement
+	copyPos  []int      // value positions it sends
+	copyDump bool       // the stream's own COPY block: untouched lines go as they are
 	err      error
 	done     bool
 }
@@ -265,7 +266,7 @@ func (s *sink) pass(ctx context.Context, st *core.Statement) error {
 			if s.o.FixCollation {
 				text = mysql.FixCollation(text, s.mode)
 			}
-			s.mode = mysql.SQLMode(mysql.Body(text, s.mode), s.mode)
+			s.mode = mysql.SQLMode(text, s.mode, &s.vars)
 		}
 		return s.exec(ctx, stmtText(text))
 	case core.StmtDropTable:

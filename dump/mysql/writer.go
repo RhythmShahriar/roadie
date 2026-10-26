@@ -36,6 +36,7 @@ type Writer struct {
 	w       io.Writer
 	o       WriterOptions
 	mode    Mode
+	vars    Vars // the user variables the dump has set, for sql_mode
 	buf     []byte
 	started bool
 	seq     uint64
@@ -122,7 +123,7 @@ func (w *Writer) pass(out []byte, st *core.Statement) []byte {
 		text = FixCollation(text, w.mode)
 	}
 	if st.Kind == core.StmtSet {
-		w.mode = SQLMode(Body(text, w.mode), w.mode)
+		w.mode = SQLMode(text, w.mode, &w.vars)
 	}
 	return append(out, text...)
 }
