@@ -13,7 +13,7 @@ positive:
     note: Canada
   - value: "Customer phone +44 7911 {d6}"
     note: United Kingdom
-  - value: "+44 (0)161 49{d1} {d4}"
+  - value: "+44 (0)161 47{d1} {d4}"
     note: United Kingdom with the (0) trunk
   - value: "+49 151 {d8}"
     note: Germany
@@ -37,12 +37,14 @@ positive:
     note: New Zealand
   # tel: links
   - value: '<a href="tel:+4479{d8}">Call us</a>'
-  - value: '<a href="tel:0161-49{d1}-{d4}">'
+  - value: '<a href="tel:0161-47{d1}-{d4}">'
   # National formats with separators
   - value: "Phone (415) 26{d1}-{d4} please"
   - value: "Ring 415-26{d1}-{d4}"
   - value: "Mobile 07911 {d6}"
-  - value: "Tel. 0161 49{d1} {d4}"
+  - value: "Tel. 0161 47{d1} {d4}"
+  - value: "Phone 020 7946 1{d3}"
+    note: next to the London drama range, a real number
   - value: "Tel 030 {d8}"
   - value: "Tél 06 12 {d2} {d2} {d2}"
   - value: "móvil 612 {d3} {d3}"
@@ -103,6 +105,17 @@ negative:
   - value: "+44 7700 900123"
   - value: "07700 900123"
     column: billing_phone
+  - value: "Call 020 7946 0{d3} for the shop"
+    note: Ofcom's London drama range
+  - value: "+44 161 496 0{d3}"
+    note: Ofcom's Manchester drama range
+  - value: "+44 28 9649 6{d3}"
+    note: Ofcom's Northern Ireland drama range
+  - value: "01632 960{d3}"
+    column: billing_phone
+    note: Ofcom's drama range with no area
+  - value: "tel:08081570{d3}"
+    note: Ofcom's freephone drama range
   - value: "+1 212 555 0123"
   - value: "(212) 555-0199"
   - value: "555-0123"
