@@ -340,8 +340,19 @@ func TestRunSkippedTable(t *testing.T) {
 	src := source(batch(table("wp_users", "ID", "user_login"), []string{"1", "admin"}))
 	src.Err = errors.New("wp_secret: SELECT command denied")
 	res := runJob(t, Job{Source: src})
-	if len(res.Coverage.Skipped) != 1 || !strings.Contains(res.Coverage.Skipped[0].Reason, "denied") {
+	want := core.Skipped{Table: "(input after wp_users)", Reason: "wp_secret: SELECT command denied; the tables after it weren't read"}
+	if len(res.Coverage.Skipped) != 1 || res.Coverage.Skipped[0] != want {
 		t.Errorf("skipped %+v", res.Coverage.Skipped)
+	}
+}
+
+// A source that fails before its first table names the whole input.
+func TestRunSkippedFirstTable(t *testing.T) {
+	src := source()
+	src.Err = errors.New("dump truncated")
+	_, err := Run(context.Background(), Job{Source: src})
+	if err == nil || !strings.Contains(err.Error(), "(every read failed: dump truncated)") {
+		t.Fatalf("got %v, want nothing-scanned naming the read error", err)
 	}
 }
 

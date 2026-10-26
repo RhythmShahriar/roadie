@@ -316,11 +316,14 @@ func (r *run) stream(ctx context.Context, src core.Source) (map[string]map[strin
 				readErr = ctx.Err()
 				break
 			}
-			name := current
-			if name == "" {
-				name = "(input)"
+			// The source failed past the last table it gave, so the
+			// failing table has no name here; whatever came after it was
+			// never read either.
+			skip := core.Skipped{Table: "(input)", Reason: err.Error()}
+			if current != "" {
+				skip = core.Skipped{Table: "(input after " + current + ")", Reason: err.Error() + "; the tables after it weren't read"}
 			}
-			r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, core.Skipped{Table: name, Reason: err.Error()})
+			r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, skip)
 			break
 		}
 		if b == nil || b.Table == nil || len(b.Rows) == 0 {
