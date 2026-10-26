@@ -180,6 +180,7 @@ func TestOpenErrorsCarryLine(t *testing.T) {
 		{"refused", head + "/*!40101 SET NAMES utf8mb4 */;\nLOAD DATA LOCAL INFILE '/etc/passwd' INTO TABLE t;\n-- Dump completed\n", Options{}, core.ErrDumpRefused, 3},
 		{"data only", head + "\nINSERT INTO `wp_x` VALUES (1,'a');\n-- Dump completed\n", Options{}, core.ErrDumpFormat, 3},
 		{"too large", head + create + "INSERT INTO `t` VALUES (1,'" + strings.Repeat("x", 4096) + "');\n-- Dump completed\n", Options{MaxValue: 1024}, core.ErrValueTooLarge, 6},
+		{"call in a row", head + create + "INSERT INTO `t` VALUES (1,'a'),\n(2,LOAD_FILE('/etc/passwd'));\n-- Dump completed\n", Options{}, core.ErrDumpRefused, 6},
 		{"cut in a string", head + create + "INSERT INTO `t` VALUES (1,'open\n", Options{}, core.ErrDumpTruncated, 6},
 	}
 	for _, c := range cases {

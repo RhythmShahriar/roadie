@@ -307,10 +307,20 @@ func (s *Source) close(b *core.Batch) error {
 	return nil
 }
 
-// check refuses a row whose value count doesn't match the column count:
-// MySQL would refuse it too and a misread row would put values in the
-// wrong columns.
+// check refuses a row with an expression that isn't data only (SafeExpr)
+// and a row whose value count doesn't match the column count: MySQL
+// would refuse it too and a misread row would put values in the wrong
+// columns.
 func (s *Source) check(r core.Row) error {
+	for _, v := range r.Values {
+		if v.Kind == core.Expr && !SafeExpr(v.Raw, s.lex.Mode()) {
+			line := s.stmt.Line
+			e := core.Errorf(core.ErrDumpRefused, 3, "dump-refused: %s line %s holds a function call or a name in a row of %s, which could run code on the staging database. Export the table with mysqldump, which writes plain values.",
+				s.o.Name, size.Count(line), s.ins.Name)
+			e.Line = line
+			return e
+		}
+	}
 	if len(r.Values) == len(s.cols) {
 		return nil
 	}

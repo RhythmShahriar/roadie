@@ -4,6 +4,7 @@
 package mysql
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -101,4 +102,41 @@ func TestSQLMode(t *testing.T) {
 			t.Errorf("SQLMode(%q, %+v) = %+v, want %+v", c.in, c.cur, got, c.out)
 		}
 	}
+}
+
+func TestSafeExpr(t *testing.T) {
+	for _, s := range []string{"1 + 2", "'a' 'b'", "-(1)", "TRUE", "null", "DEFAULT", "X'41' + 0", "b'01'", "'it''s' 'x\\'y'", "1.5e3 * 2", "1e+5", "0x41", "NOT false", "CURRENT_TIMESTAMP"} {
+		if !SafeExpr([]byte(s), Mode{}) {
+			t.Errorf("%q refused", s)
+		}
+	}
+	for _, s := range []string{"LOAD_FILE('/etc/passwd')", "(SELECT 1)", "`col`", "@a", "sys_exec('id')", "NOW()", "now ()", "/*!50000 x */ 1", "1 -- x", "1 # x", "'open", "1abc", "0xZZ", "_binary 'x' collate x"} {
+		if SafeExpr([]byte(s), Mode{}) {
+			t.Errorf("%q accepted", s)
+		}
+	}
+	// Under ANSI_QUOTES "x" is a column.
+	if SafeExpr([]byte(`"x" + 1`), Mode{ANSIQuotes: true}) {
+		t.Error(`"x" accepted under ANSI_QUOTES`)
+	}
+	if !SafeExpr([]byte(`"x" 'y'`), Mode{}) {
+		t.Error(`"x" 'y' refused`)
+	}
+}
+
+func FuzzSafeExpr(f *testing.F) {
+	for _, s := range []string{"1 + 2", "LOAD_FILE('x')", "'a\\'", "/*", "X'", "`"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		if SafeExpr([]byte(s), Mode{}) && (strings.Contains(strings.ToLower(s), "load_file(") || strings.ContainsAny(s, "`@#")) {
+			// A call or a name can only be accepted inside a string.
+			for _, q := range []string{"'", "\""} {
+				if strings.Contains(s, q) {
+					return
+				}
+			}
+			t.Fatalf("%q accepted", s)
+		}
+	})
 }
