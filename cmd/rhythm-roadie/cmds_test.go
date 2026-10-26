@@ -536,6 +536,12 @@ func TestDemo(t *testing.T) {
 	if _, _, code := runCmd(t, "demo"); code != 3 {
 		t.Errorf("no shop: exit %d", code)
 	}
+	// With --json there is no screen: the reason goes to stderr once.
+	useDemo(t, func(d *deps) { d.demoShop = func(io.Writer, demo.Options) error { return core.ErrNotBuilt } })
+	out, errOut, code = runCmd(t, "demo", "--json")
+	if code != 3 || out != "" || strings.Count(errOut, core.ErrNotBuilt.Error()) != 1 {
+		t.Errorf("--json stop: exit %d stdout %q stderr %q", code, out, errOut)
+	}
 }
 
 // The demo end to end with the real engine, verify and demo shop: one
