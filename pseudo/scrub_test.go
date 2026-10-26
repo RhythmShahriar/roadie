@@ -35,7 +35,7 @@ func (n needleSpanner) Spans(text []byte) []core.Span {
 
 // The order-note case of lane-values item 8: an email, a phone, a known
 // full name and a name Roadie never saw. The unknown name stays: free
-// text holds names no pattern can find, and Roadie only knows the names
+// text holds names no pattern can find; Roadie only knows the names
 // it saw in structured columns.
 func TestScrubOrderNote(t *testing.T) {
 	c := testutil.Canaries(31)
