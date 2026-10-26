@@ -175,7 +175,7 @@ type field struct {
 	leafFn   func(string, []byte)
 	// pending holds the leaves of the value being walked and arena their
 	// bytes. They are scanned only once the walk succeeds: a walk that
-	// fails partway leaves the value to be read as plain text, and leaves
+	// fails partway leaves the value to be read as plain text; leaves
 	// scanned before the failure would then be counted twice.
 	pending []pendingLeaf
 	arena   []byte

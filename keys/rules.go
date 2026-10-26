@@ -793,7 +793,7 @@ func scanRules(in scanInput) []Hit {
 	if len(out) > 0 {
 		return out
 	}
-	// The value is only copied to a string, and tested for a stand-in,
+	// The value is copied to a string and tested for a stand-in only
 	// once its shape passed and a name rule matched: most values in a
 	// dump are prose or numbers under names no rule knows.
 	if raw := bytes.TrimSpace(in.v); in.name != "" && credentialShaped(raw) {

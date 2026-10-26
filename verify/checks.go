@@ -96,7 +96,7 @@ func echoURL(s string) (*url.URL, error) {
 
 // echoClient is the client for --echo. Redirects stay on Echo's own
 // scheme, host and port: an https Echo elsewhere must not bounce the
-// requests, and the answers verify trusts, to another server.
+// requests (or the answers verify trusts) to another server.
 func echoClient(echo *url.URL) *http.Client {
 	return &http.Client{Timeout: echoTimeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
