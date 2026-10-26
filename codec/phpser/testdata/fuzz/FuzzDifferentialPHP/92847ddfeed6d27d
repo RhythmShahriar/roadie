@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("a:7:{i:0;d:0;i:0;d:0;i:0;d:0;i:0;d:0")
