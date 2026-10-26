@@ -233,7 +233,7 @@ func (s *sshSite) List(ctx context.Context, rel string, depth int) ([]core.FileI
 }
 
 // findErr says so plainly when the host's find has no -printf: BSD,
-// macOS and busybox find lack it, and Roadie needs GNU find there.
+// macOS and busybox find lack it; Roadie needs GNU find there.
 func (s *sshSite) findErr(err error) error {
 	var re *remote.RunError
 	if errors.As(err, &re) && bytes.Contains(re.Stderr, []byte("-printf")) {

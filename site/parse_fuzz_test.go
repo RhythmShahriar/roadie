@@ -48,7 +48,7 @@ func FuzzSplitWPHost(f *testing.F) {
 	})
 }
 
-// parseLs never panics, and what it accepts always builds an allowlisted
+// parseLs never panics; what it accepts always builds an allowlisted
 // write command.
 func FuzzParseLs(f *testing.F) {
 	for _, s := range []string{"-rw-r--r-- 1 1001 33 10 Oct 26 10:00 /x\n", "-rwsr-xr-T 1 0 0", "drwx 1 0 0", "-"} {

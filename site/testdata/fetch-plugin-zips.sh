@@ -1,4 +1,7 @@
 #!/bin/sh
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
 # Fetches the plugin zips the nightly docker tests install into one
 # folder, each checked against its pinned SHA-256. The tests never
 # download; run this in a step of its own, then the tests with
