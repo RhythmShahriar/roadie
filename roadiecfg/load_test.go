@@ -5,6 +5,8 @@ package roadiecfg
 
 import (
 	"errors"
+	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -514,10 +516,21 @@ side_effects:
 	}
 	for in, want := range map[string]string{
 		"postgres://u:p1@h/db?sslpassword=x&a=b": "postgres://u:•••@h/db?sslpassword=•••&a=b",
-		"h/db?pass=x#frag":                       "h/db?pass=•••#frag",
+		"h/db?pass=x#frag":                       "h/db?pass=•••",
+		"h/db?a=b#frag":                          "h/db?a=b#frag",
 		"h/db?password":                          "h/db?password",
 		"h/db?passwords=x":                       "h/db?passwords=x",
 		"/var/www/staging":                       "/var/www/staging",
+		// An unencoded # or / in the password: url.Parse fails or reads
+		// it as a port and a path, so the raw text is masked.
+		"mysql://root:se#cret@db/shop":    "mysql://root:•••@db/shop",
+		"mysql://u:a/b@h/db":              "mysql://u:•••@h/db",
+		"mysql://u:1/b@h/db":              "mysql://u:•••@h/db",
+		"mysql://u:p?x@h/db":              "mysql://u:•••@h/db",
+		"mysql://root@db/shop":            "mysql://root@db/shop",
+		"mysql://db/shop":                 "mysql://db/shop",
+		"mysql://u:se#cret@h/db?pass=y#f": "mysql://u:•••@h/db?pass=•••",
+		"h/db?pass=se#cret&a=b":           "h/db?pass=•••&a=b",
 	} {
 		if got := stripPassword(in); got != want {
 			t.Errorf("stripPassword(%q) = %q, want %q", in, got, want)
@@ -555,4 +568,46 @@ func TestEchoURLHidesQueryPassword(t *testing.T) {
 	if err := ValidateEchoURL("https://echo.example/?password=" + pw); err != nil {
 		t.Errorf("https refused: %v", err)
 	}
+}
+
+// A source ParseEndpoint refuses is quoted without its password, even
+// when the error text quotes the raw URL or a part of it.
+func TestEndpointMsg(t *testing.T) {
+	pw := "se#" + "cret/77"
+	raw := "mysql://root:" + pw + "@db/shop"
+	_, perr := url.Parse(raw)
+	if perr == nil {
+		t.Fatal("url.Parse took the raw URL")
+	}
+	for _, in := range []string{raw, "mysql://h/db?password=" + pw} {
+		for _, err := range []error{perr, fmt.Errorf("bad port %q", ":se"), fmt.Errorf("can't read %s.", in)} {
+			got := endpointMsg(in, err)
+			if strings.Contains(got, "se") || strings.Contains(got, "cret") {
+				t.Errorf("endpointMsg(%q, %v) = %q, which shows the password", in, err, got)
+			}
+			if !strings.Contains(got, "•••") {
+				t.Errorf("endpointMsg(%q) = %q, want the masked value", in, got)
+			}
+		}
+	}
+	// No password: the message stays as ParseEndpoint wrote it.
+	for _, in := range []string{"ftp://shop.test/db", "mysql://root@db/shop", "/var/www/staging"} {
+		if got := endpointMsg(in, errors.New("ftp isn't a scheme Roadie reads.")); got != "ftp isn't a scheme Roadie reads" {
+			t.Errorf("endpointMsg(%q) = %q", in, got)
+		}
+	}
+}
+
+// FuzzStripPassword checks that a password url.Parse or the raw-text
+// fallback finds never survives masking.
+func FuzzStripPassword(f *testing.F) {
+	for _, s := range []string{"mysql://root:se#cret@db/shop", "mysql://u:a/b@h/db", "postgres://u:p1@h/db?sslpassword=x", "h/db?pass=x#f", "mysql://u:p?x@h/db"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, v string) {
+		got := stripPassword(v)
+		if start, end, ok := passwordSpan(v); ok && end-start >= 4 && !strings.Contains(v[:start], v[start:end]) && !strings.Contains(v[end:], v[start:end]) && strings.Contains(got, v[start:end]) {
+			t.Errorf("stripPassword(%q) = %q, which keeps %q", v, got, v[start:end])
+		}
+	})
 }

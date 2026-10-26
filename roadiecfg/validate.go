@@ -106,7 +106,7 @@ func (l *loader) validateTop(c *Config) error {
 			continue
 		}
 		if _, err := site.ParseEndpoint(k.v); err != nil && !errors.Is(err, core.ErrNotBuilt) {
-			return l.errAt(k.key, "%s: %s", k.key, strings.TrimSuffix(err.Error(), "."))
+			return l.errAt(k.key, "%s: %s", k.key, endpointMsg(k.v, err))
 		}
 	}
 	if c.URL != "" && l.unset["url"] == "" {
