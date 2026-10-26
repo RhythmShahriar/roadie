@@ -1,0 +1,19 @@
+config.environment | wp-config.php | define( 'WP_ENVIRONMENT_TYPE', 'staging' );
+side-effect.cron | wp-config.php | define( 'DISABLE_WP_CRON', true );
+side-effect.subscriptions | wp-content/mu-plugins/roadie-staging.php | woocommerce_subscriptions_is_duplicate_site returns true; wc_subscriptions_siteurl left as it is
+side-effect.subscriptions | wp-config.php | WP_HOME to https://staging.shop.test
+key.generic | wp-config.php | key.stripe-live at line 7 (sk_l•••••): swapped or blanked
+config.salts | wp-config.php | the eight salts (AUTH_KEY to NONCE_SALT) regenerated, 64 random characters each
+side-effect.mail | wp-content/mu-plugins/rhythm-echo.php | Echo connector in seal mode (http://127.0.0.1:8025)
+side-effect.mail | wp-content/mu-plugins/rhythm-echo/settings.php | Echo connector settings
+side-effect.mail | options wp_mail_smtp | mail.mailer to mail, credentials blanked
+side-effect.mail | php.ini | manual: sendmail_path = "/usr/local/bin/rhythm-echo sendmail -t -i" (the path of rhythm-echo on this host), so PHP's mail() reaches Echo too
+side-effect.action-scheduler | wp-content/mu-plugins/roadie-staging.php | Roadie mu-plugin: Action Scheduler paused, Subscriptions staging mode, Jetpack offline, wp_mail blocked without Echo, noindex
+side-effect.jetpack | wp-content/mu-plugins/roadie-staging.php | jetpack_offline_mode returns true
+side-effect.jetpack | options jetpack_private_options | blog and user tokens blanked
+side-effect.webhooks | wc_webhooks | status to paused, secret blanked
+side-effect.gateways | options woocommerce_stripe_settings | Stripe to test mode, live keys swapped or blanked
+side-effect.gateways | options woocommerce-ppcp-settings | PayPal Payments to test mode, live keys swapped or blanked
+side-effect.gateways | options woocommerce_woocommerce_payments_settings | WooPayments to test mode, live keys swapped or blanked
+side-effect.gateways | options woocommerce_fancypay_settings | unknown gateway fancypay disabled (enabled = no)
+side-effect.automatewoo | automatewoo_queue | queue truncated; workflows run through Action Scheduler, which is paused

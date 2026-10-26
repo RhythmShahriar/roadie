@@ -5,8 +5,8 @@
 // DSN sites, detects their stack and guards targets: Roadie never writes
 // to production or to its own source.
 //
-// The exported names in this file are the frozen cross-lane API; the site
-// lane replaces the bodies, which return core.ErrNotBuilt until then.
+// The exported names in this file are the frozen cross-lane API; new
+// names are added, never changed.
 package site
 
 import (
@@ -15,9 +15,14 @@ import (
 	"github.com/RhythmShahriar/roadie/core"
 )
 
-// ParseEndpoint parses one --from or --to value (PRD 6.2).
+// ParseEndpoint parses one --from or --to value (PRD 6.2). A value of no
+// known shape, or an ssh host that could be read as an option, is a
+// kit cli.UsageError (exit 2). A DSN password moves from the value into
+// Password and Display shows "•••" in its place; the caller fills
+// Password from ROADIE_FROM_PASSWORD or ROADIE_TO_PASSWORD when the value
+// has none. For a server DSN, Path is the database name.
 func ParseEndpoint(s string) (core.Endpoint, error) {
-	return core.Endpoint{}, core.ErrNotBuilt
+	return parseEndpoint(s)
 }
 
 // Options configures Open.
@@ -25,16 +30,24 @@ type Options struct {
 	ReadOnly  bool   // a source: every write is refused
 	WP        string // remote.wp, the path of wp on the remote host
 	BatchMode bool   // ssh -o BatchMode=yes: never prompt
+	// FixCollation is --fix-collation, passed to every import the site runs.
+	FixCollation bool
+	// BackupDir is where Backup writes for local and DSN targets; "" is
+	// .roadie/backups in the working folder.
+	BackupDir string
 }
 
-// Open opens the site an endpoint names.
+// Open opens the site an endpoint names: a local-site folder, an ssh-site,
+// a wp-alias from wp-cli.yml or a DSN (no files, stack sql). A dump file
+// or stdio is not a site.
 func Open(ctx context.Context, e core.Endpoint, o Options) (core.Site, error) {
-	return nil, core.ErrNotBuilt
+	return open(ctx, e, o)
 }
 
-// DetectStack tells which stack a site runs.
+// DetectStack tells which stack a site runs: wordpress for wp-config.php
+// or wp-includes/version.php, laravel for artisan plus .env, else sql.
 func DetectStack(ctx context.Context, s core.Site) (core.Stack, error) {
-	return "", core.ErrNotBuilt
+	return detectStack(ctx, s)
 }
 
 // GuardInput is what the target guards look at.
@@ -44,16 +57,21 @@ type GuardInput struct {
 	Production       []string
 	ProductionURL    string
 	TargetIsStaging  string
-	Mode             string
+	Mode             string // "copy", "prepare" or "plan"
+	// URL is --url, the staging URL.
+	URL string
+	// SiteURL is the target's siteurl when the caller already read it;
+	// "" makes Guard read it through WP-CLI or the options table.
+	SiteURL string
 }
 
 // Guard refuses a target that is production or the source, with the
 // *core.Error codes of PRD 10.4.
 func Guard(ctx context.Context, in GuardInput) error {
-	return core.ErrNotBuilt
+	return guard(ctx, in)
 }
 
 // Lock takes the run lock for target; unlock releases it.
 func Lock(target core.Endpoint) (unlock func(), err error) {
-	return nil, core.ErrNotBuilt
+	return LockNotify(target, nil)
 }

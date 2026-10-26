@@ -1,0 +1,10 @@
+<?php
+define('DB_NAME', 'shop');
+define('DB_USER', 'shop');
+define('DB_PASSWORD', 'fixture-pass-5');
+define('DB_HOST', 'localhost');
+$table_prefix = 'wp_';
+define( 'WP_ENVIRONMENT_TYPE', 'staging' );
+define( 'DISABLE_WP_CRON', true );
+define( 'AUTH_KEY', 'new\'key\\with$"quotes' );
+?>

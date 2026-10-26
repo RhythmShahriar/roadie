@@ -1,0 +1,16 @@
+# Roadie basic auth for a staging copy (Apache 2.4).
+# Copy .htpasswd to /etc/roadie/staging.htpasswd
+# (outside the web root), then put these lines at the top of the site's
+# .htaccess or in its <Directory> block.
+# Loopback requests pass without a password, so WP-Cron spawns and Site
+# Health keep working; add the server's own address to "Require ip" when
+# they go out through its public IP.
+# Behind a reverse proxy on this host every request is loopback: remove
+# the loopback allow lines there.
+AuthType Basic
+AuthName "Staging copy"
+AuthUserFile /etc/roadie/staging.htpasswd
+<RequireAny>
+    Require ip 127.0.0.1 ::1
+    Require valid-user
+</RequireAny>

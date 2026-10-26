@@ -1,0 +1,41 @@
+<?php
+/**
+ * Settings for the Roadie test shop (a fixture, not a real site).
+ */
+
+// ** Database settings ** //
+define( 'DB_NAME', 'shop' );
+define( 'DB_USER', 'shop_user' );
+define( 'DB_PASSWORD', 'fixture-pass-1' );
+define( 'DB_HOST', 'localhost' );
+define( 'DB_CHARSET', 'utf8mb4' );
+define( 'DB_COLLATE', '' );
+
+/* Keys and salts: fixture values. */
+define( 'AUTH_KEY',         'fixture auth key' );
+define( 'SECURE_AUTH_KEY',  'fixture secure auth key' );
+define( 'LOGGED_IN_KEY',    'fixture logged in key' );
+define( 'NONCE_KEY',        'fixture nonce key' );
+define( 'AUTH_SALT',        'fixture auth salt' );
+define( 'SECURE_AUTH_SALT', 'fixture secure auth salt' );
+define( 'LOGGED_IN_SALT',   'fixture logged in salt' );
+define( 'NONCE_SALT',       'fixture nonce salt' );
+
+$table_prefix = 'wp_';
+
+define( 'WP_DEBUG', false );
+define( 'WP_MEMORY_LIMIT', 256 );
+
+/* Add any custom values between this line and the "stop editing" line. */
+
+
+
+/* That's all, stop editing! Happy publishing. */
+
+/** Absolute path to the WordPress directory. */
+if ( ! defined( 'ABSPATH' ) ) {
+	define( 'ABSPATH', __DIR__ . '/' );
+}
+
+/** Sets up WordPress vars and included files. */
+require_once ABSPATH . 'wp-settings.php';

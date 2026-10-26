@@ -1,0 +1,15 @@
+config.environment | .env | APP_ENV=staging
+config.environment | .env | APP_URL=https://staging.shop.test
+config.salts | .env | APP_KEY=base64: and 32 random bytes: encrypted columns and old sessions from production become unreadable (pass --keep-app-key to keep the key)
+side-effect.mail | .env | MAIL_MAILER=smtp
+side-effect.mail | .env | MAIL_HOST=127.0.0.1
+side-effect.mail | .env | MAIL_PORT=1025
+side-effect.mail | .env | MAIL_USERNAME=
+side-effect.mail | .env | MAIL_PASSWORD=
+side-effect.mail | .env | RHYTHM_ECHO_URL=http://127.0.0.1:8025
+side-effect.mail | .env | RHYTHM_ECHO_MODE=seal
+side-effect.mail | .env | MAIL_ENCRYPTION=
+side-effect.mail | composer.json | manual: composer require rhythmsh/echo-laravel --dev (Roadie never runs Composer), so Echo seals mail, SMS and webhooks in the app too
+side-effect.queue | .env | QUEUE_CONNECTION=sync
+side-effect.queue | queue workers | manual: Stop queue workers and the scheduler on this host: jobs from production were cleared, new ones run in the request (QUEUE_CONNECTION=sync) through Echo.
+key.generic | .env | key.stripe-live at line 25 (sk_l•••••): swapped or blanked
