@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
@@ -201,7 +203,7 @@ func (p *parsed) runEndpoints(mode engine.Mode, cfg *roadiecfg.Config, stderr io
 func parseEndpoint(raw, flagName, envName string, warn func(string)) (core.Endpoint, error) {
 	e, err := dep.parseEndpoint(raw)
 	if err != nil {
-		return e, err
+		return e, scrubPassword(err, raw)
 	}
 	if e.Kind == core.DSN {
 		if e.Password != "" {
@@ -211,6 +213,37 @@ func parseEndpoint(raw, flagName, envName string, warn func(string)) (core.Endpo
 		}
 	}
 	return e, nil
+}
+
+// scrubPassword takes an inline DSN password out of err's message, raw
+// or URL-decoded, in case the parser quoted the endpoint back: the
+// message reaches the terminal and CI logs. A *core.Error keeps its code
+// and exit.
+func scrubPassword(err error, raw string) error {
+	pw := inlinePassword(raw)
+	if pw == "" {
+		return err
+	}
+	msg := err.Error()
+	stripped, _ := withoutPassword(raw)
+	msg = strings.ReplaceAll(msg, raw, stripped)
+	forms := []string{pw}
+	if dec, derr := url.PathUnescape(pw); derr == nil && dec != pw {
+		forms = append(forms, dec)
+	}
+	for _, f := range forms {
+		msg = strings.ReplaceAll(msg, f, "•••")
+	}
+	if msg == err.Error() {
+		return err
+	}
+	var ce *core.Error
+	if errors.As(err, &ce) {
+		c := *ce
+		c.Msg = msg
+		return &c
+	}
+	return errors.New(msg)
 }
 
 // buildJob turns a parsed copy, prepare or plan command line into the

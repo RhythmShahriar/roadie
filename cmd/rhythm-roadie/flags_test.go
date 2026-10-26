@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"io"
 	"io/fs"
@@ -599,5 +600,48 @@ func TestLoadConfig(t *testing.T) {
 	dep.findConfig = func(string) (string, error) { return "", fs.ErrNotExist }
 	if cfg, path, err := mustParse(t, "copy").loadConfig(); err != nil || cfg != defaults || path != "" {
 		t.Errorf("no config file: %v %q %v", cfg, path, err)
+	}
+}
+
+// An endpoint error never shows an inline DSN password, raw or decoded.
+func TestEndpointErrorHidesPassword(t *testing.T) {
+	testDeps(t, nil)
+	pw := "s3" + "cr%40t" // "s3cr@t" URL-encoded
+	raw := "mysql://shop:" + pw + "@db.shop.com/shop"
+	dep.parseEndpoint = func(s string) (core.Endpoint, error) {
+		return core.Endpoint{}, core.Errorf(core.ErrSSH, 3, "can't reach %s (user shop, password s3cr@t)", s)
+	}
+	_, err := parseEndpoint(raw, "--from", "ROADIE_FROM_PASSWORD", func(string) {})
+	var ce *core.Error
+	if !errors.As(err, &ce) || ce.Code != core.ErrSSH || ce.Exit != 3 {
+		t.Fatalf("lost the code: %#v", err)
+	}
+	if msg := err.Error(); strings.Contains(msg, "s3cr") || !strings.Contains(msg, "mysql://shop@db.shop.com/shop") {
+		t.Errorf("message %q", msg)
+	}
+	// A plain error is scrubbed too; one without a password is untouched.
+	dep.parseEndpoint = func(s string) (core.Endpoint, error) { return core.Endpoint{}, errors.New("bad endpoint " + s) }
+	if _, err := parseEndpoint(raw, "--from", "", func(string) {}); strings.Contains(err.Error(), pw) {
+		t.Errorf("plain error %q", err)
+	}
+	orig := errors.New("bad endpoint ssh://deploy@shop.com:22/x")
+	dep.parseEndpoint = func(string) (core.Endpoint, error) { return core.Endpoint{}, orig }
+	if _, err := parseEndpoint("ssh://deploy@shop.com:22/x", "--from", "", func(string) {}); !errors.Is(err, orig) {
+		t.Errorf("error without a password changed: %v", err)
+	}
+}
+
+func TestInlinePassword(t *testing.T) {
+	for in, want := range map[string]string{
+		"mysql://u:pw@h/db":          "pw",
+		"postgres://u:p@ss/w@h:5/db": "p@ss/w",
+		"mysql://u@h/db":             "",
+		"ssh://deploy@shop.com:22/x": "",
+		"prod.sql.gz":                "",
+		"mysql://u:@h/db":            "",
+	} {
+		if got := inlinePassword(in); got != want {
+			t.Errorf("inlinePassword(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
