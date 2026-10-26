@@ -251,10 +251,21 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 			setValue(v, nv, null)
 			return false, nil
 		case core.RewriteURL:
-			if strings.EqualFold(col.Name, "domain") && t.sh.urls != nil {
-				if nv, ok := t.sh.urls.RewriteHost(orig); ok {
+			if strings.EqualFold(col.Name, "path") && t.sh.urls != nil && isMultisiteTable(rc.table, t.prefix) {
+				if nv, ok := stagingBlogPath(t.sh.stagingPath, orig); ok {
 					cnt.changed(whole, 1)
 					setValue(v, nv, false)
+				} else {
+					cnt.kept(whole)
+				}
+				return false, nil
+			}
+			// A host column (blogs.domain, site.domain, a sitemeta domain
+			// key) holds a bare host, which the URL forms never match.
+			if (strings.EqualFold(col.Name, "domain") || isBareHost(orig)) && t.sh.urls != nil {
+				if nv, ok := t.sh.urls.RewriteHost(orig); ok {
+					cnt.changed(whole, 1)
+					setValue(v, bytes.Clone(hostOnly(nv)), false)
 				} else {
 					cnt.kept(whole)
 				}
@@ -352,6 +363,12 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 		cnt.kept(whole)
 	}
 	return false, nil
+}
+
+// isMultisiteTable reports whether a table is the network's blogs or
+// site table, whose path column is the site's path on its host.
+func isMultisiteTable(table, prefix string) bool {
+	return prefix != "" && (table == prefix+"blogs" || table == prefix+"site")
 }
 
 // setValue replaces a value's bytes (or makes it NULL) and marks it dirty.

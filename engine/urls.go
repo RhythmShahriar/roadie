@@ -4,6 +4,7 @@
 package engine
 
 import (
+	"bytes"
 	"fmt"
 	"net/url"
 	"slices"
@@ -37,6 +38,10 @@ type urlPlan struct {
 	Pairs      []urlrw.Pair
 	Production []string
 	Excluded   []string
+	// StagingPath is the path of --url without its last slash ("" for
+	// none): a staging site in a subfolder. Multisite path columns get
+	// it in front.
+	StagingPath string
 }
 
 // parseOrigin reads a URL or a bare host into scheme and host (with its
@@ -129,10 +134,12 @@ func buildURLPlan(src urlSources, staging string, urlMap map[string]string) (url
 		return plan, nil
 	}
 	tScheme, tHost, ok := parseOrigin(staging)
-	if !ok || !strings.Contains(staging, "://") {
+	su, err := url.Parse(strings.TrimSpace(staging))
+	if !ok || err != nil || !strings.Contains(staging, "://") || su.RawQuery != "" || su.Fragment != "" {
 		return plan, core.Errorf(core.ErrConfig, 2, "url %q isn't a staging URL like https://staging.shop.test", staging)
 	}
-	to := tScheme + "://" + tHost
+	plan.StagingPath = strings.TrimRight(su.EscapedPath(), "/")
+	to := tScheme + "://" + tHost + plan.StagingPath
 	seen := map[string]bool{}
 	add := func(from, to string) {
 		key := strings.ToLower(from)
@@ -168,7 +175,7 @@ func buildURLPlan(src urlSources, staging string, urlMap map[string]string) (url
 		case h == "" || h == mainHost || h == "www."+mainHost || mapped[h] || excluded[h]:
 		case mainHost != "" && strings.HasSuffix(h, "."+mainHost):
 			sub := strings.TrimSuffix(h, "."+mainHost)
-			add("https://"+d, tScheme+"://"+sub+"."+tHost)
+			add("https://"+d, tScheme+"://"+sub+"."+tHost+plan.StagingPath)
 		default:
 			if !slices.Contains(missing, h) {
 				missing = append(missing, h)
@@ -196,6 +203,47 @@ func urlMapError(hosts []string, stagingHost string) *core.Error {
 	}
 	return &core.Error{Code: core.ErrURLMap, Exit: 2, State: core.Untouched,
 		Msg: fmt.Sprintf("url-map: %s %s no staging URL; add --url-map %s.", andList(hosts), verb, strings.Join(pairs, ","))}
+}
+
+// isBareHost reports whether a value is a host and nothing else
+// (shop.com, fr.shop.com:8443): what a host column holds, as opposed to
+// a URL or text that names one.
+func isBareHost(b []byte) bool {
+	if len(b) == 0 || len(b) > 253 || !bytes.ContainsRune(b, '.') {
+		return false
+	}
+	for _, c := range b {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '.', c == '-', c == ':':
+		default:
+			return false
+		}
+	}
+	return b[0] != '.' && b[0] != '-'
+}
+
+// hostOnly cuts a rewritten host column back to its host: a staging URL
+// in a subfolder must not put its path into blogs.domain.
+func hostOnly(b []byte) []byte {
+	if i := bytes.Index(b, []byte("://")); i >= 0 {
+		b = b[i+3:]
+	}
+	if i := bytes.IndexByte(b, '/'); i >= 0 {
+		b = b[:i]
+	}
+	return b
+}
+
+// stagingBlogPath puts the staging subfolder in front of a multisite
+// path column ("/fr/" becomes "/staging/fr/"), once.
+func stagingBlogPath(stagingPath string, p []byte) ([]byte, bool) {
+	if stagingPath == "" || len(p) == 0 || p[0] != '/' {
+		return p, false
+	}
+	if string(p) == stagingPath || bytes.HasPrefix(p, []byte(stagingPath+"/")) {
+		return p, false
+	}
+	return append([]byte(stagingPath), p...), true
 }
 
 // andList joins names as "a", "a and b" or "a, b and c".

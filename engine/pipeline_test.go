@@ -353,7 +353,7 @@ func multisite() []tableData {
 		{table("wp_blogs", "blog_id:bigint(20)", "domain", "path"), rows{{1, "shop.com", "/"}, {2, "fr.shop.com", "/"}, {3, "shop.de", "/"}}},
 		{table("wp_options", "option_id:bigint(20)", "option_name", "option_value"), rows{
 			{1, "siteurl", "https://shop.com"}, {2, "home", "https://shop.com"}, {3, "blogdescription", "see https://fr.shop.com/x"}}},
-		{table("wp_sitemeta", "meta_id:bigint(20)", "site_id:bigint(20)", "meta_key", "meta_value"), rows{{1, 1, "site_name", "Shop"}}},
+		{table("wp_sitemeta", "meta_id:bigint(20)", "site_id:bigint(20)", "meta_key", "meta_value"), rows{{1, 1, "site_name", "Shop"}, {2, 1, "dm_domain", "shop.de"}}},
 	}
 }
 
@@ -390,8 +390,67 @@ func TestPipelineURLMap(t *testing.T) {
 	if v, _ := valueOf(t, sink, "wp_options", 2, "option_value"); v != "see https://fr.staging.shop.test/x" {
 		t.Errorf("blog URL in text %q", v)
 	}
+	if v, _ := valueOf(t, sink, "wp_sitemeta", 1, "meta_value"); v != "de.staging.shop.test" {
+		t.Errorf("sitemeta domain key %q", v)
+	}
+	if v, _ := valueOf(t, sink, "wp_sitemeta", 0, "meta_value"); v != "Shop" {
+		t.Errorf("sitemeta site_name %q", v)
+	}
 	if !out.Result.Stack.Multisite {
 		t.Error("not multisite")
+	}
+}
+
+// A staging site in a subfolder: URLs get the folder, host columns only
+// the host and the network's path columns the folder in front.
+func TestPipelineStagingPath(t *testing.T) {
+	useFakes(t)
+	cfg := roadiecfg.Default()
+	cfg.URLMap = map[string]string{"shop.de": "de.staging.shop.test"}
+	p, sink, _ := fixture(t, Copy, "wp_", multisite, cfg, Options{URL: "https://staging.shop.test/sub/"})
+	out, err := p.run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []urlrw.Pair{{From: "https://shop.com", To: "https://staging.shop.test/sub"},
+		{From: "https://fr.shop.com", To: "https://fr.staging.shop.test/sub"}} {
+		if !slices.Contains(out.Pairs, want) {
+			t.Errorf("pairs %v lack %v", out.Pairs, want)
+		}
+	}
+	if v, _ := valueOf(t, sink, "wp_options", 0, "option_value"); v != "https://staging.shop.test/sub" {
+		t.Errorf("siteurl %q", v)
+	}
+	if v, _ := valueOf(t, sink, "wp_blogs", 1, "domain"); v != "fr.staging.shop.test" {
+		t.Errorf("blog 2 domain %q", v)
+	}
+	for i := range 3 {
+		if v, _ := valueOf(t, sink, "wp_blogs", i, "path"); v != "/sub/" {
+			t.Errorf("blog %d path %q", i+1, v)
+		}
+	}
+	// Already in the folder: left as it is.
+	if nv, ok := stagingBlogPath("/sub", []byte("/sub/fr/")); ok || string(nv) != "/sub/fr/" {
+		t.Errorf("prefixed twice: %q", nv)
+	}
+	if nv, ok := stagingBlogPath("", []byte("/fr/")); ok || string(nv) != "/fr/" {
+		t.Errorf("no folder: %q", nv)
+	}
+}
+
+func TestIsBareHost(t *testing.T) {
+	for _, h := range []string{"shop.com", "fr.shop.com", "shop.com:8443", "xn--bcher-kva.example"} {
+		if !isBareHost([]byte(h)) {
+			t.Errorf("%q is a host", h)
+		}
+	}
+	for _, h := range []string{"", "shop", "https://shop.com", "shop.com/x", "two words.com", ".shop.com", "-shop.com", "a@shop.com"} {
+		if isBareHost([]byte(h)) {
+			t.Errorf("%q isn't a bare host", h)
+		}
+	}
+	if got := string(hostOnly([]byte("https://staging.shop.test/sub"))); got != "staging.shop.test" {
+		t.Errorf("hostOnly %q", got)
 	}
 }
 
@@ -416,6 +475,15 @@ func TestBuildURLPlan(t *testing.T) {
 	}
 	if !slices.Equal(plan.Excluded, []string{"cdn.other.net"}) || !slices.Contains(plan.Production, "*.shop.com") || !slices.Contains(plan.Production, "fr.shop.com") {
 		t.Errorf("excluded %v production %v", plan.Excluded, plan.Production)
+	}
+	for _, bad := range []string{"https://staging.shop.test/?a=1", "https://staging.shop.test/#x"} {
+		if _, err := buildURLPlan(urlSources{}, bad, nil); !isCode(err, core.ErrConfig) {
+			t.Errorf("%s: %v", bad, err)
+		}
+	}
+	if plan, err := buildURLPlan(urlSources{SiteURLs: []string{"https://shop.com"}}, "https://staging.shop.test/a/b/", nil); err != nil ||
+		plan.StagingPath != "/a/b" || !slices.Equal(plan.Pairs, []urlrw.Pair{{From: "https://shop.com", To: "https://staging.shop.test/a/b"}}) {
+		t.Errorf("subfolder plan %+v %v", plan, err)
 	}
 	// No staging URL: nothing to rewrite to, so nothing to stop for.
 	if plan, err := buildURLPlan(src, "", nil); err != nil || len(plan.Pairs) != 0 {

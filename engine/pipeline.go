@@ -145,17 +145,19 @@ func spoolDir() (string, error) {
 
 // shared is what every worker of a run reads and none changes.
 type shared struct {
-	stack     core.Stack
-	cfg       *roadiecfg.Config
-	opts      Options
-	known     core.Known
-	spans     core.Spanner
-	urls      urlRewriter // nil: nothing to rewrite
-	kept      *keptUsers
-	adminID   string // the first administrator's ID
-	addr      map[addrKey]*addrLens
-	adminHash []byte // the kept users' password hash for --admin-password-env
-	onePass   bool
+	stack core.Stack
+	cfg   *roadiecfg.Config
+	opts  Options
+	known core.Known
+	spans core.Spanner
+	urls  urlRewriter // nil: nothing to rewrite
+	// stagingPath is the subfolder of --url, "" for none.
+	stagingPath string
+	kept        *keptUsers
+	adminID     string // the first administrator's ID
+	addr        map[addrKey]*addrLens
+	adminHash   []byte // the kept users' password hash for --admin-password-env
+	onePass     bool
 }
 
 // batchWorker transforms batches in one worker goroutine.
@@ -498,7 +500,7 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 		if err != nil {
 			return t, nil, err
 		}
-		sh.urls = m
+		sh.urls, sh.stagingPath = m, plan.StagingPath
 	}
 	if err := p.adminPassword(sh); err != nil {
 		return t, nil, err
