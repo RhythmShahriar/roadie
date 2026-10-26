@@ -4,6 +4,7 @@
 package engine
 
 import (
+	"path"
 	"strings"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -106,4 +107,43 @@ func (s *ruleSet) each(get func(string) ([]byte, bool), fn func(*core.Rule)) {
 			b++
 		}
 	}
+}
+
+// leafMatch reports whether a rule's path matches the path of a leaf as
+// nested names it ("serialized:testmode", "base64:json:billing.email").
+// Profile rules carry the format ("serialized:ip"); the kill switch
+// writes its option rules without one ("testmode"), as core.Rule's own
+// examples do, and such a path matches the leaf in any format.
+func leafMatch(pattern, leaf string) bool {
+	if ok, _ := path.Match(pattern, leaf); ok {
+		return true
+	}
+	if _, ok := cutFormat(pattern); ok {
+		return false
+	}
+	for {
+		rest, ok := cutFormat(leaf)
+		if !ok {
+			return false
+		}
+		if m, _ := path.Match(pattern, rest); m {
+			return true
+		}
+		leaf = rest
+	}
+}
+
+// cutFormat drops a leading "<format>:" (serialized, json, base64) from
+// a leaf path.
+func cutFormat(p string) (string, bool) {
+	i := strings.IndexByte(p, ':')
+	if i <= 0 {
+		return p, false
+	}
+	for _, c := range p[:i] {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') {
+			return p, false
+		}
+	}
+	return p[i+1:], true
 }

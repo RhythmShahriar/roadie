@@ -5,7 +5,6 @@ package engine
 
 import (
 	"bytes"
-	"path"
 	"strings"
 
 	"github.com/RhythmShahriar/roadie/codec/nested"
@@ -176,7 +175,7 @@ func (e *formEntries) addKnown(known core.Known, rules []core.Rule) {
 				continue
 			}
 			_ = nestedLeaves(en.value, func(p string, leaf []byte) {
-				if ok, _ := path.Match(r.Path, p); ok && len(bytes.TrimSpace(leaf)) > 0 {
+				if leafMatch(r.Path, p) && len(bytes.TrimSpace(leaf)) > 0 {
 					known.Add(r.Fake, leaf)
 				}
 			}, nested.Options{})

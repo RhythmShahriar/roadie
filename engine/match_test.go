@@ -98,3 +98,29 @@ func TestRuleSetMatchesNaive(t *testing.T) {
 		t.Error("nil rule set matched")
 	}
 }
+
+// A rule path with a format matches only that format; one without (the
+// kill switch's option rules) matches the leaf in any format.
+func TestLeafMatch(t *testing.T) {
+	for _, c := range []struct {
+		pattern, leaf string
+		want          bool
+	}{
+		{"serialized:testmode", "serialized:testmode", true},
+		{"testmode", "serialized:testmode", true},
+		{"testmode", "json:testmode", true},
+		{"mail.mailer", "serialized:mail.mailer", true},
+		{"secret_key", "base64:serialized:secret_key", true},
+		{"*", "serialized:a.b", true},
+		{"serialized:*", "serialized:a", true},
+		{"json:testmode", "serialized:testmode", false},
+		{"testmode", "serialized:test_mode", false},
+		{"mode", "serialized:testmode", false},
+		{"a.json:b", "serialized:a.json:b", true},
+		{"b", "serialized:a.json:b", false},
+	} {
+		if got := leafMatch(c.pattern, c.leaf); got != c.want {
+			t.Errorf("leafMatch(%q, %q) = %v, want %v", c.pattern, c.leaf, got, c.want)
+		}
+	}
+}

@@ -6,7 +6,6 @@ package engine
 import (
 	"bytes"
 	"context"
-	"path"
 	"slices"
 	"strings"
 
@@ -303,7 +302,7 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 		cur, changed := leaf, false
 		matched := false
 		for i := range paths {
-			if ok, _ := path.Match(paths[i].Path, p); !ok {
+			if !leafMatch(paths[i].Path, p) {
 				continue
 			}
 			matched = true

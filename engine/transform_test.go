@@ -591,3 +591,24 @@ func TestTransformRealPackages(t *testing.T) {
 		t.Errorf("result %+v", out.Result)
 	}
 }
+
+// The kill switch writes its option rules with bare paths ("testmode");
+// they still change the leaf of a serialized option.
+func TestKillSwitchOptionRuleOnSerialized(t *testing.T) {
+	settings := `a:2:{s:7:"enabled";s:3:"yes";s:8:"testmode";s:2:"no";}`
+	p, sink, _ := fixture(t, Copy, "wp_", func() []tableData {
+		return []tableData{
+			{table("wp_options", "option_id:bigint(20)", "option_name", "option_value"), rows{
+				{1, "siteurl", "https://shop.com"}, {2, "woocommerce_stripe_settings", settings}}},
+		}
+	}, nil, Options{URL: "https://staging.shop.test"})
+	p.dataRules = func(core.Stack) []core.Rule {
+		return []core.Rule{{ID: "killswitch.options.option_value.woocommerce_stripe_settings.testmode", Profile: "killswitch",
+			Table: "{prefix}options", Column: "option_value", Where: map[string]string{"option_name": "woocommerce_stripe_settings"},
+			Path: "testmode", Action: core.Fixed, Value: "yes"}}
+	}
+	run(t, p)
+	if v, _ := valueOf(t, sink, "wp_options", 1, "option_value"); v != `a:2:{s:7:"enabled";s:3:"yes";s:8:"testmode";s:3:"yes";}` {
+		t.Errorf("stripe settings: %s", v)
+	}
+}

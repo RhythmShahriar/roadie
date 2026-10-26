@@ -568,7 +568,7 @@ func (x *indexer) addKnown(b *core.Batch, pos map[string]int, r *core.Row, rs *r
 			return
 		}
 		_ = nestedLeaves(v, func(p string, leaf []byte) {
-			if ok, _ := path.Match(rule.Path, p); ok && len(bytes.TrimSpace(leaf)) > 0 {
+			if leafMatch(rule.Path, p) && len(bytes.TrimSpace(leaf)) > 0 {
 				x.known.Add(rule.Fake, leaf)
 			}
 		}, nested.Options{})
