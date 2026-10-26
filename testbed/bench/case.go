@@ -26,6 +26,8 @@ type caseRun struct {
 	res   CaseResult
 	run   CaseRun
 	key   string
+	// envelope is the run's report, once it ran.
+	envelope *Envelope
 }
 
 // runCase runs one case and checks its gates.
@@ -91,6 +93,7 @@ func (h *Harness) runCase(ctx context.Context, st *scenarioState, c manifest.Cas
 	_ = os.WriteFile(filepath.Join(cr.work, "stdout.json"), run.Stdout, 0o600)
 	_ = os.WriteFile(filepath.Join(cr.work, "stderr.log"), run.Stderr, 0o600)
 	env, perr := ParseEnvelope(run.Stdout)
+	cr.envelope = env
 	if env.NotBuilt() {
 		cr.res.Pending = "rhythm-roadie stopped at a part another lane hasn't built yet (not-built)"
 		cr.res.NotBuilt = true

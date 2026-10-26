@@ -56,6 +56,16 @@ type EnvelopeData struct {
 		ID     string `json:"id"`
 		Status string `json:"status"`
 	} `json:"checks"`
+	// Tables is what the run did to each table: the gates take a
+	// truncated table or deleted rows as meant, not as lost.
+	Tables []struct {
+		Name    string `json:"name"`
+		Rows    int64  `json:"rows"`
+		Action  string `json:"action"`
+		Columns []struct {
+			Changed int64 `json:"changed"`
+		} `json:"columns"`
+	} `json:"tables"`
 	Phases map[string]int64 `json:"phases_ms,omitempty"`
 	Error  *struct {
 		Code    string `json:"code"`

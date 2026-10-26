@@ -280,7 +280,15 @@ func (h *Harness) oracleGates(cr *caseRun, rep oracle.Report, input string) {
 	}
 	if e.Integrity && rep.Integrity != nil {
 		in := rep.Integrity
-		cr.res.add("integrity", in.Failures == 0 && in.Missing == 0, "%d checked, %d fail to unserialize, %d missing", in.Checked, in.Failures, in.Missing)
+		var lost []string
+		for table, n := range in.Gone {
+			if !meantFewer(cr.envelope, table, rep.Rows) {
+				lost = append(lost, fmt.Sprintf("%s %d", table, n))
+			}
+		}
+		slices.Sort(lost)
+		cr.res.add("integrity", in.Failures == 0 && in.Missing == 0 && len(lost) == 0, "%d checked, %d fail to unserialize, %d missing, rows gone %s",
+			in.Checked, in.Failures, in.Missing, orDash(strings.Join(lost, ", ")))
 	}
 	if e.Integrity || e.RowsOnly {
 		tables, err := dumpTables(input)
@@ -290,12 +298,43 @@ func (h *Harness) oracleGates(cr *caseRun, rep oracle.Report, input string) {
 		}
 		var differ []string
 		for _, r := range rep.Rows {
-			if slices.Contains(tables, r.Table) && r.Input != r.Output {
+			if slices.Contains(tables, r.Table) && r.Input != r.Output && !meantFewer(cr.envelope, r.Table, rep.Rows) {
 				differ = append(differ, fmt.Sprintf("%s %d to %d", r.Table, r.Input, r.Output))
 			}
 		}
 		cr.res.add("rows", len(differ) == 0, "%s", orDash(strings.Join(differ, ", ")))
 	}
+}
+
+// meantFewer reports whether the run's report says it wrote fewer rows
+// of table on purpose: it truncated or dropped the table (no rows left),
+// or a rule of the table deleted exactly the rows that are gone (copy
+// --site, a session_tokens row).
+func meantFewer(env *Envelope, table string, rows []oracle.TableRows) bool {
+	if env == nil {
+		return false
+	}
+	var in, out int64 = -1, 0
+	for _, r := range rows {
+		if r.Table == table {
+			in, out = r.Input, r.Output
+		}
+	}
+	for _, t := range env.Data.Tables {
+		if t.Name != table {
+			continue
+		}
+		switch t.Action {
+		case "truncate", "drop":
+			return out == 0
+		}
+		for _, c := range t.Columns {
+			if in >= 0 && out < in && c.Changed == in-out {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // dumpTables lists the tables a dump creates or fills.
@@ -449,7 +488,7 @@ func (h *Harness) checkVerify(ctx context.Context, cr *caseRun) {
 		cr.res.add("verify", false, "%s", err)
 		return
 	}
-	before := reports(cr.work)
+	before := reportsOf(cr)
 	run, err := h.roadie(ctx, cr, args, nil)
 	if err != nil {
 		cr.res.add("verify", false, "%s", err)
@@ -465,7 +504,7 @@ func (h *Harness) checkVerify(ctx context.Context, cr *caseRun) {
 // reportCheck runs report check on the newest report a run signed.
 func (h *Harness) reportCheck(ctx context.Context, cr *caseRun, before []string) {
 	var fresh []string
-	for _, r := range reports(cr.work) {
+	for _, r := range reportsOf(cr) {
 		if !slices.Contains(before, r) {
 			fresh = append(fresh, r)
 		}
@@ -485,6 +524,24 @@ func (h *Harness) reportCheck(ctx context.Context, cr *caseRun, before []string)
 		return
 	}
 	cr.res.add("report-check", run.Exit == 0, "exit %d", run.Exit)
+}
+
+// reportsOf lists the reports a case's runs saved: under its work
+// folder and next to a --config file its commands name, since Roadie
+// keeps a run's .roadie/ folder beside the config in use.
+func reportsOf(cr *caseRun) []string {
+	out := reports(cr.work)
+	for _, args := range [][]string{cr.c.Command, cr.c.Verify} {
+		i := slices.Index(args, "--config")
+		if i < 0 || i+1 >= len(args) {
+			continue
+		}
+		if p, err := manifest.Expand(args[i+1], cr.local); err == nil && filepath.Dir(p) != cr.work {
+			out = append(out, reports(filepath.Dir(p))...)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 // reports lists the saved report.json files under a work folder, sorted
