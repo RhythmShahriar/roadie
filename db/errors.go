@@ -197,10 +197,8 @@ func lostConnection(err error) bool {
 	return strings.Contains(msg, "database is closed") || strings.Contains(msg, "conn closed") || strings.Contains(msg, "connection reset")
 }
 
-var reQuoted = regexp.MustCompile(`'[^']*'|"[^"]*"`)
-
-// describe names a driver error with its code and its message, quoted
-// parts masked.
+// describe names a driver error with its code and its message, the
+// quoted parts masked.
 func describe(err error) string {
 	var me *mysql.MySQLError
 	if errors.As(err, &me) {
@@ -208,18 +206,55 @@ func describe(err error) string {
 		if me.SQLState != [5]byte{} {
 			state = " (" + string(me.SQLState[:]) + ")"
 		}
-		return "MySQL error " + strconv.Itoa(int(me.Number)) + state + ": " + mask(me.Message)
+		return "MySQL error " + strconv.Itoa(int(me.Number)) + state + ": " + mask(me.Message, mysqlTails[me.Number])
 	}
 	var pe *pgconn.PgError
 	if errors.As(err, &pe) {
-		return "PostgreSQL error " + pe.Code + ": " + mask(pe.Message)
+		return "PostgreSQL error " + pe.Code + ": " + mask(pe.Message, nil)
 	}
-	return mask(err.Error())
+	return mask(err.Error(), nil)
 }
 
-// mask replaces every quoted part of a message with '•••'.
-func mask(s string) string {
-	return reQuoted.ReplaceAllString(s, "'•••'")
+// reName is a key or column name in a message: no quotes, no spaces.
+const reName = "[^'\"`\\s]*"
+
+// The ends of MySQL messages that follow a quoted value and name only
+// the schema, by error number: "' for key 'k'" (1062, 1586) and "' for
+// column 'c' at row 3" (1366, 1292). A name is a key or column of the
+// dump, never row data. Each is matched only for its own error numbers
+// and must close the message: a value that spells one is followed by
+// the closing quote of its own message.
+var (
+	reKeyTail    = regexp.MustCompile("' for key '" + reName + "'$")
+	reColumnTail = regexp.MustCompile("' for column ('" + reName + "'|`" + reName + "`(\\.`" + reName + "`)*) at row [0-9]+$")
+	mysqlTails   = map[uint16]*regexp.Regexp{1062: reKeyTail, 1586: reKeyTail, 1366: reColumnTail, 1292: reColumnTail}
+)
+
+// reRest are the words a message may hold after its last quoted part,
+// as in "Column 'c' cannot be null" (1048).
+var reRest = regexp.MustCompile(`^(['"])( cannot be null| is violated\.?| doesn't have a default value| at row [0-9]+)?$`)
+
+// mask hides every value a driver message quotes. Servers write a value
+// into a message as it is, without escaping its quotes; MySQL also cuts
+// a long message short, so pairing quotes can't tell where a value ends
+// ("Duplicate entry 'o'brien@example.test' for key 'k'"). Everything
+// from the first quote on is masked; only the schema-naming end tail
+// matches or a closing quote with known words after it (reRest) is kept.
+func mask(s string, tail *regexp.Regexp) string {
+	i := strings.IndexAny(s, `'"`)
+	if i < 0 {
+		return s
+	}
+	rest := s[i+1:]
+	if tail != nil {
+		if loc := tail.FindStringIndex(rest); loc != nil {
+			return s[:i] + "'•••" + rest[loc[0]:]
+		}
+	}
+	if j := strings.LastIndexAny(rest, `'"`); j >= 0 && reRest.MatchString(rest[j:]) {
+		return s[:i] + "'•••'" + rest[j+1:]
+	}
+	return s[:i] + "'•••'"
 }
 
 // targetName is "name@host" for a server database and the file name for
