@@ -313,7 +313,7 @@ func TestMaxLen(t *testing.T) {
 	}
 	if _, err := f.Fake(core.KEmail, []byte("jane@shop.com"), core.FakeOpts{MaxLen: 28}); err == nil {
 		t.Error("an email column too short for 12 hex took a fake")
-	} else if ce := (*core.Error)(nil); !errors.As(err, &ce) || ce.Code != core.ErrConfig {
+	} else if ce := (*core.Error)(nil); !errors.As(err, &ce) || ce.Code != core.ErrConfig || !strings.Contains(err.Error(), "email_domain") {
 		t.Errorf("too short: %v", err)
 	}
 	if got := fake(t, f, core.KUsername, "janedoe", core.FakeOpts{MaxLen: 17}); len(got) != 17 || !isFakeLogin(got) {
@@ -328,8 +328,10 @@ func TestMaxLen(t *testing.T) {
 	if got := fake(t, f, core.KURL, "https://jane.blog", core.FakeOpts{MaxLen: 37}); len(got) != 37 || !IsFake(core.KURL, []byte(got)) {
 		t.Errorf("url without slash: %q", got)
 	}
-	if got := fake(t, f, core.KURL, "https://jane.blog", core.FakeOpts{MaxLen: 30}); len(got) != 30 || !IsFake(core.KURL, []byte(got)) {
-		t.Errorf("url cut to 30: %q", got)
+	if _, err := f.Fake(core.KURL, []byte("https://jane.blog"), core.FakeOpts{MaxLen: 36}); err == nil {
+		t.Error("a URL column too short for 12 hex took a fake")
+	} else if strings.Contains(err.Error(), "email_domain") {
+		t.Errorf("url too short names the email domain: %v", err)
 	}
 	for _, kind := range []core.FakeKind{core.KFullName, core.KStreet, core.KCompany, core.KUserAgent} {
 		got := fake(t, f, kind, "Some Real Value", core.FakeOpts{MaxLen: 6})
@@ -354,6 +356,10 @@ func TestUniqueListKinds(t *testing.T) {
 	}
 	if _, err := f.Fake(core.KCity, []byte("Realtown"), core.FakeOpts{Unique: true, MaxLen: 9}); err == nil {
 		t.Error("a 9-byte unique city column took a fake")
+	}
+	_, err := f.Fake(core.KCompany, []byte("Acme Ltd"), core.FakeOpts{Unique: true, MaxLen: 9})
+	if err == nil || strings.Contains(err.Error(), "email_domain") || !strings.Contains(err.Error(), "blank the column") {
+		t.Errorf("a narrow company column: %v", err)
 	}
 }
 

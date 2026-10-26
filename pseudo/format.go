@@ -92,6 +92,14 @@ func (f *faker) format(kind, hk core.FakeKind, sum, original []byte, o core.Fake
 // tooShort is the error for a column too narrow for any fake of kind.
 func tooShort(kind core.FakeKind, need, have int) error {
 	return core.Errorf(core.ErrConfig, 2,
+		"a fake %s needs at least %d bytes but the column holds %d; blank the column",
+		strings.ReplaceAll(string(kind), "_", " "), need, have)
+}
+
+// tooShortEmail is tooShort for an email-shaped fake, where the email
+// domain takes part of the room and so a shorter one can help.
+func tooShortEmail(kind core.FakeKind, need, have int) error {
+	return core.Errorf(core.ErrConfig, 2,
 		"a fake %s needs at least %d bytes but the column holds %d; blank the column or use a shorter pseudonymise.email_domain",
 		strings.ReplaceAll(string(kind), "_", " "), need, have)
 }
@@ -125,7 +133,7 @@ func (f *faker) email(kind core.FakeKind, sum []byte, limit int) ([]byte, error)
 	if fixed := 2 + len(f.opt.EmailDomain); limit > 0 && fixed+n > limit {
 		n = limit - fixed
 		if n < minUniqueHex {
-			return nil, tooShort(kind, fixed+minUniqueHex, limit)
+			return nil, tooShortEmail(kind, fixed+minUniqueHex, limit)
 		}
 	}
 	out := make([]byte, 0, 2+n+len(f.opt.EmailDomain))
@@ -149,20 +157,18 @@ func login(kind core.FakeKind, sum []byte, limit int) ([]byte, error) {
 }
 
 // fakeURL is https://u<12 hex>.example.invalid/; a narrow column loses
-// the closing slash, then hex digits down to 4.
+// the closing slash. The hex never gets shorter: URLs are a unique kind
+// and fewer digits would collide within a few hundred rows.
 func fakeURL(sum []byte, limit int) ([]byte, error) {
 	const head, tail = "https://u", ".example.invalid"
-	n, slash := urlHexLen, true
-	if limit > 0 && len(head)+n+len(tail)+1 > limit {
+	slash := true
+	if limit > 0 && len(head)+urlHexLen+len(tail)+1 > limit {
 		slash = false
-		if len(head)+n+len(tail) > limit {
-			n = limit - len(head) - len(tail)
-			if n < minURLHex {
-				return nil, tooShort(core.KURL, len(head)+minURLHex+len(tail), limit)
-			}
+		if len(head)+urlHexLen+len(tail) > limit {
+			return nil, tooShort(core.KURL, len(head)+urlHexLen+len(tail), limit)
 		}
 	}
-	out := hex.AppendEncode([]byte(head), sum[:6])[:len(head)+n]
+	out := hex.AppendEncode([]byte(head), sum[:urlHexLen/2])
 	out = append(out, tail...)
 	if slash {
 		out = append(out, '/')
