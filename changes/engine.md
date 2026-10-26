@@ -145,6 +145,8 @@ The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrub
 | `{prefix}{site}postmeta` | `meta_value` | `meta_key=_from` |  | text | the sender as name and email |
 | `{prefix}{site}postmeta` | `meta_value` | `meta_key=_from_email` |  | email | the sender's email |
 | `{prefix}{site}postmeta` | `meta_value` | `meta_key=_from_name` |  | full_name | the sender's name |
+| `{prefix}{site}postmeta` | `meta_value` | `meta_key=_field_your-email` |  | email | the email field of Contact Form 7's default form (your-email) |
+| `{prefix}{site}postmeta` | `meta_value` | `meta_key=_field_your-name` |  | full_name | the name field of Contact Form 7's default form (your-name) |
 | `{prefix}{site}postmeta` | `meta_value` | `meta_key=_field_*` |  | text | one form field of the message |
 | `{prefix}{site}postmeta` | `meta_value` | `meta_key=_meta` | `serialized:remote_ip` | ip | the sender's IP address in the request details |
 | `{prefix}{site}postmeta` | `meta_value` | `meta_key=_meta` | `serialized:user_agent` | user_agent | the sender's browser in the request details |
@@ -186,6 +188,8 @@ The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrub
 | `{prefix}{site}edd_logs_file_downloads` | `ip` |  |  | ip | the IP address of a file download |
 | `{prefix}{site}edd_logs_file_downloads` | `user_agent` |  |  | user_agent | the browser of a file download |
 | `{prefix}{site}edd_notes` | `content` |  |  | text | notes on orders and customers |
+| `{prefix}{site}edd_logs_emails` | `email` |  |  | email | the recipient of a mail EDD sent (the email log of EDD 3.3) |
+| `{prefix}{site}edd_logs_emails` | `subject` |  |  | text | the subject of a mail EDD sent, which can name the customer |
 
 #### `email-log` (Email Log)
 
@@ -202,9 +206,31 @@ The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrub
 | Table | Column | Where | Path | Rule | Why |
 |---|---|---|---|---|---|
 | `{prefix}{site}fluentform_submissions` | `response` |  |  | text | every field of the submission as JSON |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:email` | email | the email field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:names.first_name` | first_name | the first name of the name field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:names.middle_name` | first_name | the middle name of the name field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:names.last_name` | last_name | the last name of the name field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:phone` | phone | the phone field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:address_1.address_line_1` | street | the street of the address field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:address_1.address_line_2` | street | the second line of the address field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:address_1.city` | city | the city of the address field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:address_1.zip` | postcode | the postcode of the address field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:address_1.state` | blank | the state of the address field as a new form names it; kept by default |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:address_1.country` | blank | the country of the address field as a new form names it; kept by default |
 | `{prefix}{site}fluentform_submissions` | `source_url` |  |  | rewrite-url | the page the form was on |
 | `{prefix}{site}fluentform_submissions` | `ip` |  |  | ip | the IP address the submission came from |
 | `{prefix}{site}fluentform_submissions` | `city` |  |  | city | the city looked up from the IP address |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=email` |  | email | the email field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=phone` |  | phone | the phone field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=names, sub_field_name=first_name` |  | first_name | the first name of the name field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=names, sub_field_name=middle_name` |  | first_name | the middle name of the name field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=names, sub_field_name=last_name` |  | last_name | the last name of the name field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=address_1, sub_field_name=address_line_1` |  | street | the street of the address field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=address_1, sub_field_name=address_line_2` |  | street | the second line of the address field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=address_1, sub_field_name=city` |  | city | the city of the address field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=address_1, sub_field_name=zip` |  | postcode | the postcode of the address field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=address_1, sub_field_name=state` |  | blank | the state of the address field as a new form names it; kept by default |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=address_1, sub_field_name=country` |  | blank | the country of the address field as a new form names it; kept by default |
 | `{prefix}{site}fluentform_entry_details` | `field_value` |  |  | text | one field's value |
 | `{prefix}{site}fluentform_submission_meta` | `value` |  |  | text | notes and data attached to a submission |
 | `{prefix}{site}fluentform_logs` | `description` |  |  | text | log lines that quote submissions |
@@ -266,15 +292,15 @@ The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrub
 #### `learndash` (LearnDash)
 
 - Stack: wordpress. Checked against: `docs: https://plugins.svn.wordpress.org/wp-pro-quiz/trunk/lib/helper/WpProQuiz_Helper_DbUpgrade.php`.
-- Detected by: table `{prefix}learndash_user_activity`, table `{prefix}learndash_pro_quiz_toplist`, file `wp-content/plugins/sfwd-lms/sfwd_lms.php`.
-- Kept as they are: `{prefix}learndash_user_activity`.
+- Detected by: table `{prefix}{site}learndash_user_activity`, table `{prefix}{site}learndash_pro_quiz_toplist`, file `wp-content/plugins/sfwd-lms/sfwd_lms.php`.
+- Kept as they are: `{prefix}{site}learndash_user_activity`.
 
 | Table | Column | Where | Path | Rule | Why |
 |---|---|---|---|---|---|
-| `{prefix}learndash_pro_quiz_toplist` | `name` |  |  | full_name | the name on the leaderboard |
-| `{prefix}learndash_pro_quiz_toplist` | `email` |  |  | email | the email on the leaderboard |
-| `{prefix}learndash_pro_quiz_toplist` | `ip` |  |  | ip | the IP address of the attempt |
-| `{prefix}learndash_pro_quiz_statistic_ref` | `form_data` |  |  | text | the quiz's custom form fields, such as name and email |
+| `{prefix}{site}learndash_pro_quiz_toplist` | `name` |  |  | full_name | the name on the leaderboard |
+| `{prefix}{site}learndash_pro_quiz_toplist` | `email` |  |  | email | the email on the leaderboard |
+| `{prefix}{site}learndash_pro_quiz_toplist` | `ip` |  |  | ip | the IP address of the attempt |
+| `{prefix}{site}learndash_pro_quiz_statistic_ref` | `form_data` |  |  | text | the quiz's custom form fields, such as name and email |
 
 #### `mailpoet` (MailPoet)
 
@@ -297,19 +323,19 @@ The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrub
 #### `memberpress` (MemberPress)
 
 - Stack: wordpress. Checked against: `docs: https://memberpress.com/docs/where-is-data-stored/`.
-- Detected by: table `{prefix}mepr_transactions`, table `{prefix}mepr_members`, file `wp-content/plugins/memberpress/memberpress.php`.
-- Kept as they are: `{prefix}mepr_members`.
+- Detected by: table `{prefix}{site}mepr_transactions`, table `{prefix}{site}mepr_members`, file `wp-content/plugins/memberpress/memberpress.php`.
+- Kept as they are: `{prefix}{site}mepr_members`.
 
 | Table | Column | Where | Path | Rule | Why |
 |---|---|---|---|---|---|
-| `{prefix}mepr_transactions` | `ip_addr` |  |  | ip | the IP address of the payment |
-| `{prefix}mepr_transactions` | `trans_num` |  |  | blank | the gateway's transaction ID |
-| `{prefix}mepr_transactions` | `response` |  |  | blank | the gateway's raw answer, with card and customer details |
-| `{prefix}mepr_subscriptions` | `subscr_id` |  |  | blank | the gateway's subscription ID, which a renewal would charge |
-| `{prefix}mepr_subscriptions` | `ip_addr` |  |  | ip | the IP address of the sign-up |
-| `{prefix}mepr_subscriptions` | `token` |  |  | blank | the saved payment token |
-| `{prefix}mepr_subscriptions` | `cc_last4` |  |  | blank | the last four card digits |
-| `{prefix}mepr_subscriptions` | `response` |  |  | blank | the gateway's raw answer |
+| `{prefix}{site}mepr_transactions` | `ip_addr` |  |  | ip | the IP address of the payment |
+| `{prefix}{site}mepr_transactions` | `trans_num` |  |  | blank | the gateway's transaction ID |
+| `{prefix}{site}mepr_transactions` | `response` |  |  | blank | the gateway's raw answer, with card and customer details |
+| `{prefix}{site}mepr_subscriptions` | `subscr_id` |  |  | blank | the gateway's subscription ID, which a renewal would charge |
+| `{prefix}{site}mepr_subscriptions` | `ip_addr` |  |  | ip | the IP address of the sign-up |
+| `{prefix}{site}mepr_subscriptions` | `token` |  |  | blank | the saved payment token |
+| `{prefix}{site}mepr_subscriptions` | `cc_last4` |  |  | blank | the last four card digits |
+| `{prefix}{site}mepr_subscriptions` | `response` |  |  | blank | the gateway's raw answer |
 | `{prefix}usermeta` | `meta_value` | `meta_key=mepr-address-one` |  | street | the member's street |
 | `{prefix}usermeta` | `meta_value` | `meta_key=mepr-address-two` |  | street | the member's second address line |
 | `{prefix}usermeta` | `meta_value` | `meta_key=mepr-address-city` |  | city | the member's city |
@@ -615,7 +641,7 @@ It hasn't run yet: the schema files in `profile/testdata/schemas/` were written 
 ### Two passes, the spool and `--one-pass`
 
 - A dump file is read twice. A stream (stdin, or an ssh or alias site that can stream its export) is copied to the encrypted spool in `<cache>/roadie/spool/` (folder 0700) while pass 1 reads it; pass 2 reads the spool. The spool is removed on success, error and Ctrl-C. A site or database without a stream is exported once per pass.
-- Pass 1 reads the schema, row counts, option names, siteurl and home per blog, multisite domains, HPOS mode, kept users, administrators, form definitions, order address part lengths, the uncovered-column samples and the known-value set for exact-mode verify. The rules are then compiled with what it found.
+- Pass 1 reads the schema, row counts, option names, siteurl and home per blog, multisite domains, HPOS mode, kept users, administrators, form definitions, order address part lengths, the uncovered-column samples and the known-value set for exact-mode verify. The rules are then compiled with what it found. Form entries (Gravity Forms `gf_entry_meta`, WPForms `wpforms_entry_fields` and `wpforms_entries`, Ninja Forms `_field_<N>` post meta) are kept in pass 1 (up to 32 MiB, 64 KiB a value); the ones a field-type rule fakes join the known-value set before it is sealed, whichever comes first in the dump (mysqldump writes `gf_entry_meta` before `gf_form_meta`). Past 32 MiB the rest are only faked in their own rows; their emails and phones are still found by the detectors.
 - Pass 2 runs `--jobs` workers (default the CPUs, at most 8) with an ordered writer; output order is input order. The window holds at most 2 x jobs batches and at most 96 MiB of batch memory (rows and values counted as held in memory), or a quarter of `--max-memory` when that is smaller; a batch larger than the window still goes when nothing else is in flight.
 - `--one-pass` reads once: rules from every profile of the stack, URLs rewritten only for `production:` and `url_map` entries, no names from the known set in free text. It refuses `keep_users` (`--one-pass can't keep users: a dump has their user meta before the users table. Drop --one-pass or keep_users.`) and `--site` (`--one-pass can't limit the copy to --site: the blogs are known only after the whole dump is read. Drop one of them.`). Its uncovered-column check runs after pass 2 has written: a dump file is removed and the message ends `The target is untouched.` while a site or database target the abort leaves mixed reports `mixed` in `data.target_state` and in the error; its message ends `The target is in a mixed state and may hold the column as it was in production: run the same command again once it has a rule, or without --one-pass to check before writing.` (`the columns as they were` and `they have` for several).
 - `--max-memory` sets Go's soft memory limit for the run. Without it the run sets 300 MiB (PRD 22.3), unless `GOMEMLIMIT` already set one; the limit in place before the run is put back after.
@@ -643,7 +669,7 @@ Users are limited to the members of the chosen blogs and the main site (a `<pref
 
 ### Values
 
-- delete-row drops the row; fake, blank, null (blank when the column is NOT NULL), fixed and password replace the whole value. An empty value is never faked.
+- delete-row drops the row; fake, blank, null (blank when the column is NOT NULL), fixed and password replace the whole value. An empty value is never faked. Such a rule wins over path rules (`json:`, `serialized:`) of other where clauses that also match the row: the whole value is replaced, not only the leaves.
 - Every other string goes through the nested reader (serialized PHP and JSON): path rules per leaf, the free-text scrubber for text rules, then the URL rewrite and the live-key scan. A live key becomes `keys.test_keys` or is blanked (`keys.mode`).
 - A value shaped like serialized data that doesn't parse and holds personal-looking text is blanked with finding `data.unparseable` (medium); `on_unparseable: fail` stops: `data.unparseable: a value at wp_options widget_contact looks serialized, doesn't parse and holds personal-looking text; on_unparseable: fail stops here. Fix the value, or set on_unparseable: blank to blank such values.` (exit 3).
 - Kept users (`keep_users`): their users, usermeta and HPOS orders (with addresses, meta and operational data) stay as they were; finding `info.kept-users`: `1 kept users left as they are (keep_users)`. `--admin-password-env ROADIE_X` sets their password; errors: `--admin-password-env names ADMIN_PW; only ROADIE_ variables are read. Rename it ROADIE_ADMIN_PW.`, `--admin-password-env names ROADIE_X, which isn't set. Set it in the environment, or drop the flag.`, `--admin-password-env sets the password of kept users; keep_users names none.`
