@@ -109,13 +109,24 @@ func Scrub(text []byte, sp core.Spanner, known core.Known, f core.Faker) ([]byte
 }
 
 // ResetHash returns a password hash no password matches, for the stack.
+//
+// WordPress gets "$P$roadie" and 22 random phpass characters: phpass
+// reads 'r' as an iteration count out of its range and refuses the hash.
+// Laravel and sql get a bcrypt (cost 10, "$2y$") of 32 random bytes that
+// are thrown away. Any other stack is an error with the code stack.
 func ResetHash(stack core.Stack) ([]byte, error) {
-	return nil, core.ErrNotBuilt
+	return resetHash(stack)
 }
 
 // PasswordHash hashes password for the stack: phpass $P$ or bcrypt.
+//
+// WordPress gets a phpass portable hash ("$P$B", an 8-character salt,
+// 2^13 md5 rounds) that every WordPress since 2.5 checks, 6.8's bcrypt
+// default included. Laravel and sql get bcrypt with cost 12 and the
+// "$2y$" prefix PHP writes. An empty password or one over 72 bytes is an
+// error with the code config (exit 2) that never quotes the password.
 func PasswordHash(stack core.Stack, password []byte) ([]byte, error) {
-	return nil, core.ErrNotBuilt
+	return passwordHash(stack, password)
 }
 
 // IsFake reports whether v is a value Roadie's lists or formats produce.
@@ -131,11 +142,15 @@ func IsFake(kind core.FakeKind, v []byte) bool {
 }
 
 // Salt returns 64 printable characters from crypto/rand.
+//
+// The characters are the ones WordPress salts use (letters, digits and
+// !@#$%^&*()-_ []{}<>~`+=,.;:/?|), never a quote or backslash, so a salt
+// can go in wp-config.php's single-quoted defines as it is.
 func Salt() string {
-	return ""
+	return salt()
 }
 
 // AppKey returns a Laravel APP_KEY: "base64:" and 32 random bytes.
 func AppKey() string {
-	return ""
+	return appKey()
 }
