@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -197,7 +198,8 @@ func TestRuntimeFilesArePrivate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if st.Mode().Perm()&0o077 != 0 {
+		// Windows files have no Unix mode: os.Stat reports 0666 there.
+		if runtime.GOOS != "windows" && st.Mode().Perm()&0o077 != 0 {
 			t.Errorf("%s is %v, want 0600", p, st.Mode().Perm())
 		}
 	}

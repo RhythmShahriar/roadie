@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -28,7 +29,8 @@ func TestRun(t *testing.T) {
 	}
 	for _, f := range []string{"db.sql.gz", "db-small.sql.gz", "serialized.json", "serialized-small.json", "gen.json"} {
 		fi, err := os.Stat(filepath.Join(out, f))
-		if err != nil || fi.Mode().Perm() != 0o600 {
+		// Windows files have no Unix mode: only the file counts there.
+		if err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600) {
 			t.Errorf("%s: %v", f, err)
 		}
 	}

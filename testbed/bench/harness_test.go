@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -23,6 +24,11 @@ import (
 )
 
 func intp(n int) *int { return &n }
+
+// unixModes says whether file modes mean anything here: on Windows
+// os.Stat reports 0666 for any writable file, so only the file's
+// presence is checked there.
+var unixModes = runtime.GOOS != "windows"
 
 const envelopeJSON = `{"schema":"rhythm-roadie/v1","kind":"verify","tool":"rhythm-roadie","version":"1.0.0","complete":true,
 "summary":{"critical":1,"high":1,"medium":0,"low":1,"info":1},"verdict":"findings","data":{"result":"fail","target_state":"replaced",
@@ -238,7 +244,7 @@ func TestResultsAreReproducible(t *testing.T) {
 		t.Error("gate 3's run-to-run counts belong under run, not the score")
 	}
 	fi, err := os.Stat(a)
-	if err != nil || fi.Mode().Perm() != 0o600 {
+	if err != nil || (unixModes && fi.Mode().Perm() != 0o600) {
 		t.Errorf("results.json mode %v %v", fi.Mode(), err)
 	}
 
@@ -533,8 +539,8 @@ func TestSecretFile(t *testing.T) {
 	if err != nil || len(a) != 44 {
 		t.Fatalf("%q %v", a, err)
 	}
-	fi, _ := os.Stat(p)
-	if fi.Mode().Perm() != 0o600 {
+	fi, err := os.Stat(p)
+	if err != nil || (unixModes && fi.Mode().Perm() != 0o600) {
 		t.Errorf("mode %v", fi.Mode())
 	}
 	if b, _ := secretFile(p); b != a {
@@ -624,7 +630,7 @@ func TestRunAllControl(t *testing.T) {
 				t.Error("the input wasn't reseeded:", err)
 			}
 			for _, name := range []string{"signing.key", "roadie.key", "roadie-other.key"} {
-				if fi, err := os.Stat(filepath.Join(rt, name)); err != nil || fi.Mode().Perm() != 0o600 {
+				if fi, err := os.Stat(filepath.Join(rt, name)); err != nil || (unixModes && fi.Mode().Perm() != 0o600) {
 					t.Errorf("%s: %v", name, err)
 				}
 			}

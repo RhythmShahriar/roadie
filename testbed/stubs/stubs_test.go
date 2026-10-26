@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -106,7 +107,9 @@ func TestCertificates(t *testing.T) {
 	if err := makeCerts(dir, stubHosts, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if st, err := os.Stat(filepath.Join(dir, "host.key")); err != nil || st.Mode().Perm() != 0o600 {
+	st, err := os.Stat(filepath.Join(dir, "host.key"))
+	// Windows files have no Unix mode: only the file's presence counts there.
+	if err != nil || (runtime.GOOS != "windows" && st.Mode().Perm() != 0o600) {
 		t.Fatalf("host.key: %v %v", st, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "ca.key")); err == nil {
