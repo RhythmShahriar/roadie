@@ -709,7 +709,10 @@ type scanInput struct {
 func scanValue(v []byte, at core.Location, siblings map[string]string) []Hit {
 	in := scanInput{v: v, at: at, sib: siblings}
 	_, key := LeafKey(at.Path)
-	rowName := rowKey(at.Row)
+	rowName := ""
+	if namesValue(at.Column) {
+		rowName = rowKey(at.Row)
+	}
 	in.name = strings.ToLower(key)
 	if in.name == "" || isIndex(in.name) {
 		in.name = strings.ToLower(rowName)
@@ -726,6 +729,29 @@ func isIndex(k string) bool {
 		}
 	}
 	return k != ""
+}
+
+// namesValue reports whether a row's option_name or meta_key names the
+// value in this column: the value column (option_value, meta_value,
+// value, payload and the like), or any column when it isn't known. The
+// key column itself and flags beside it (autoload) aren't the setting:
+// the option sendgrid_api_key holds a key in option_value, not in
+// option_name or autoload.
+func namesValue(col string) bool {
+	if col == "" {
+		return true
+	}
+	c := strings.ToLower(col)
+	switch c {
+	case "option_name", "meta_key", "name", "setting", "key", "autoload":
+		return false
+	}
+	for _, w := range []string{"value", "payload", "data", "content", "secret", "token", "config", "setting", "option"} {
+		if strings.Contains(c, w) {
+			return true
+		}
+	}
+	return false
 }
 
 // rowKey returns the option_name, meta_key or name of a Location.Row.
@@ -985,13 +1011,28 @@ func classifyBySiblings(provider, name string, sib siblings) string {
 		return e
 	}
 	if provider == "stripe-webhook" {
-		for _, v := range sib {
+		// The secret key of the same mode decides; without one, any live
+		// secret key beside it makes the webhook secret live, since a
+		// settings array holds the test keys next to the live ones.
+		if v := sib.get("secret_key"); v != "" {
 			switch {
 			case strings.HasPrefix(v, "sk_live_"):
 				return EnvLive
 			case strings.HasPrefix(v, "sk_test_"):
 				return EnvTest
 			}
+		}
+		test := false
+		for _, v := range sib {
+			switch {
+			case strings.HasPrefix(v, "sk_live_"):
+				return EnvLive
+			case strings.HasPrefix(v, "sk_test_"):
+				test = true
+			}
+		}
+		if test {
+			return EnvTest
 		}
 	}
 	return ""

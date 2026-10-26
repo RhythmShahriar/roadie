@@ -508,3 +508,55 @@ func FuzzTokenSkip(f *testing.F) {
 		}
 	})
 }
+
+// A row's option_name names the value column only: the option
+// sendgrid_api_key holds its key in option_value, while its name and its
+// autoload flag are no keys.
+func TestRowNameNamesValueColumn(t *testing.T) {
+	key := "SG." + keyBody("Sg", 22) + "." + keyBody("Sh", 43)
+	row := "option_name=sendgrid_api_key"
+	if hits := ScanValue([]byte(key), core.Location{Table: "wp_options", Column: "option_value", Row: row}, nil); len(hits) != 1 || hits[0].Env != "live" {
+		t.Errorf("option_value: %+v", hits)
+	}
+	for col, v := range map[string]string{"option_name": "sendgrid_api_key", "autoload": "off"} {
+		if hits := ScanValue([]byte(v), core.Location{Table: "wp_options", Column: col, Row: row}, nil); len(hits) != 0 {
+			t.Errorf("%s %q: %+v", col, v, hits)
+		}
+	}
+	// A credential known only by its option name.
+	tok := keyBody("Tw", 32)
+	if hits := ScanValue([]byte(tok), core.Location{Column: "meta_value", Row: "meta_key=twilio_auth_token"}, nil); len(hits) == 0 {
+		t.Error("meta_value named by its meta_key: no hit")
+	}
+	if hits := ScanValue([]byte(tok), core.Location{Column: "autoload", Row: "meta_key=twilio_auth_token"}, nil); len(hits) != 0 {
+		t.Errorf("autoload named by the meta_key: %+v", hits)
+	}
+}
+
+// A Stripe webhook secret has no mode marker: the secret key beside it
+// decides, whatever order the settings come in. A settings array holds
+// the live and the test keys side by side.
+func TestStripeWebhookFollowsSecretKey(t *testing.T) {
+	wh := "whsec_" + keyBody("Wh", 32)
+	live, test := "sk_"+"live_"+keyBody("Lv", 24), "sk_"+"test_"+keyBody("Ts", 24)
+	at := core.Location{Column: "option_value", Row: "option_name=woocommerce_stripe_settings", Path: "serialized:webhook_secret"}
+	cases := []struct {
+		sib  map[string]string
+		want string
+	}{
+		{map[string]string{"secret_key": live, "test_secret_key": test}, EnvLive},
+		{map[string]string{"secret_key": test, "test_secret_key": test}, EnvTest},
+		{map[string]string{"secret_key": "", "test_secret_key": test}, EnvTest},
+		{map[string]string{"other_key": live, "test_secret_key": test}, EnvLive},
+		{map[string]string{"testmode": "yes", "secret_key": live}, EnvTest},
+		{nil, EnvUnknown},
+	}
+	for i, c := range cases {
+		for range 20 { // map order varies from run to run
+			hits := ScanValue([]byte(wh), at, c.sib)
+			if len(hits) != 1 || hits[0].Env != c.want {
+				t.Fatalf("case %d: %+v, want %s", i, hits, c.want)
+			}
+		}
+	}
+}
