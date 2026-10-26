@@ -1,0 +1,89 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+name: ci
+on:
+  push:
+    branches: [master]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  # The shared workflows are pinned by commit; Dependabot can't bump a
+  # branch, so move the SHA by hand when RhythmShahriar/.github changes.
+  # go runs vet and go test -race ./... on Linux, Windows and macOS, plus
+  # the writing-style check (scripts/check-style.py) on Linux. Every
+  # benchmark runs once (-benchtime 1x) so a broken one fails the build.
+  go:
+    uses: RhythmShahriar/.github/.github/workflows/ci-go.yml@4e1c576341190242c956652d00cea38d7918cd40 # master 2026-10-26
+    with:
+      os: '["ubuntu-latest", "windows-latest", "macos-latest"]'
+      style: true
+      kit-pin-check: true
+      bench: '.'
+      bench-packages: './...'
+  commitlint:
+    uses: RhythmShahriar/.github/.github/workflows/commitlint.yml@4e1c576341190242c956652d00cea38d7918cd40 # master 2026-10-26
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: actionlint
+        # rhysd/actionlint:1.7.7, by digest so a moved tag can't change the check.
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 -color
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: shellcheck
+        # koalaman/shellcheck:v0.10.0, by digest so a moved tag can't change the check.
+        run: |
+          mapfile -t files < <(.github/scripts/shell-files.sh)
+          docker run --rm --network none -v "$PWD:/repo:ro" -w /repo \
+            koalaman/shellcheck@sha256:2097951f02e735b613f4a34de20c40f937a6c8f18ecb170612c88c34517221fb "${files[@]}"
+
+  # The PHP serialized codec and the wp-config editor are checked against
+  # real PHP (unserialize and php -l) on every OS. ROADIE_REQUIRE_PHP makes
+  # testutil.RequirePHP fail instead of skip, so a missing PHP can't pass.
+  php-oracle:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      ROADIE_REQUIRE_PHP: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: "8.3"
+          coverage: none
+      - run: go test ./codec/... ./site/...
+
+  # Every fuzz target for 5 s (the list is FUZZ_TARGETS in the Makefile).
+  fuzz-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make fuzz-smoke
+
+  # copy and verify on dump files inside a network namespace with no
+  # network at all: Roadie must never need one for local work.
+  no-network:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # Fetch the modules first: inside the namespace there is no proxy.
+      - run: go mod download && go test -tags nonet -run '^$' ./cmd/rhythm-roadie/
+      - run: make no-network

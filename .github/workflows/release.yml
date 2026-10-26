@@ -1,0 +1,18 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+name: release
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  release:
+    # Called at master on purpose: the cosign certificate records this
+    # ref. rhythm's verifier trusts only release-go.yml@refs/heads/master
+    # (a commit pin makes `rhythm update` refuse the release). The run's own
+    # ref must be the release tag, which a tag push gives.
+    uses: RhythmShahriar/.github/.github/workflows/release-go.yml@master
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write # build provenance from the shared release workflow
