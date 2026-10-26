@@ -71,6 +71,53 @@ func TestSpoolRoundTripTwice(t *testing.T) {
 	}
 }
 
+// Two readers open at once each read the whole spool, in steps that
+// cross chunk boundaries, and reading reuses one ciphertext buffer.
+func TestSpoolTwoReaders(t *testing.T) {
+	data := make([]byte, 3*SpoolChunk+5)
+	if _, err := rand.Read(data); err != nil {
+		t.Fatal(err)
+	}
+	s := fill(t, t.TempDir(), data)
+	r1, err := s.Reader()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r1.Close()
+	r2, err := s.Reader()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r2.Close()
+	var got1, got2 bytes.Buffer
+	step := make([]byte, 300_001)
+	for done1, done2 := false, false; !done1 || !done2; {
+		for _, c := range []struct {
+			r    io.Reader
+			out  *bytes.Buffer
+			done *bool
+		}{{r1, &got1, &done1}, {r2, &got2, &done2}} {
+			if *c.done {
+				continue
+			}
+			n, err := c.r.Read(step)
+			c.out.Write(step[:n])
+			if errors.Is(err, io.EOF) {
+				*c.done = true
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if !bytes.Equal(got1.Bytes(), data) || !bytes.Equal(got2.Bytes(), data) {
+		t.Fatalf("got %d and %d bytes, want %d", got1.Len(), got2.Len(), len(data))
+	}
+	sr := r1.(*spoolReader)
+	if cap(sr.ct) > SpoolChunk+64 {
+		t.Errorf("ciphertext buffer grew to %d", cap(sr.ct))
+	}
+}
+
 // Empty input and input of whole chunks both read back exactly.
 func TestSpoolSizes(t *testing.T) {
 	for _, n := range []int{0, 1, SpoolChunk, 2 * SpoolChunk} {
