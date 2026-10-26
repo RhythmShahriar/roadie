@@ -144,9 +144,11 @@ func TestPickerCopyFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "source: \"ssh://deploy@shop.com/var/www/shop\"\ntarget: \"/var/www/staging\"\nurl: \"https://staging.shop.test\"\n"
-	if !strings.HasPrefix(string(b), want) {
-		t.Errorf("config:\n%s", b)
+	// The template's own lines get the answers; its comments stay.
+	for _, want := range []string{"\nsource: \"ssh://deploy@shop.com/var/www/shop\"", "\ntarget: \"/var/www/staging\"", "\nurl: \"https://staging.shop.test\""} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("config lacks %q:\n%s", want, b)
+		}
 	}
 
 	// A second run: the config exists, so it isn't offered again.

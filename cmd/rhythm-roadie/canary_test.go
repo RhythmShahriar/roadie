@@ -174,6 +174,11 @@ func canaryDump(c map[core.FakeKind][]string, key string) string {
 	table("wp_wc_order_addresses", "  `id` bigint unsigned NOT NULL AUTO_INCREMENT,\n  `order_id` bigint unsigned NOT NULL,\n  `address_type` varchar(20) DEFAULT NULL,\n  `first_name` text,\n  `last_name` text,\n  `company` text,\n  `address_1` text,\n  `address_2` text,\n  `city` text,\n  `state` text,\n  `postcode` text,\n  `country` text,\n  `email` varchar(320) DEFAULT NULL,\n  `phone` varchar(100) DEFAULT NULL,\n  PRIMARY KEY (`id`)", addrs...)
 	table("wp_comments", "  `comment_ID` bigint unsigned NOT NULL AUTO_INCREMENT,\n  `comment_post_ID` bigint unsigned NOT NULL DEFAULT '0',\n  `comment_author` tinytext NOT NULL,\n  `comment_author_email` varchar(100) NOT NULL DEFAULT '',\n  `comment_author_url` varchar(200) NOT NULL DEFAULT '',\n  `comment_author_IP` varchar(100) NOT NULL DEFAULT '',\n  `comment_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',\n  `comment_content` text NOT NULL,\n  `comment_type` varchar(20) NOT NULL DEFAULT 'comment',\n  `user_id` bigint unsigned NOT NULL DEFAULT '0',\n  PRIMARY KEY (`comment_ID`)", notes...)
 	table("wp_actionscheduler_actions", "  `action_id` bigint unsigned NOT NULL AUTO_INCREMENT,\n  `hook` varchar(191) NOT NULL,\n  `status` varchar(20) NOT NULL,\n  `scheduled_date_gmt` datetime DEFAULT '0000-00-00 00:00:00',\n  `args` varchar(191) DEFAULT NULL,\n  `group_id` bigint unsigned NOT NULL DEFAULT '0',\n  PRIMARY KEY (`action_id`)", actions...)
+	// Gravity Forms always has its entry table next to the entry meta;
+	// the gravity-forms profile is detected by it.
+	table("wp_gf_entry", "  `id` int unsigned NOT NULL AUTO_INCREMENT,\n  `form_id` mediumint unsigned NOT NULL,\n  `ip` varchar(45) NOT NULL,\n  `user_agent` varchar(250) NOT NULL DEFAULT '',\n  `source_url` varchar(200) NOT NULL DEFAULT '',\n  `transaction_id` varchar(50) DEFAULT NULL,\n  PRIMARY KEY (`id`)")
+	table("wp_gf_form_meta", "  `form_id` mediumint unsigned NOT NULL,\n  `display_meta` longtext,\n  PRIMARY KEY (`form_id`)",
+		`(1,'{"fields":[{"id":1,"type":"name"},{"id":2,"type":"email"},{"id":3,"type":"phone"},{"id":4,"type":"date"},{"id":5,"type":"textarea"}]}')`)
 	table("wp_gf_entry_meta", "  `id` bigint unsigned NOT NULL AUTO_INCREMENT,\n  `form_id` mediumint unsigned NOT NULL DEFAULT '0',\n  `entry_id` bigint unsigned NOT NULL,\n  `meta_key` varchar(255) DEFAULT NULL,\n  `meta_value` longtext,\n  PRIMARY KEY (`id`)", entries...)
 	table("wp_wpml_mails", "  `mail_id` int NOT NULL AUTO_INCREMENT,\n  `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  `host` varchar(200) NOT NULL DEFAULT '0',\n  `receiver` varchar(200) NOT NULL DEFAULT '0',\n  `subject` varchar(200) NOT NULL DEFAULT '0',\n  `message` text,\n  `headers` text,\n  `attachments` text,\n  `error` text,\n  `plugin_version` varchar(200) NOT NULL DEFAULT '0',\n  PRIMARY KEY (`mail_id`)", mails...)
 	w("-- Dump completed on 2026-10-26 14:02:11\n")
@@ -204,9 +209,9 @@ func TestCanaries(t *testing.T) {
 	testutil.NoNetwork(t)
 
 	base := map[string][]string{
-		"copy":   {"--from", input, "--url", "https://staging.canary-shop.example", "--production-url", "https://canary-shop.example", "--yes", "--offline", "--no-config", "--debug"},
+		"copy":   {"--from", input, "--url", "https://staging.canary-shop.example", "--yes", "--offline", "--no-config", "--debug"},
 		"verify": {input, "--production", "canary-shop.example", "--offline", "--no-config", "--debug"},
-		"plan":   {"--from", input, "--url", "https://staging.canary-shop.example", "--production-url", "https://canary-shop.example", "--offline", "--no-config", "--debug"},
+		"plan":   {"--from", input, "--url", "https://staging.canary-shop.example", "--offline", "--no-config", "--debug"},
 	}
 	formats := []string{"", "--json", "--md", "--html", "--sarif", "--junit"}
 	n := 0

@@ -33,9 +33,8 @@ func offlineCopyAndVerify(t *testing.T, run func(args ...string) (string, string
 	prod := demo.Production()
 	args := []string{"copy", "--from", shop, "--to", staging, "--url", demoURL, "--yes", "--offline", "--no-config", "--plain",
 		"-o", filepath.Join(dir, "copy.json")}
-	for _, p := range prod {
-		args = append(args, "--production-url", "https://"+p)
-	}
+	// copy has no production flag: it reads production from the shop's
+	// own siteurl and home.
 	if _, errOut, code := run(args...); code != 0 {
 		t.Fatalf("copy offline: exit %d\n%s", code, errOut)
 	}
