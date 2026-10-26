@@ -108,7 +108,17 @@ func checkMySQL(st core.Statement, o Options) Decision {
 		return mysqlDrop(t)
 	case "alter":
 		return mysqlAlter(st, t, o)
-	case "lock", "unlock":
+	case "lock":
+		if t.w(1) == "tables" || t.w(1) == "table" {
+			// Any db.t in the list is a table: aliases have no dots.
+			for k := 2; k < len(t); k++ {
+				if qualified(t, k) {
+					return otherDB("LOCK TABLES")
+				}
+			}
+			return keep()
+		}
+	case "unlock":
 		if t.w(1) == "tables" || t.w(1) == "table" {
 			return keep()
 		}
@@ -273,14 +283,18 @@ func mysqlCreate(st core.Statement, t toks, o Options) Decision {
 	case "table":
 		return mysqlCreateTable(t, i+1)
 	case "index":
-		return keep()
+		return onTable(t, i, "CREATE INDEX")
 	case "unique", "fulltext", "spatial":
 		if t.w(i+1) == "index" || t.w(i+1) == "key" {
-			return keep()
+			return onTable(t, i, "CREATE INDEX")
 		}
 	case "sequence":
 		d := keep()
-		name, _ := t.objName(afterIfExists(t, i+1), false)
+		at := afterIfExists(t, i+1)
+		if qualified(t, at) {
+			return otherDB("CREATE SEQUENCE")
+		}
+		name, _ := t.objName(at, false)
 		d.creates = &object{"sequence", name}
 		return d
 	case "trigger", "procedure", "function", "view", "package":
@@ -302,8 +316,19 @@ func mysqlCreate(st core.Statement, t toks, o Options) Decision {
 // query, puts its files outside the data folder or uses an engine that
 // reaches another server.
 func mysqlCreateTable(t toks, i int) Decision {
-	name, _ := t.objName(afterIfExists(t, i), false)
+	at := afterIfExists(t, i)
+	if qualified(t, at) {
+		return otherDB("CREATE TABLE")
+	}
+	name, after := t.objName(at, false)
+	// CREATE TABLE x LIKE y and CREATE TABLE x (LIKE y) copy y.
+	if t.w(after) == "like" && qualified(t, after+1) || t.p(after, '(') && t.w(after+1) == "like" && qualified(t, after+2) {
+		return otherDB("CREATE TABLE ... LIKE")
+	}
 	for k := range t {
+		if mergeUnion(t, k) {
+			return otherDB("CREATE TABLE ... UNION")
+		}
 		switch {
 		case t.w(k) == "select":
 			return refuse("a CREATE TABLE ... SELECT statement", whyQuery)
@@ -358,10 +383,19 @@ func mysqlRoutine(st core.Statement, t toks, i int, o Options) Decision {
 	if obj == "package" && t.w(j) == "body" {
 		j++
 	}
-	name, _ := t.objName(afterIfExists(t, j), false)
+	at := afterIfExists(t, j)
+	name, _ := t.objName(at, false)
 	kind := "CREATE " + routineKinds[obj]
 	if !o.KeepRoutines {
 		return refuse(kind, routineWhy(obj))
+	}
+	if qualified(t, at) {
+		return otherDB(kind)
+	}
+	if obj == "trigger" {
+		if d := onTable(t, at, kind); d.Verdict != Keep {
+			return d
+		}
 	}
 	d := keep()
 	d.Kind, d.Routine = kind, true
@@ -402,6 +436,9 @@ func mysqlDrop(t toks) Decision {
 		}
 		d := keep()
 		for j = afterIfExists(t, j); ; j++ {
+			if qualified(t, j) {
+				return otherDB("DROP " + strings.ToUpper(obj))
+			}
 			name, next := t.objName(j, false)
 			if name == "" {
 				break
@@ -414,7 +451,7 @@ func mysqlDrop(t toks) Decision {
 		}
 		return d
 	case "index":
-		return keep()
+		return onTable(t, i, "DROP INDEX")
 	case "event":
 		return drop("DROP EVENT", reasonEvents)
 	case "user", "role":
@@ -459,6 +496,9 @@ func mysqlAlter(st core.Statement, t toks, o Options) Decision {
 		if !o.KeepRoutines {
 			return refuse(kind, routineWhy(t.w(j)))
 		}
+		if qualified(t, j+1) {
+			return otherDB(kind)
+		}
 		d := keep()
 		d.Kind, d.Routine = kind, true
 		if out, changed := rewriteDefiner(st.Text, o.Mode); changed {
@@ -483,6 +523,9 @@ var alterClauses = map[string]bool{
 }
 
 func mysqlAlterTable(t toks, i int) Decision {
+	if qualified(t, i) {
+		return otherDB("ALTER TABLE")
+	}
 	_, j := t.objName(i, false)
 	for _, c := range clauses(t[j:]) {
 		if len(c) == 0 {
@@ -491,7 +534,13 @@ func mysqlAlterTable(t toks, i int) Decision {
 		if !alterClauses[c.w(0)] {
 			return refuse("an ALTER TABLE ... "+label(c, 1)+" statement", whyUnknown)
 		}
+		if c.w(0) == "rename" && renamesTable(c) {
+			return otherDB("ALTER TABLE ... RENAME")
+		}
 		for k := range c {
+			if mergeUnion(c, k) {
+				return otherDB("ALTER TABLE ... UNION")
+			}
 			if d, bad := badEngine(c, k); bad {
 				return d
 			}

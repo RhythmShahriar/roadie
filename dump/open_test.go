@@ -182,6 +182,12 @@ func TestOpenErrorsCarryLine(t *testing.T) {
 		{"too large", head + create + "INSERT INTO `t` VALUES (1,'" + strings.Repeat("x", 4096) + "');\n-- Dump completed\n", Options{MaxValue: 1024}, core.ErrValueTooLarge, 6},
 		{"call in a row", head + create + "INSERT INTO `t` VALUES (1,'a'),\n(2,LOAD_FILE('/etc/passwd'));\n-- Dump completed\n", Options{}, core.ErrDumpRefused, 6},
 		{"cut in a string", head + create + "INSERT INTO `t` VALUES (1,'open\n", Options{}, core.ErrDumpTruncated, 6},
+		{"global after names", head + "SET NAMES utf8mb4, @@GLOBAL.general_log_file='/var/www/html/x.php', @@GLOBAL.general_log=1;\n-- Dump completed\n", Options{}, core.ErrDumpRefused, 2},
+		{"global in versioned names", head + "/*!40101 SET NAMES utf8mb4, GLOBAL general_log=1 */;\n-- Dump completed\n", Options{}, core.ErrDumpRefused, 2},
+		{"client command after rows", head + create + "INSERT INTO `t` VALUES (1,'x')\n\\! id\n;\n-- Dump completed\n", Options{}, core.ErrDumpRefused, 6},
+		{"call after rows", head + create + "INSERT INTO `t` VALUES (1,'x') ON DUPLICATE KEY UPDATE b = LOAD_FILE('/etc/passwd');\n-- Dump completed\n", Options{}, core.ErrDumpRefused, 6},
+		{"rows into another database", head + create + "REPLACE INTO `prod`.`t` VALUES (1,'x');\n-- Dump completed\n", Options{}, core.ErrDumpRefused, 6},
+		{"table in another database", head + "CREATE TABLE IF NOT EXISTS `prod`.`wp_options` (a int);\n-- Dump completed\n", Options{}, core.ErrDumpRefused, 2},
 	}
 	for _, c := range cases {
 		src, err := Open(context.Background(), strings.NewReader(c.text), c.o)

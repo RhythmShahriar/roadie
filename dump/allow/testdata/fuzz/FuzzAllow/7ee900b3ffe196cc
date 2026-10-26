@@ -1,0 +1,6 @@
+go test fuzz v1
+byte('i')
+[]byte("2020202020")
+bool(false)
+byte('2')
+bool(false)

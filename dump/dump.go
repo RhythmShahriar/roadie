@@ -83,7 +83,7 @@ func open(ctx context.Context, r io.Reader, o Options) (core.Source, error) {
 			Progress:  o.Progress,
 			Offset:    cr.RawBytes,
 		})
-		s.rd = my
+		s.rd, s.my = my, my
 		s.mode = my.Lexer().Mode
 	}
 	s.allow = allow.NewFilter(allow.Options{
@@ -109,6 +109,7 @@ type source struct {
 	cr       *compress.Reader
 	rd       reader
 	pg       *pgsql.Source     // set for a PostgreSQL dump
+	my       *mysql.Source     // set for a MySQL or MariaDB dump
 	mode     func() mysql.Mode // the MySQL sql_mode after the last statement
 	allow    *allow.Filter
 	ends     *endCheck
@@ -131,6 +132,15 @@ func (s *source) Next(ctx context.Context) (*core.Batch, error) {
 			// COPY ... FROM stdin as rows.
 			if s.pg != nil && b.First && b.Pass == nil && bytes.HasPrefix(bytes.ToLower(bytes.TrimSpace(b.Head)), []byte("copy")) {
 				if err := s.allow.Head(core.Statement{Kind: core.StmtCopy, Text: b.Head, Line: s.pg.Line()}); err != nil {
+					s.err = err
+					return nil, err
+				}
+			}
+			// The text around MySQL rows (the INSERT head, and ON
+			// DUPLICATE KEY UPDATE or anything else after the last row)
+			// is judged too: it reaches the output as read.
+			if s.my != nil && b.Pass == nil {
+				if err := s.allow.Rows(b, s.my.InsertLine()); err != nil {
 					s.err = err
 					return nil, err
 				}

@@ -41,6 +41,23 @@ var (
 		"SET NAMES utf8mb4, @@GLOBAL.general_log = 1",
 		"SET NAMES utf8mb4, GLOBAL general_log = 1",
 		"SET CHARACTER SET utf8, @@global.general_log_file = 'x'",
+		"CREATE TABLE IF NOT EXISTS `prod`.`wp_options` (a int)",
+		"CREATE TABLE v LIKE mysql.user",
+		"ALTER TABLE t ADD COLUMN c int, RENAME TO mysql.user",
+		"CREATE INDEX i ON mysql.user (a)",
+		"DROP TABLE IF EXISTS prod.t",
+		"LOCK TABLES t WRITE, prod.t WRITE",
+	}
+	// Row statements whose head or tail is never kept.
+	mysqlBadRows = []string{
+		"INSERT INTO t (a) VALUES (1)\n\\! id\n",
+		"INSERT INTO t (a) VALUES (1) /*! \\! id */",
+		"INSERT INTO t (a) VALUES (1) ON DUPLICATE KEY UPDATE a = LOAD_FILE('/etc/passwd')",
+		"INSERT INTO t (a) VALUES (1) ON DUPLICATE KEY UPDATE a = sys_exec('id')",
+		"INSERT INTO t (a) VALUES (1) ON DUPLICATE KEY UPDATE a = (SELECT 1 INTO OUTFILE '/tmp/x')",
+		"INSERT INTO t (a) VALUES (1) ON DUPLICATE KEY UPDATE a = (SELECT 1 FROM mysql.user)",
+		"REPLACE INTO prod.t (a) VALUES (1)",
+		"INSERT IGNORE INTO `prod`.`t` (a) VALUES (1)",
 	}
 	pgBad = []string{
 		"COPY t FROM PROGRAM 'id'",
@@ -100,11 +117,24 @@ func wrap(core string, ops []byte, pg bool) string {
 	return string(s)
 }
 
-// spaceAt returns the index of the at-th space (mod the count), or -1.
+// spaceAt returns the index of the at-th space (mod the count) outside
+// plain block comments, or -1. A comment put inside a plain one would
+// end it early and leave a stray "*/" the server refuses as a syntax
+// error, so the wrapped statement would no longer be one the server
+// runs. Versioned comments are code: spaces in them count.
 func spaceAt(s []byte, at int) int {
 	var idx []int
-	for i, c := range s {
-		if c == ' ' {
+	for i := 0; i < len(s); i++ {
+		rest := s[i:]
+		switch {
+		case bytes.HasPrefix(rest, []byte("/*")) && !bytes.HasPrefix(rest, []byte("/*!")) && !bytes.HasPrefix(rest, []byte("/*M!")):
+			end := bytes.Index(rest[2:], []byte("*/"))
+			if end < 0 {
+				i = len(s)
+			} else {
+				i += end + 3
+			}
+		case s[i] == ' ':
 			idx = append(idx, i)
 		}
 	}
@@ -117,15 +147,22 @@ func spaceAt(s []byte, at int) int {
 // FuzzAllow: a statement that is refused or dropped is never kept,
 // whatever comments, markers or case wrap it, whatever kind the reader
 // gave it and whether it is judged alone or after the lexer split it.
+// With rows set the cores are row statements whose head or tail must
+// be refused.
 func FuzzAllow(f *testing.F) {
-	f.Add(uint8(0), []byte{}, false, uint8(0))
-	f.Add(uint8(0), []byte{5, 0, 0, 3, 2, 1}, false, uint8(3))
-	f.Add(uint8(1), []byte{6, 0, 4, 0, 7, 2}, false, uint8(9))
-	f.Add(uint8(2), []byte{2, 3, 4, 0}, true, uint8(1))
-	f.Fuzz(func(t *testing.T, which uint8, ops []byte, pg bool, kind uint8) {
+	f.Add(uint8(0), []byte{}, false, uint8(0), false)
+	f.Add(uint8(0), []byte{5, 0, 0, 3, 2, 1}, false, uint8(3), false)
+	f.Add(uint8(1), []byte{6, 0, 4, 0, 7, 2}, false, uint8(9), false)
+	f.Add(uint8(2), []byte{2, 3, 4, 0}, true, uint8(1), false)
+	f.Add(uint8(0), []byte{2, 3, 7, 1}, false, uint8(0), true)
+	f.Add(uint8(1), []byte{0, 4, 1, 9}, false, uint8(0), true)
+	f.Fuzz(func(t *testing.T, which uint8, ops []byte, pg bool, kind uint8, rows bool) {
 		cores, dialect := mysqlBad, core.MySQL
-		if pg {
+		switch {
+		case pg:
 			cores, dialect = pgBad, core.Postgres
+		case rows:
+			cores = mysqlBadRows
 		}
 		text := wrap(cores[int(which)%len(cores)], ops, pg) + ";"
 		kinds := []core.StmtKind{core.StmtOther, core.StmtComment, core.StmtSet, core.StmtCreateTable, core.StmtTransaction,
@@ -135,15 +172,16 @@ func FuzzAllow(f *testing.F) {
 		if d, _ := Check(st, o); d.Verdict == Keep {
 			t.Fatalf("kept %q as %s", text, st.Kind)
 		}
-		if !pg && allKept(t, text, o) {
+		if !pg && allKept(t, text, o, rows) {
 			t.Fatalf("every statement of %q kept after the lexer", text)
 		}
 	})
 }
 
 // allKept runs text through the MySQL lexer and the filter and reports
-// whether nothing was dropped or refused.
-func allKept(t *testing.T, text string, o Options) bool {
+// whether nothing was dropped or refused. rows says whether the text may
+// be read as rows.
+func allKept(t *testing.T, text string, o Options, rows bool) bool {
 	src := mysql.NewSource(bytes.NewReader([]byte(text)), mysql.SourceOptions{Name: "x.sql"})
 	fl := NewFilter(o)
 	for {
@@ -154,11 +192,14 @@ func allKept(t *testing.T, text string, o Options) bool {
 		if err != nil {
 			return false // the reader refused it
 		}
+		if b.Pass == nil && fl.Rows(b, src.InsertLine()) != nil {
+			return false
+		}
 		out, err := fl.Add(b, src.Lexer().Mode())
 		if err != nil || (b.Pass != nil && out == nil) {
 			return false
 		}
-		if b.Pass == nil {
+		if b.Pass == nil && !rows {
 			// Row data reached the output: only if the core was an
 			// INSERT, which none of them is.
 			t.Fatalf("%q read as rows", text)
@@ -192,7 +233,7 @@ func FuzzSetGlobal(f *testing.F) {
 		if d, _ := Check(core.Statement{Kind: core.StmtSet, Text: []byte(text), Line: 1}, o); d.Verdict == Keep {
 			t.Fatalf("kept %q", text)
 		}
-		if allKept(t, text, o) {
+		if allKept(t, text, o, false) {
 			t.Fatalf("every statement of %q kept after the lexer", text)
 		}
 	})

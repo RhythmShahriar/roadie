@@ -44,6 +44,7 @@ type Source struct {
 	ins     *core.Table
 	cols    []int
 	stmt    *Stmt
+	line    int64 // the first line of the last INSERT or REPLACE
 	arena   *Arena
 	pending core.Row
 	hasPend bool
@@ -74,6 +75,10 @@ func (s *Source) Schema() *core.Schema { return s.schema }
 // Lexer is the lexer under the source, for the sql_mode and the sandbox
 // line state.
 func (s *Source) Lexer() *Lexer { return s.lex }
+
+// InsertLine is the first line of the INSERT or REPLACE the last row
+// batch came from, for the allowlist's messages.
+func (s *Source) InsertLine() int64 { return s.line }
 
 // Table is the table the last batch belonged to, or "" before the first.
 func (s *Source) Table() string { return s.table }
@@ -208,6 +213,7 @@ func (s *Source) open(st *Stmt) error {
 		}
 	}
 	s.ins, s.cols, s.stmt, s.arena = tb, cols, st, s.newArena()
+	s.line = st.Line
 	s.enter(tb.Name)
 	return nil
 }

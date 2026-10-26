@@ -23,6 +23,7 @@ type Filter struct {
 	drops   []pendingDrop
 	notes   []*planNote
 	byNote  map[string]*planNote
+	verb    string // INSERT or REPLACE, for the row statement being read
 }
 
 // pendingDrop is a kept DROP waiting for its CREATE.
@@ -49,7 +50,8 @@ func NewFilter(o Options) *Filter {
 	return &Filter{o: o, created: map[object]bool{}, byNote: map[string]*planNote{}}
 }
 
-// Add judges a batch. Row batches pass unchanged. A passthrough
+// Add judges a batch. Row batches pass unchanged here: Rows judges the
+// text around MySQL rows and Head a PostgreSQL COPY head. A passthrough
 // statement comes back kept (its text replaced when a DEFINER was
 // rewritten), nil when dropped, or with the dump-refused error. m is the
 // MySQL sql_mode after the statement; the statement is judged under the
