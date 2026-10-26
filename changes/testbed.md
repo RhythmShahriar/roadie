@@ -50,9 +50,9 @@ Per copy, prepare and environment scenario, in this order with the run checks be
 
 The copy must also boot (home, shop, cart and checkout answer 200). A scenario is caught only when every gate holds.
 
-When `rhythm-soundcheck` is on PATH, each boot check also runs `rhythm-soundcheck run http://127.0.0.1:18921/ --quick --modules health --no-download --fail-on error` on the same pages (isolated home, `RHYTHM_NO_UPDATE_CHECK=1`, 3 minute limit) and records a run note: `soundcheck: <n> pages healthy`, `soundcheck: issues at error level: ...` or `soundcheck: not run (<reason>)`. It is not scored: the staging site's own URL (`http://staging-wp`) resolves only inside the sealed network, so a browser on the host can't load its assets.
+When `rhythm-soundcheck` is on PATH, each boot check also runs `rhythm-soundcheck run http://127.0.0.1:18921/ --quick --modules health --no-download --proxy <seal> --fail-on error` on the same pages (isolated home, `RHYTHM_NO_UPDATE_CHECK=1`, 3 minute limit) and records a run note: `soundcheck: <n> pages healthy`, `soundcheck: issues at error level: ...` or `soundcheck: not run (<reason>)`. Chrome runs on the host, so every request it or Soundcheck makes goes through a seal proxy the harness starts on 127.0.0.1: it forwards the staging site only and answers 403 to every other host (CONNECT included), so a copied page can't reach a real site or the host's DNS. The note then ends with `; <n> request(s) outside the site refused: <hosts>` (at most five, sorted, `and <n> more`; hosts only, never a path). It is not scored: the staging site's own URL (`http://staging-wp`) resolves only inside the sealed network, so a browser on the host can't load its assets.
 
-The oracle reports symbolic links in an output tree under `links` (they aren't followed, so what they point to went unread) and reads every compressed member of a zip archive, plain or gzip, as it reads a gzip file; a survivor inside one is found at `file:<archive>!<member>`. Links in a site copied out of a container are skipped and named in the run notes (`output tree: <n> link(s) not copied or read: ...`).
+The oracle reports symbolic links in an output tree under `links` (they aren't followed, so what they point to went unread): the output is then not clean (the oracle exits 1) and the case fails the gate `links` (`<n> link(s) in the output tree not followed: <paths>`). It decompresses gzip, zstd and bzip2 by their magic bytes whatever the file is called, the output dump included, and reads every compressed member of a zip archive the same way; a survivor inside one is found at `file:<archive>!<member>`. A stream that fails to decode part way is an error, never a clean verdict. Links in a site copied out of a container are skipped and named in the run notes (`output tree: <n> link(s) not copied or read: ...`).
 
 `-strict` (on in `make bench` and `make reproduce` through `STRICT ?= -strict`, so in the nightly too; `STRICT=` turns it off) also fails the run (exit 1) when a case stopped at `not-built` or the control pass checked nothing although a good scenario ran, printing `strict: <n> case(s) stopped at not-built` or `strict: the control pass checked nothing`. Scenarios the manifest marks pending don't count. results.json counts the not-built cases in `summary.not_built` and marks each with `not_built: true`.
 
@@ -65,9 +65,11 @@ The oracle reports symbolic links in an output tree under `links` (they aren't f
 The benchmark runs other tools on the same inputs after the scenarios and records them in results.json under `tools`; each is judged only on what it does; anything else is "can't see". Configuration is in `testbed/tools/`, versions in `testbed/Makefile`.
 
 - WP-CLI `search-replace` 2.12.0 on r01, r09 and r12: production URLs left, plus lookalike links, other subdomains and addresses at the production domain it changed.
-- Replibyte 0.10.0 on r01 and r12: personal values and live keys left, serialized integrity. Not run until its sha256 is recorded in `testbed/Makefile` (see below).
+- Replibyte 0.10.0 on r01 and r12: personal values and live keys left, serialized integrity. It runs with telemetry off (`-n`) on the input rewritten as one INSERT per row with named columns (`mysqldump --complete-insert --skip-extended-insert` style): on mysqldump's default style 0.10.0 panics (`Column names do not match values`) or keeps only the first row of each INSERT.
 - Greenmask 0.2.26: not run, with the reason "Greenmask 0.2.26 dumps and restores PostgreSQL only; these inputs are MySQL dumps of WordPress shops".
-- Staging Shield 1.0.2 on r01 and r13: side effects during the drill on a raw copy with the plugin active. Not run until its sha256 is recorded in `testbed/Makefile`: both lines still say `unverified`, because the release files couldn't be fetched to hash from where this lane ran (no outbound network). Until then the benchmark reports them "not run" with that reason.
+- Staging Shield 1.0.2 on r01 and r13: side effects during the drill on a raw copy with the plugin active.
+
+Both releases are pinned in `testbed/Makefile`: Replibyte by the sha256 its release publishes, Staging Shield by that of the wordpress.org zip (wordpress.org publishes none).
 
 A tool that can't run is "not run" with the reason, never an error.
 
@@ -77,6 +79,7 @@ A tool that can't run is "not run" with the reason, never an error.
 - The oracle's matcher: about 170 MB/s with 2,000 canaries.
 - The seal: all 14 containers pass `TestNetworkIsSealed`; on a raw staging the drill reaches the sinkhole (update checks to api.wordpress.org and woocommerce.com), so gate 3 is not blind.
 - r17's generator: 2,000,000,255 bytes of SQL for `2GB`; every sampled serialized cell passes real PHP.
+- Replibyte 0.10.0 with the committed configuration, outside the benchmark (same binary, configuration, rewritten input and oracle; no network): r01 left 1,050 of 1,710 personal values and 3 of 3 live keys, broke 0 of 342 serialized values and kept every row; r12 left 10 of 14 live keys and broke 0 of 6 serialized values.
 - WP-CLI search-replace with the committed recipe: r01 0 of 303 production URLs left; r09 1 of 274 left (`https://www.shop.example.com/about/`) and 60 of 181 lookalike links changed (the `//shop.example.com` pair rewrites `//shop.example.com.au`); r12 0 of 2 left.
 - Roadie's own score: not yet. This lane's checkout has only the CLI stubs, so a run here scores the scenarios missed (or pending where the binary says `not-built`). The first full run at integration fills `docs/benchmark.md`.
 
