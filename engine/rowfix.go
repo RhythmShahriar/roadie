@@ -155,10 +155,30 @@ func (t *transformer) addressIndex(rc rowCtx, col core.Column, orig []byte) ([]b
 	return out, true
 }
 
+// partRuleOf is a cached partRule answer.
+type partRuleOf struct {
+	r   *core.Rule
+	col core.Column
+}
+
 // partRule finds the rule one address part's own row gets: the meta row
 // "_billing_city" in the same table, or for HPOS the column of
-// wc_order_addresses.
+// wc_order_addresses. Answers are cached per rule set.
 func (t *transformer) partRule(table, blog, typ, part string) (*core.Rule, core.Column) {
+	if t.partsOf != t.c || t.parts == nil {
+		t.parts, t.partsOf = map[string]partRuleOf{}, t.c
+	}
+	key := table + "\x00" + blog + "\x00" + typ + part
+	if p, ok := t.parts[key]; ok {
+		return p.r, p.col
+	}
+	r, col := t.findPartRule(table, blog, typ, part)
+	t.parts[key] = partRuleOf{r, col}
+	return r, col
+}
+
+// findPartRule is partRule without the cache.
+func (t *transformer) findPartRule(table, blog, typ, part string) (*core.Rule, core.Column) {
 	longtext := core.Column{Name: "meta_value", Type: "longtext", Nullable: true}
 	if strings.HasSuffix(table, "wc_orders_meta") {
 		for _, r := range t.c.Rules(blog + "wc_order_addresses") {

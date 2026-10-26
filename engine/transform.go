@@ -56,6 +56,10 @@ type transformer struct {
 	// dump goes by.
 	prefix string
 	stack  core.Stack
+	// parts caches partRule for the rule set in c: an order's address
+	// index asks for the same eleven parts' rules on every order.
+	parts   map[string]partRuleOf
+	partsOf *profile.Compiled
 }
 
 func newTransformer(sh *shared, f core.Faker) *transformer { return &transformer{sh: sh, faker: f} }
