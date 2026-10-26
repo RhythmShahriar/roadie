@@ -539,3 +539,27 @@ func TestJoin(t *testing.T) {
 		t.Error("Join changed the original set")
 	}
 }
+
+// Pass 1 compiles while the schema still grows: with Growing the rules
+// of a table not read yet are there; without it they are left out.
+func TestCompileGrowing(t *testing.T) {
+	defs, err := Builtin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := schemaOf("wp_", "wp_options")
+	grown, err := CompileWith([]string{"wordpress"}, defs, s, roadiecfg.Default(), Hints{Growing: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(grown.Rules("wp_users")) == 0 {
+		t.Error("Growing: no rules for wp_users before its CREATE TABLE")
+	}
+	fixed, err := CompileWith([]string{"wordpress"}, defs, s, roadiecfg.Default(), Hints{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fixed.Rules("wp_users")) != 0 {
+		t.Error("a whole schema without wp_users still has its rules")
+	}
+}

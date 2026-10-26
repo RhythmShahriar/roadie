@@ -122,6 +122,11 @@ type Hints struct {
 	Options map[string]bool
 	Site    core.Site
 	Ctx     context.Context
+	// Growing keeps the rules of tables the schema doesn't have yet.
+	// Pass 1 compiles while a dump's CREATE TABLE statements still come
+	// in; without it a set compiled after wp_options would have no
+	// rules for the wp_users table read next.
+	Growing bool
 }
 
 func (h Hints) context() context.Context {
@@ -164,7 +169,7 @@ func compileHints(ids []string, defs []Def, s *core.Schema, cfg *roadiecfg.Confi
 		c.prefix, _ = WordPressPrefix(s)
 		c.sites = Sites(s, c.prefix)
 	}
-	exists := func(t string) bool { return s == nil || len(s.Tables) == 0 || s.Table(t) != nil }
+	exists := func(t string) bool { return h.Growing || s == nil || len(s.Tables) == 0 || s.Table(t) != nil }
 	expand := func(t string) []string {
 		var out []string
 		for _, name := range Expand(t, c.prefix, c.sites) {

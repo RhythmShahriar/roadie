@@ -223,7 +223,7 @@ func (x *indexer) refresh(s *core.Schema) {
 		}
 		stack = core.StackWordPress
 	}
-	h := profile.Hints{Options: x.options, Site: x.site, Ctx: x.ctx}
+	h := profile.Hints{Options: x.options, Site: x.site, Ctx: x.ctx, Growing: true}
 	detected := profile.DetectWithOptions(x.ctx, ps, x.site, x.defs, x.options)
 	sites := profile.Sites(ps, ps.Prefix)
 	sig := string(stack) + "|" + ps.Prefix + "|" + strings.Join(sites, ",") + "|" + strings.Join(detected, ",")
