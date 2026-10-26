@@ -136,9 +136,9 @@ func (s *source) Next(ctx context.Context) (*core.Batch, error) {
 					return nil, err
 				}
 			}
-			// The text around MySQL rows (the INSERT head, and ON
-			// DUPLICATE KEY UPDATE or anything else after the last row)
-			// is judged too: it reaches the output as read.
+			// The text around MySQL rows (the INSERT head and whatever
+			// follows the last row, such as ON DUPLICATE KEY UPDATE) is
+			// judged too: it reaches the output as read.
 			if s.my != nil && b.Pass == nil {
 				if err := s.allow.Rows(b, s.my.InsertLine()); err != nil {
 					s.err = err

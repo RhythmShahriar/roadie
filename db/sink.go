@@ -211,9 +211,9 @@ func (s *sink) endUnit(ctx context.Context) error {
 // tableName returns the name the sink puts in the SQL it builds (DROP
 // TABLE IF EXISTS, DELETE FROM, INSERT INTO) for raw, a name as
 // objectName read it. On MySQL and MariaDB that is the bare table name
-// quoted again, and a name with a database in front is refused: the
-// statement would act on that database, not the one --to names, and on
-// shared hosting staging and production often share one server. The
+// quoted again. A name with a database in front is refused: the
+// statement would act on that database instead of the one --to names.
+// On shared hosting staging and production often share one server. The
 // allowlist refuses such names first; this keeps the import safe for a
 // stream from anywhere else. PostgreSQL's schema-qualified names
 // (public.t) stay as written: a schema lives inside the --to database.

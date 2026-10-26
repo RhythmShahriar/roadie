@@ -75,8 +75,8 @@ var insertWords = map[string]bool{"low_priority": true, "delayed": true, "high_p
 
 // rowsHead judges the head of a MySQL row batch: INSERT or REPLACE, its
 // modifiers, the table, an optional column list and VALUES, nothing
-// more. The reader only reads that shape as rows; this keeps it so even
-// if the reader changes, and refuses a table with its database.
+// more. The reader only reads that shape as rows; this keeps it so if
+// the reader changes. It also refuses a table with its database.
 func rowsHead(t toks, verb string) Decision {
 	if hasBackslash(t) {
 		return refuse("a mysql client command", whyClient)

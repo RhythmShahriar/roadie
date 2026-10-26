@@ -96,8 +96,8 @@ func (c *counter) Write(p []byte) (int, error) {
 		c.next = c.n + int64(len(p)) + checkEvery
 		if free, ok := freeSpace(c.dir); ok {
 			// Without ExpectBytes the rest of the dump may be a few bytes:
-			// only this write must fit, and a later full disk is caught
-			// by its ENOSPC.
+			// only this write must fit; a later full disk is caught by
+			// its ENOSPC.
 			need := int64(len(p))
 			if c.expect > 0 {
 				need = max(c.expect-c.n, 0)
