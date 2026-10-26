@@ -210,7 +210,9 @@ func openTarget(ctx context.Context, j Job) (core.Source, core.Site, func(), err
 				closers = append(closers, func() { _ = f.Close() })
 				rd, name = f, filepath.Base(j.Target.Path)
 			}
-			src, err := dump.Open(ctx, rd, dump.Options{Name: name, Progress: j.Progress})
+			// KeepRoutines: verify reads the dump and never runs it, so a
+			// trigger or a function is no reason to refuse it.
+			src, err := dump.Open(ctx, rd, dump.Options{Name: name, Progress: j.Progress, KeepRoutines: true})
 			if err != nil {
 				return fail(err)
 			}

@@ -1229,3 +1229,17 @@ func TestRunDumpNotes(t *testing.T) {
 		t.Errorf("a folder: %v", err)
 	}
 }
+
+// A standalone verify reads a dump with a function in it: verify never
+// runs the dump and has no --keep-routines to ask for.
+func TestVerifyJobReadsRoutines(t *testing.T) {
+	useRunFakes(t)
+	old := openDump
+	openDump = dump.Open
+	t.Cleanup(func() { openDump = old })
+	in := filepath.Join("..", "dump", "pgsql", "testdata", "pg16-prisma.sql")
+	target := core.Endpoint{Kind: core.DumpFile, Raw: in, Display: "pg16-prisma.sql", Path: in}
+	if _, err := VerifyJob(context.Background(), Job{Config: roadiecfg.Default(), Opts: Options{Stack: "sql"}}, target, nil); err != nil {
+		t.Fatal(err)
+	}
+}

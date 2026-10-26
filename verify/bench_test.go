@@ -260,3 +260,17 @@ func TestWriteDump(t *testing.T) {
 		t.Errorf("dump\n got %q\nwant %q", got, want)
 	}
 }
+
+// verify reads a dump with a function in it (pg_dump writes Prisma's
+// trigger functions): it never runs the dump, so the statement is read
+// past instead of refused.
+func TestVerifyDumpWithFunction(t *testing.T) {
+	name := filepath.Join("..", "dump", "pgsql", "testdata", "pg16-prisma.sql")
+	res, err := Run(context.Background(), Job{Target: core.Endpoint{Kind: core.DumpFile, Path: name, Display: "pg16-prisma.sql"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Coverage.RowsScanned == 0 {
+		t.Error("scanned no rows")
+	}
+}

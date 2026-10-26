@@ -37,6 +37,10 @@ func VerifyJob(ctx context.Context, j Job, target core.Endpoint, from *core.Endp
 	if r.opts.URL == "" {
 		r.opts.URL = cfg.URL
 	}
+	// verify only reads: a trigger or a function in the copy (kept with
+	// copy --keep-routines) or in production runs nowhere, so it is
+	// read past instead of refused. verify has no --keep-routines.
+	r.opts.KeepRoutines = true
 	if err := needConfig(cfg, j.Opts, core.Endpoint{}, target, true); err != nil {
 		return verify.Job{}, err
 	}
