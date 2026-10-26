@@ -29,7 +29,7 @@ Formats per kind (the examples come from one test key):
 | city | from the list | `Guildford` |
 | company | a word and a locale suffix | `Apex Ltd`, `Nordsee KG` |
 | postcode | the original's shape: letters stay letters, digits stay digits, other bytes kept | `SW1A 1AA` to `FG5M 3DK` |
-| dob | moved by up to 180 days either way, inside the same year | `1980-05-17` to `1980-11-13` |
+| dob | moved by up to 180 days either way, inside the same year; a zero date (`0000-00-00`) stays, a value that isn't a date gets new digits in the same shape; one with no digit at all is blanked | `1980-05-17` to `1980-11-13` |
 | ip | IPv4 into 192.0.2.0/24, 198.51.100.0/24 or 203.0.113.0/24; IPv6 into 2001:db8::/32 | `198.51.100.166`, `2001:db8:71a4:ccce:d3a7:6ff4:f9a3:f897` |
 | url | `https://u` + 12 hex + `.example.invalid/` | |
 | user agent | always `Mozilla/5.0 (Roadie staging copy)` | |
@@ -118,6 +118,7 @@ The separators keep their spelling; the staging path is written in the spelling 
 Boundary rule (what stays):
 
 - The host must follow two slashes in some spelling, so `jane@shop.com`, `https://jane@shop.com`, `myshop.com` and bare `shop.com` in prose stay.
+- A host that is the user part of a URL to another host stays: in `https://shop.com@other.example/` (or `shop.com:pw@`, or `%40` for the `@`) the URL points at other.example, so it isn't rewritten.
 - The byte after the host must not be a letter, digit or `-`, nor a `.` followed by a letter or digit, so `shop.com.au`, `shop.community` and `shop.com-x.net` stay.
 - A production URL with a path only matches before a byte outside `[A-Za-z0-9._~-]`: `/blog` doesn't match `/blogger`.
 - A port in the text stays (`shop.com:8443` becomes `staging.shop.test:8443`) unless the staging URL names one.
@@ -153,4 +154,4 @@ Measured on an i9-9900K shared with other work (load average 30 to 55 on 16 thre
 | BenchmarkScrub, notes with nothing to replace | 13 MB/s | |
 | BenchmarkScrub, notes with a name and an email per sentence | 8.4 MB/s | |
 
-Guards that run with every test: no `regexp` in any non-test source of `codec` or `pseudo`; checking a PHP serialized value and rewriting text with no production URL allocate nothing; a rewrite that changes nothing allocates only for leaf paths; a cached fake or a miss in a full cache allocates only its result; scrubbing text with nothing to replace costs the same few allocations at any length. Known, the set of values seen in structured columns that the scrubber checks words against, holds 2 million emails in 58 MB. 2 million full names take 94 MB while they are added and 59 MB once sealed (repeated name words are stored once), measured with 2,000 first names and 100,003 last names. CI runs every benchmark once (`-benchtime 1x`) so a broken one fails the build.
+Guards that run with every test: no `regexp` in any non-test source of `codec` or `pseudo`; checking a PHP serialized value and rewriting text with no production URL allocate nothing; a rewrite that changes nothing allocates only for leaf paths; a cached fake or a miss in a full cache allocates only its result; scrubbing text with nothing to replace costs the same few allocations at any length. Known, the set of values seen in structured columns that the scrubber checks words against, holds 2 million emails in 52 MB. 2 million full names (2,000 first names and 100,003 last names) take at most 55 MB of Go heap while they are added and 53 MB once sealed; Seal itself allocates under 1 MB: entries are 8 bytes (a 56-bit keyed hash and a kind byte), every 524,288 entries are sorted in place and repeats dropped; Seal sorts the chunks where they are instead of copying them. TestKnownHeap measures the heap itself; TestKnownMemory and TestKnownMemoryNames count the tables and filters, also under the race detector. CI runs every benchmark once (`-benchtime 1x`) so a broken one fails the build.
