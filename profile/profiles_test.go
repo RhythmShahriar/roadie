@@ -95,7 +95,11 @@ func loadSchema(t *testing.T, name string) *core.Schema {
 	if err == nil {
 		for {
 			if _, err := src.Next(context.Background()); err != nil {
-				if !errors.Is(err, io.EOF) {
+				// The hand-written schemas have no tool line and end
+				// with a CREATE TABLE, which dump.Open reads as cut
+				// short; the schema it has read is still whole.
+				var ce *core.Error
+				if !errors.Is(err, io.EOF) && (!errors.As(err, &ce) || ce.Code != core.ErrDumpTruncated) {
 					t.Fatalf("%s: %v", name, err)
 				}
 				break
