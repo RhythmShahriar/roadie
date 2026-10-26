@@ -263,8 +263,8 @@ func TestConfirm(t *testing.T) {
 }
 
 func TestFirstRunNote(t *testing.T) {
-	t.Setenv("RHYTHM_CONFIG_DIR", t.TempDir())
 	testDeps(t, nil)
+	t.Setenv("RHYTHM_CONFIG_DIR", t.TempDir()) // a machine that hasn't seen the note
 	_, errOut, _ := runCmd(t, "explain", "uncovered-column", "--json")
 	if strings.Contains(errOut, "Note: use Roadie") {
 		t.Errorf("first-run note with --json: %q", errOut)

@@ -16,6 +16,7 @@ import (
 
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/engine"
+	"github.com/RhythmShahriar/roadie/report"
 	"github.com/RhythmShahriar/roadie/roadiecfg"
 	"github.com/RhythmShahriar/roadie/site"
 	"github.com/RhythmShahriar/roadie/verify"
@@ -34,6 +35,13 @@ type deps struct {
 	verifyJob     func(context.Context, engine.Job, core.Endpoint, *core.Endpoint) (verify.Job, error)
 	verify        func(context.Context, verify.Job) (*core.VerifyResult, error)
 	loadSigner    func(keyFile string, env func(string) (string, bool)) (signer, bool, error)
+	envelope      func(r *core.Result, tool, version string) (*core.Envelope, error)
+	markdown      func(*core.Envelope) ([]byte, error)
+	html          func([]*core.Envelope, report.Brand) ([]byte, error)
+	sarif         func(*core.Envelope) ([]byte, error)
+	junit         func(*core.Envelope) ([]byte, error)
+	save          func(dir string, e *core.Envelope, html []byte) (string, error)
+	open          func(path string) error
 	now           func() time.Time
 	env           envFunc
 	stdin         io.Reader
@@ -58,6 +66,13 @@ func realDeps() deps {
 		verifyJob:      engine.VerifyJob,
 		verify:         verify.Run,
 		loadSigner:     realLoadSigner,
+		envelope:       report.Envelope,
+		markdown:       report.Markdown,
+		html:           report.HTML,
+		sarif:          report.SARIF,
+		junit:          report.JUnit,
+		save:           report.Save,
+		open:           openFile,
 		now:            time.Now,
 		env:            osEnv,
 		stdin:          os.Stdin,

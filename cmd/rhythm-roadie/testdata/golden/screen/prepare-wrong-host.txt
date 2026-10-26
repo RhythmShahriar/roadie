@@ -1,0 +1,12 @@
+$ rhythm-roadie prepare /var/www/staging --url https://staging.shop.test --no-config
+rhythm roadie dev - prepare · staging.shop.test
+
+Staging: /var/www/staging
+
+STOPPED   prepare-confirm; the target is untouched
+
+prepare-confirm: the host typed doesn't match; nothing was changed.
+
+rhythm-roadie explain prepare-confirm
+--- stderr
+prepare rewrites this site's database while it runs. Visitors see a maintenance page for about a minute. Type the site's host to go on (staging.shop.test): --- exit 2

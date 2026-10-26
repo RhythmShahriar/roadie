@@ -8,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -43,7 +45,12 @@ func fakeEndpoint(s string) (core.Endpoint, error) {
 		}
 		e.Host, e.DSN = strings.Split(rest, "/")[0], "mysql://"+rest
 	case strings.HasPrefix(s, "ssh://"):
-		e.Kind, e.Host = core.SSHSite, strings.Split(strings.TrimPrefix(s, "ssh://"), "/")[0]
+		host, path, _ := strings.Cut(strings.TrimPrefix(s, "ssh://"), "/")
+		e.Kind, e.Path = core.SSHSite, "/"+path
+		if user, h, ok := strings.Cut(host, "@"); ok {
+			e.User, host = user, h
+		}
+		e.Host = host
 	case strings.HasPrefix(s, "@"):
 		e.Kind, e.Alias = core.WPAlias, s
 	case strings.HasPrefix(s, "/") || strings.HasPrefix(s, "./"):
@@ -65,6 +72,16 @@ func testDeps(t *testing.T, set func(d *deps)) {
 	t.Helper()
 	old := dep
 	t.Cleanup(func() { dep = old })
+	// A config folder of its own where the first-run note was shown
+	// already, so it shows only in the test about it.
+	cfgDir := t.TempDir()
+	t.Setenv("RHYTHM_CONFIG_DIR", cfgDir)
+	if err := os.MkdirAll(filepath.Join(cfgDir, "seen"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "seen", firstRunKey), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	d := realDeps()
 	d.parseEndpoint = fakeEndpoint
 	d.findConfig = func(string) (string, error) { return "", nil }
@@ -91,7 +108,8 @@ func runCmd(t *testing.T, cmd string, args ...string) (string, string, int) {
 	for _, c := range tool().Commands {
 		if c.Name == cmd {
 			err := c.Run(context.Background(), args, &out, &errb)
-			return out.String(), errb.String(), exitCode(&errb, err)
+			code := exitCode(&errb, err) // prints first, as Main does
+			return out.String(), errb.String(), code
 		}
 	}
 	t.Fatalf("no command %s", cmd)

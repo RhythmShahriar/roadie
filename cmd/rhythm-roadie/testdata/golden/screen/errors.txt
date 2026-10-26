@@ -1,0 +1,436 @@
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   config; the target is untouched
+
+.roadie/config.yaml line 14: keys.test_keys.stripe reads ${STRIPE_TEST}; only ROADIE_ variables are read. Rename it ROADIE_STRIPE_TEST.
+
+rhythm-roadie explain config
+--- exit 2
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   dialect-mismatch; the target is untouched
+
+dialect-mismatch: prod.sql is a MySQL dump and --to is a PostgreSQL database. Roadie copies MySQL to MySQL or MariaDB and PostgreSQL to PostgreSQL.
+
+rhythm-roadie explain dialect-mismatch
+--- exit 2
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   disk-full; the target is untouched
+
+not enough free disk space: need about 2.4 GB, 1.1 GB free in /var/tmp
+
+rhythm-roadie explain disk-full
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   dump-bomb; the target is untouched
+
+dump-bomb: prod.sql.gz grew past 20 times its size (40 GB) while reading. If it's real, pass --max-output-ratio 50; the target is untouched.
+
+rhythm-roadie explain dump-bomb
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   dump-format; the target is untouched
+
+dump-format: prod.dump is a pg_dump custom-format archive. Roadie reads plain SQL: pg_dump -Fp, mysqldump, mariadb-dump or wp db export.
+
+rhythm-roadie explain dump-format
+--- exit 2
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   dump-refused; the target is untouched
+
+dump-refused: prod.sql line 4,120 holds a CREATE TRIGGER statement, which could run code on the staging database. Export with --skip-triggers, or pass --keep-routines to keep it without its DEFINER.
+
+rhythm-roadie explain dump-refused
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   dump-truncated; the target is untouched
+
+dump-truncated: prod.sql.gz ends inside table wp_postmeta at 1.7 GB, with no "Dump completed" line. Export it again; the target is untouched.
+
+rhythm-roadie explain dump-truncated
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   echo-unreachable; the target is untouched
+
+verify --echo: Echo isn't reachable at http://127.0.0.1:8025; start it with rhythm echo up.
+
+rhythm-roadie explain echo-unreachable
+--- exit 1
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   fake-collision; the target is untouched
+
+fake-collision: two different emails got the same fake in this run. Run again (a new key fixes it); this should happen about once in 100 million runs.
+
+rhythm-roadie explain fake-collision
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   import; the target is untouched
+
+import: MariaDB 10.6 doesn't know collation utf8mb4_0900_ai_ci (MySQL 8). Run again with --fix-collation. The target is untouched.
+
+rhythm-roadie explain import
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   import-mixed; the target is in a mixed state
+
+import: the connection to staging@localhost was lost after 37 of 61 tables. The target is in a mixed state: some tables are pseudonymised, the rest still hold the earlier copy. Run the same command again.
+
+rhythm-roadie explain import-mixed
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   key-manual; the target is untouched
+
+key.stripe-live: wp-content/themes/shop/functions.php line 12 holds a live Stripe key. Roadie only edits the database, wp-config.php and .env. Move it into wp-config.php or blank it by hand, then run verify.
+
+rhythm-roadie explain key-manual
+--- exit 1
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   kill-switch; the target is untouched
+
+side-effect.mail: couldn't write wp-content/mu-plugins/rhythm-echo.php (permission denied), so mail from this copy isn't sealed. Fix the folder's owner, then: rhythm-roadie prepare /var/www/staging --only side-effects.
+
+rhythm-roadie explain kill-switch
+--- exit 1
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   lock; the target is untouched
+
+lock: another Roadie run is copying to /var/www/staging (pid 4120, started 14:02). Wait for it, or remove /home/u/.cache/rhythm/roadie/locks/ab12.lock if it crashed.
+
+rhythm-roadie explain lock
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   not-built; the target is untouched
+
+not built yet
+
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   nothing-scanned; the target is untouched
+
+nothing-scanned: verify read 0 rows from staging@localhost (58 tables, access denied on every one). A verify that sees nothing can't pass; check the user's SELECT rights.
+
+rhythm-roadie explain nothing-scanned
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   output-is-input; the target is untouched
+
+output-is-input: --to prod.sql.gz is the file Roadie reads. Write the copy to a new file.
+
+rhythm-roadie explain output-is-input
+--- exit 2
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   prepare-confirm; the target is untouched
+
+prepare-confirm: there's no terminal to confirm on. Pass --confirm-target staging.shop.test (the site's host) to go on.
+
+rhythm-roadie explain prepare-confirm
+--- exit 2
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   report-edited; the target is untouched
+
+report check: report.json was changed after it was signed (summary.high 3 → 0).
+
+rhythm-roadie explain report-edited
+--- exit 1
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   report-unsigned; the target is untouched
+
+report check: report.json has no signature (it was written with --sign=off).
+
+rhythm-roadie explain report-unsigned
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   site-config; the target is untouched
+
+site-config: /var/www/staging/wp-config.php sets DB_PASSWORD from getenv('DB_PASS'), which Roadie can't run. Pass the target as a DSN with ROADIE_TO_PASSWORD, or use @staging through WP-CLI.
+
+rhythm-roadie explain site-config
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   ssh; the target is untouched
+
+ssh: deploy@shop.com refused the key (Permission denied (publickey)). Check ssh deploy@shop.com works on its own; Roadie uses your ssh setup and never skips host key checks.
+
+rhythm-roadie explain ssh
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   ssh-host-key; the target is untouched
+
+ssh-host-key: deploy@shop.com isn't in known_hosts (ED25519 SHA256:…). Connect once with ssh to check and add it; Roadie never skips host key checks.
+
+rhythm-roadie explain ssh-host-key
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   stack; the target is untouched
+
+stack: no profile matches this dump (no wp_options or migrations table). For your own schema, list the tables under columns: and set stack: sql.
+
+rhythm-roadie explain stack
+--- exit 2
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   target-holds-production; the target is untouched
+
+target-holds-production: /var/www/staging still calls itself https://shop.com. Pass --production-url https://shop.com so Roadie knows which URL is live.
+
+rhythm-roadie explain target-holds-production
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   target-is-production; the target is untouched
+
+target-is-production: /var/www/shop is shop.com, which production: lists. Roadie never writes to production. Point --to at the staging copy.
+
+rhythm-roadie explain target-is-production
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   target-is-source; the target is untouched
+
+target-is-source: --from and --to both reach database shop on db.shop.com. A copy can't replace its own source.
+
+rhythm-roadie explain target-is-source
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   target-says-production; the target is untouched
+
+target-says-production: /var/www/staging has WP_ENVIRONMENT_TYPE unset, which WordPress reads as production. If it's staging, set WP_ENVIRONMENT_TYPE to staging there, or pass --target-is-staging staging.shop.test.
+
+rhythm-roadie explain target-says-production
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   test-key-is-live; the target is untouched
+
+test-key-is-live: keys.test_keys.stripe reads a live key (sk_l•••••). Give a test key (sk_test_...) or remove the entry to blank it.
+
+rhythm-roadie explain test-key-is-live
+--- exit 2
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+UNCOVERED  2
+[MEDIUM] wp_loyalty_members.email looks personal and no rule covers it
+  98% of sampled values look personal
+  fix: add it under columns: in .roadie/config.yaml, or --allow-uncovered
+[MEDIUM] wp_loyalty_members.phone looks personal and no rule covers it
+  40% of sampled values look personal
+  fix: add it under columns: in .roadie/config.yaml, or --allow-uncovered
+
+STOPPED   uncovered; the target is untouched
+
+uncovered: 2 columns look personal and no rule covers them: wp_loyalty_members.email, wp_loyalty_members.phone. Add them under columns: (rhythm-roadie explain uncovered-column), or --allow-uncovered to copy and list them as findings. The target is untouched.
+
+rhythm-roadie explain uncovered
+--- exit 1
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   url-map; the target is untouched
+
+url-map: fr.shop.com has no staging URL; add --url-map fr.shop.com=fr.staging.shop.test.
+
+rhythm-roadie explain url-map
+--- exit 2
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   value-too-large; the target is untouched
+
+value-too-large: a value in wp_options at line 88 is over 256 MiB. Pass --max-value 1GiB if it's real; the target is untouched.
+
+rhythm-roadie explain value-too-large
+--- exit 3
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
+STOPPED   wp-cli; the target is untouched
+
+wp-cli: wp isn't on PATH for deploy@shop.com. Install WP-CLI there, set remote.wp in .roadie/config.yaml to its path, or export the database yourself and use --from dump.sql.gz.
+
+rhythm-roadie explain wp-cli
+--- exit 3
+

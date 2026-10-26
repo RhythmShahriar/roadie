@@ -1,0 +1,71 @@
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config
+
+  [1;38;2;255;124;81m♪[0m [1mrhythm roadie[0m [38;2;107;113;128mdev[0m                             [38;2;107;113;128mshop.com → staging.shop.test[0m
+  [38;2;107;113;128m────────────────────────────────────────────────────────────────────────────[0m
+
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mSource[0m        ssh://deploy@shop.com/var/www/shop
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mTarget[0m        /var/www/staging
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mStack[0m         WordPress + WooCommerce (HPOS) + Subscriptions + Gravity
+                  Forms
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mPlan[0m          3 tables pseudonymised, 2 live keys, 4 side effects (plan
+                  -v for all)
+
+  [38;2;16;185;129m✓[0m Data           152,624 values pseudonymised in 3 tables, 3,912 URLs
+                   rewritten
+  [38;2;16;185;129m✓[0m Keys           1 swapped to a test key, 1 blanked
+  [38;2;16;185;129m✓[0m Side effects   Echo seal, WP_ENVIRONMENT_TYPE, cron, webhooks
+  [38;2;16;185;129m✓[0m Search         noindex, robots.txt
+  [38;2;16;185;129m✓[0m Import         5 tables into /var/www/staging
+
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mNot stopped[0m   a server crontab calling wp cron or artisan schedule:run,
+                  wp action-scheduler run by hand, queue workers already
+                  running, code that opens SMTP sockets or uses fsockopen
+                  with credentials Roadie doesn't know, raw cURL without
+                  --echo-proxy. Credentials are blanked so those paths fail
+                  at the provider. Blocking outbound traffic at the host is
+                  the only certainty.
+
+  [1;38;2;255;124;81mVERIFY (exact)[0m [38;2;107;113;128m─────────────────────────────────────────────────────────────[0m
+
+    [38;2;16;185;129m✓[0m No pseudonymised value survives         [38;2;107;113;128m1.21 M hashes, every table and[0m
+                                             [38;2;107;113;128mtext[0m
+    [38;2;16;185;129m✓[0m No real-looking emails                  [38;2;107;113;128m18,402 checked, all[0m
+                                             [38;2;107;113;128m@example.invalid or kept[0m
+    [38;2;16;185;129m✓[0m No real-looking phones                  [38;2;107;113;128m41,077 checked[0m
+    [38;2;16;185;129m✓[0m No live keys                            [38;2;107;113;128mDB, wp-config.php, .env[0m
+    [38;2;16;185;129m✓[0m No production URLs                      [38;2;107;113;128m0 left of 3,912[0m
+    [38;2;16;185;129m✓[0m Side effects off                        [38;2;107;113;128m4 of 4[0m
+
+ [38;2;16;185;129m╭────────────────────────────────────────────────────╮[0m
+ [38;2;16;185;129m│[0m  [1;38;2;16;185;129mPASS[0m   [1mstaging.shop.test is a pseudonymised copy[0m  [38;2;16;185;129m│[0m
+ [38;2;16;185;129m│[0m  0 critical · 0 high · 0 medium · 0 low · 1 info   [38;2;16;185;129m│[0m
+ [38;2;16;185;129m╰────────────────────────────────────────────────────╯[0m
+  [38;2;107;113;128m2.4 GB · 5 tables · 1m 22s[0m
+  [38;2;107;113;128m· info: 2 users kept as they are (admin, op•••@ag•••.example)[0m
+
+  Pseudonymised, not anonymised. The copy still holds order totals, dates,
+  products and anything Roadie can't recognise in free text. Treat it as
+  personal data.
+
+  Mail from this copy goes to Echo at http://127.0.0.1:8025. Run rhythm echo
+  up on the staging host, or the copy's mail will fail closed.
+
+  [1;38;2;107;113;128mALSO[0m [38;2;107;113;128m───────────────────────────────────────────────────────────────────────[0m
+
+    · noindex: X-Robots-Tag, robots.txt Disallow: / and the crawler block
+      (blog_public in the database left as it is)
+    · 3,912 production URLs rewritten in 2 tables
+    · Files are not copied. For uploads, leave out the folders that hold
+      personal data: rsync -a --exclude wp-content/debug.log --exclude
+      wp-content/uploads/wc-logs --exclude wp-content/uploads/gravity_forms
+      --exclude wp-content/updraft --exclude wp-content/ai1wm-backups
+      --exclude '*.sql' --exclude '*.sql.gz' --exclude '*.zip'
+      deploy@shop.com:/var/www/shop/ /var/www/staging/
+    · Basic auth is off: --basic-auth <user> writes snippets for Apache,
+      nginx and Caddy (Roadie never edits server config)
+    · Object caches and search indexes (Redis, Algolia, ElasticPress) are
+      not copied or cleared
+
+  [1;38;2;255;124;81m→[0m signed report: .roadie/reports/2026-10-26T14-02-11/report.html
+  [1;38;2;255;124;81m→[0m next: rhythm echo up, then rhythm soundcheck run https://staging.shop.test
+--- exit 0

@@ -1,0 +1,4 @@
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config -q
+PASS   staging.shop.test is a pseudonymised copy
+0 critical · 0 high · 0 medium · 0 low · 1 info
+--- exit 0

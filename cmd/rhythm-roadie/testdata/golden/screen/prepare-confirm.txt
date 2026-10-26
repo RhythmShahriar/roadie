@@ -1,0 +1,43 @@
+$ rhythm-roadie prepare /var/www/staging --url https://staging.shop.test --no-config
+rhythm roadie dev - prepare · staging.shop.test
+
+Staging: /var/www/staging
+Stack: WordPress + WooCommerce (HPOS) + Subscriptions + Gravity Forms
+Plan: 3 tables pseudonymised, 2 live keys, 4 side effects (plan -v for all)
+
+[ok] Data: 152,624 values pseudonymised in 3 tables, 3,912 URLs rewritten
+[ok] Keys: 1 swapped to a test key, 1 blanked
+[ok] Side effects: Echo seal, WP_ENVIRONMENT_TYPE, cron, webhooks
+[ok] Search: noindex, robots.txt
+[ok] Backup: .roadie/backups/2026-10-26T14-02-11.sql.gz; to undo: gunzip -c .roadie/backups/2026-10-26T14-02-11.sql.gz | wp db import -
+[ok] Import: 5 tables into /var/www/staging
+
+Not stopped: a server crontab calling wp cron or artisan schedule:run, wp action-scheduler run by hand, queue workers already running, code that opens SMTP sockets or uses fsockopen with credentials Roadie doesn't know, raw cURL without --echo-proxy. Credentials are blanked so those paths fail at the provider. Blocking outbound traffic at the host is the only certainty.
+
+VERIFY (exact)
+[ok] No pseudonymised value survives: 1.21 M hashes, every table and text
+[ok] No real-looking emails: 18,402 checked, all @example.invalid or kept
+[ok] No real-looking phones: 41,077 checked
+[ok] No live keys: DB, wp-config.php, .env
+[ok] No production URLs: 0 left of 3,912
+[ok] Side effects off: 4 of 4
+
+PASS   staging.shop.test is a pseudonymised copy
+0 critical · 0 high · 0 medium · 0 low · 1 info
+2.4 GB · 5 tables · 1m 22s
+· info: 2 users kept as they are (admin, op•••@ag•••.example)
+
+Pseudonymised, not anonymised. The copy still holds order totals, dates, products and anything Roadie can't recognise in free text. Treat it as personal data.
+
+Mail from this copy goes to Echo at http://127.0.0.1:8025. Run rhythm echo up on the staging host, or the copy's mail will fail closed.
+
+ALSO
+- noindex: X-Robots-Tag, robots.txt Disallow: / and the crawler block (blog_public in the database left as it is)
+- 3,912 production URLs rewritten in 2 tables
+- Basic auth is off: --basic-auth <user> writes snippets for Apache, nginx and Caddy (Roadie never edits server config)
+- Object caches and search indexes (Redis, Algolia, ElasticPress) are not copied or cleared
+
+signed report: .roadie/reports/2026-10-26T14-02-11/report.html
+next: rhythm echo up, then rhythm soundcheck run https://staging.shop.test
+--- stderr
+prepare rewrites this site's database while it runs. Visitors see a maintenance page for about a minute. Type the site's host to go on (staging.shop.test): --- exit 0

@@ -118,10 +118,7 @@ func notBuilt(name string) runFunc {
 }
 
 var (
-	runCopy     = notBuilt("copy")
-	runPrepare  = notBuilt("prepare")
 	runVerify   = notBuilt("verify")
-	runPlan     = notBuilt("plan")
 	runConfig   = notBuilt("config")
 	runReport   = notBuilt("report")
 	runProfiles = notBuilt("profiles")
