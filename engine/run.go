@@ -231,7 +231,7 @@ func (r *runner) run(ctx context.Context) error {
 	if r.mode != Plan && dataPass && r.mode == Prepare && !r.opts.NoBackup {
 		path, restore, err := r.to.Backup(ctx)
 		if err != nil {
-			return fmt.Errorf("backup of %s: %w. Fix it, or pass --no-backup to go on without one", r.j.To.Display, err)
+			return backupErr(r.j.To.Display, err)
 		}
 		r.res.Backup, r.res.Restore = path, restore
 	}
@@ -1127,4 +1127,18 @@ func (r *runner) remoteCommands() []string {
 		}
 	}
 	return out
+}
+
+// backupErr is the stop for a prepare backup that failed: the target is
+// untouched. A typed cause (ssh, wp-cli) keeps its code and exit; any
+// other is site-config, exit 3, until PRD 17 gets a code of its own.
+func backupErr(target string, err error) *core.Error {
+	msg := fmt.Sprintf("backup of %s: %s. Fix it, or pass --no-backup to go on without one", target, strings.TrimSuffix(err.Error(), "."))
+	var ce *core.Error
+	if errors.As(err, &ce) && ce.Code != "" && ce.Code != core.ErrCodeNotBuilt {
+		out := *ce
+		out.Msg, out.State = msg, core.Untouched
+		return &out
+	}
+	return &core.Error{Code: core.ErrSiteConfig, Exit: 3, Msg: msg, State: core.Untouched}
 }

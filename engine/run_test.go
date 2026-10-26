@@ -612,6 +612,53 @@ func TestRunStepOrder(t *testing.T) {
 	}
 }
 
+// backupSite is the staging fake with a Backup that fails.
+type backupSite struct {
+	*testutil.Site
+	err error
+}
+
+func (s backupSite) Backup(context.Context) (string, string, error) { return "", "", s.err }
+
+// A failed prepare backup stops the run with a typed error before
+// anything is written: a plain cause as site-config, exit 3, a typed one
+// with its own code.
+func TestRunBackupFails(t *testing.T) {
+	for _, tc := range []struct {
+		cause     error
+		code      string
+		exit      int
+		msgPrefix string
+	}{
+		{errors.New("disk quota exceeded"), core.ErrSiteConfig, 3, "backup of /srv/staging: disk quota exceeded. Fix it, or pass --no-backup"},
+		{core.Errorf(core.ErrWPCLI, 3, "wp-cli: wp isn't on PATH."), core.ErrWPCLI, 3, "backup of /srv/staging: wp-cli: wp isn't on PATH. Fix it"},
+	} {
+		f := useRunFakes(t)
+		old := openSite
+		openSite = func(ctx context.Context, e core.Endpoint, o site.Options) (core.Site, error) {
+			s, err := old(ctx, e, o)
+			if s == core.Site(f.staging) {
+				return backupSite{Site: f.staging, err: tc.cause}, err
+			}
+			return s, err
+		}
+		res, err := Run(context.Background(), f.job(Prepare))
+		openSite = old
+		if code, exit := errCode(err); code != tc.code || exit != tc.exit {
+			t.Fatalf("err %v: code %q exit %d", err, code, exit)
+		}
+		if !strings.HasPrefix(err.Error(), tc.msgPrefix) {
+			t.Errorf("message %q", err)
+		}
+		if res.Err == nil || res.Err.Code != tc.code || res.TargetState != core.Untouched {
+			t.Errorf("result err %+v state %s", res.Err, res.TargetState)
+		}
+		if len(f.staging.Writes()) != 0 || f.rec.index("sink") >= 0 {
+			t.Errorf("wrote after a failed backup: %v", f.rec.all())
+		}
+	}
+}
+
 // A guard that refuses leaves the target as it was.
 func TestRunGuardRefusal(t *testing.T) {
 	f := useRunFakes(t)
