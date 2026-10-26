@@ -1145,3 +1145,49 @@ func TestRunUnsetVariable(t *testing.T) {
 		t.Errorf("url read from the file: %v", err)
 	}
 }
+
+// countingSink is a staging sink that hears the copy's table count.
+type countingSink struct {
+	*logSink
+	expected int
+}
+
+func (s *countingSink) ExpectTables(n int) { s.expected = n }
+
+// A run hands the guards --url, the sites --fix-collation, the kill
+// switch the version and the source's gateways, and the sink the
+// table count.
+func TestRunWiring(t *testing.T) {
+	f := useRunFakes(t)
+	order := `a:2:{s:6:"stripe";i:0;s:11:"mystery_pay";i:1;}`
+	f.prod.SourceFunc = func([]string) (core.Source, error) {
+		td := wpUsers()
+		td[0].rows = append(td[0].rows, []any{6, "woocommerce_gateway_order", order})
+		return testutil.FakeSource(schemaOf("wp_", td), batches(td)), nil
+	}
+	cs := &countingSink{logSink: f.stagSink}
+	f.staging.SinkFunc = func() (core.Sink, error) { return cs, nil }
+	var ko []killswitch.Options
+	old := killDataRules
+	killDataRules = func(_ core.Stack, o killswitch.Options) []core.Rule { ko = append(ko, o); return nil }
+	t.Cleanup(func() { killDataRules = old })
+	j := f.job(Copy)
+	j.Opts.FixCollation, j.Opts.Version = true, "1.2.3"
+	if _, err := Run(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.guards) == 0 || f.guards[0].URL != "https://staging.shop.test" {
+		t.Errorf("guards %+v", f.guards)
+	}
+	for _, o := range f.opened {
+		if !o.FixCollation {
+			t.Errorf("site options %+v", o)
+		}
+	}
+	if len(ko) == 0 || ko[0].Version != "1.2.3" || !slices.Equal(ko[0].GatewayIDs, []string{"stripe", "mystery_pay"}) {
+		t.Errorf("kill switch options %+v", ko)
+	}
+	if cs.expected != 2 {
+		t.Errorf("ExpectTables(%d), want 2", cs.expected)
+	}
+}

@@ -64,6 +64,9 @@ type Options struct {
 	SchemaOnly       bool     // plan
 	Production       []string
 	Offline          bool
+	// Version is rhythm-roadie's version, for the header of the Roadie
+	// mu-plugin the kill switch writes.
+	Version string
 }
 
 // Job is one run.

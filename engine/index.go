@@ -17,6 +17,7 @@ import (
 	"github.com/RhythmShahriar/roadie/detect"
 	"github.com/RhythmShahriar/roadie/profile"
 	"github.com/RhythmShahriar/roadie/roadiecfg"
+	"github.com/RhythmShahriar/roadie/site/killswitch"
 )
 
 // wpCore maps the WordPress core tables to a column only that table has,
@@ -171,9 +172,12 @@ type indexer struct {
 
 	options  map[string]bool
 	siteURLs map[string][2]string // blog prefix -> siteurl, home
-	blogs    []blogDomain
-	hpos     [2]string // woocommerce_custom_orders_table_enabled, _data_sync_enabled
-	kept     *keptUsers
+	// gatewayOpts are the main site's woocommerce_gateway_order and
+	// woocommerce_<id>_settings values, for killswitch.SourceGatewayIDs.
+	gatewayOpts map[string][]byte
+	blogs       []blogDomain
+	hpos        [2]string // woocommerce_custom_orders_table_enabled, _data_sync_enabled
+	kept        *keptUsers
 	// siteBlogs are copy --site's blogs; siteUsers is made from them
 	// once the prefix is known.
 	siteBlogs []int
@@ -199,7 +203,7 @@ type indexer struct {
 
 func newIndexer(ctx context.Context, cfg *roadiecfg.Config, defs []profile.Def, site core.Site, known core.Known) *indexer {
 	x := &indexer{ctx: ctx, cfg: cfg, defs: defs, site: site, known: known, samples: newSamples(),
-		options: map[string]bool{}, siteURLs: map[string][2]string{}, rows: map[string]int64{},
+		options: map[string]bool{}, siteURLs: map[string][2]string{}, gatewayOpts: map[string][]byte{}, rows: map[string]int64{},
 		kept: &keptUsers{ids: map[string]bool{}, orders: map[string]bool{}}, addr: newAddrIndex(), nTables: -1}
 	if known != nil {
 		x.entries = &formEntries{}
@@ -325,6 +329,11 @@ func (x *indexer) collect(b *core.Batch, pos map[string]int) {
 		if blog, ok := blogOf(name, p, "options"); ok {
 			opt := str("option_name")
 			x.options[opt] = true
+			if blog == p && killswitch.GatewayOptionsMatch(opt) {
+				if v, ok := get("option_value"); ok {
+					x.gatewayOpts[opt] = bytes.Clone(v)
+				}
+			}
 			u := x.siteURLs[blog]
 			switch opt {
 			case "siteurl":

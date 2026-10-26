@@ -648,6 +648,7 @@ func defaultJobs() int { return min(runtime.NumCPU(), maxJobs) }
 func (p *parsed) engineOptions(cfg *roadiecfg.Config, mode engine.Mode, env envFunc) (engine.Options, error) {
 	f := p.f
 	o := engine.Options{
+		Version:          version,
 		URL:              f.url,
 		Stack:            f.stack,
 		SchemaFile:       f.schema,

@@ -26,6 +26,8 @@ import (
 	"github.com/RhythmShahriar/roadie/profile"
 	"github.com/RhythmShahriar/roadie/pseudo"
 	"github.com/RhythmShahriar/roadie/roadiecfg"
+	"github.com/RhythmShahriar/roadie/site"
+	"github.com/RhythmShahriar/roadie/site/killswitch"
 )
 
 // maxJobs is the most workers a run uses (PRD 10.2): past eight the
@@ -320,7 +322,10 @@ type pipeline struct {
 	// dataRules gives the kill switch's option-level rules for the stack
 	// the run finds; they join the compiled rules. nil joins none.
 	dataRules func(core.Stack) []core.Rule
-	parts     parts
+	// gatewayIDs are the WooCommerce gateways of the source's options,
+	// from pass 1, for the kill switch's data rules.
+	gatewayIDs []string
+	parts      parts
 	// result is filled in place when set, so the orchestration's fields
 	// stay; nil starts a new one.
 	result *core.Result
@@ -427,6 +432,7 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 		}
 		out.Result.Input = &fp
 		schema = s
+		p.gatewayIDs = killswitch.SourceGatewayIDs(idx.gatewayOpts)
 		if final, err = p.finalCompile(idx, schema); err != nil {
 			return out, err
 		}
@@ -453,6 +459,10 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 	if p.beforeWrite != nil {
 		if err := p.beforeWrite(ctx); err != nil {
 			return out, err
+		}
+		// A broken import then says "after 37 of 61 tables".
+		if tc, ok := p.sink.(site.TableCounter); ok && schema != nil {
+			tc.ExpectTables(len(schema.Tables))
 		}
 	}
 	if words := hostWords(plan.Production); len(words) > 0 {

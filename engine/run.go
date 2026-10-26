@@ -222,7 +222,13 @@ func (r *runner) run(ctx context.Context) error {
 	p := &pipeline{mode: r.mode, cfg: cfg, opts: r.opts, defs: defs, site: r.from, key: key,
 		progress: r.j.Progress, result: r.res, indexOnly: r.mode == Plan && r.opts.SchemaOnly}
 	if !r.opts.NoKillSwitch && r.part(partSideEffects) {
-		p.dataRules = func(st core.Stack) []core.Rule { return killDataRules(st, ko) }
+		p.dataRules = func(st core.Stack) []core.Rule {
+			// The gateways the source holds are known once pass 1 has
+			// read its options: an unknown one is disabled.
+			o := ko
+			o.GatewayIDs = p.gatewayIDs
+			return killDataRules(st, o)
+		}
 	}
 	p.parts = parts{noData: !r.part(partData), noKeys: !r.part(partKeys), noURLs: !r.part(partURLs)}
 	dataPass := !p.parts.noData || !p.parts.noKeys || !p.parts.noURLs || p.dataRules != nil
@@ -527,7 +533,7 @@ func lockError(e core.Endpoint, err error) error {
 
 // siteOptions are the site.Options of an endpoint the run opens.
 func (r *runner) siteOptions(readOnly bool) site.Options {
-	return site.Options{ReadOnly: readOnly, WP: r.cfg.Remote.WP, BatchMode: r.j.Confirm == nil}
+	return site.Options{ReadOnly: readOnly, WP: r.cfg.Remote.WP, BatchMode: r.j.Confirm == nil, FixCollation: r.opts.FixCollation}
 }
 
 // open opens the source read-only and the target: read-only for plan,
@@ -575,7 +581,7 @@ func (r *runner) guard(ctx context.Context) error {
 	for {
 		err := guardTarget(ctx, site.GuardInput{From: r.j.From, To: r.j.To, FromSite: r.from, ToSite: r.to,
 			Production: r.cfg.Production, ProductionURL: r.opts.ProductionURL,
-			TargetIsStaging: r.opts.TargetIsStaging, Mode: mode})
+			TargetIsStaging: r.opts.TargetIsStaging, Mode: mode, URL: r.opts.URL})
 		if err == nil {
 			return nil
 		}
@@ -716,7 +722,8 @@ func (r *runner) confirm(ctx context.Context) error {
 // killOptions are the kill switch's settings for this run.
 func (r *runner) killOptions() killswitch.Options {
 	return killswitch.Options{EchoURL: r.cfg.SideEffects.Echo.URL, EchoProxy: r.cfg.SideEffects.Echo.Proxy,
-		URL: r.opts.URL, Production: r.cfg.Production, KeepAppKey: r.opts.KeepAppKey, Noindex: r.cfg.Noindex, Cfg: r.cfg}
+		URL: r.opts.URL, Production: r.cfg.Production, KeepAppKey: r.opts.KeepAppKey, Noindex: r.cfg.Noindex, Cfg: r.cfg,
+		Version: r.opts.Version}
 }
 
 // planSteps asks each step what it would change, for plan.
