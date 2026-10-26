@@ -22,7 +22,7 @@ func TestStubsZero(t *testing.T) {
 func TestAllIDs(t *testing.T) {
 	want := []string{
 		core.FindingPIIEmail, core.FindingPIIPhone, core.FindingPIIIP, core.FindingPIICard,
-		core.FindingPIIIBAN,
+		core.FindingPIIIBAN, core.FindingPIIName, core.FindingPIIAddress,
 	}
 	var got []string
 	for _, d := range All() {

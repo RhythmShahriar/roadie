@@ -1,0 +1,80 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Fixtures for the name detector (heuristic mode, PRD 15.2).
+detector: pii.name
+positive:
+  - value: "Ada Kowalczyk"
+    table: wp_users
+    column: display_name
+    row: {user_email: ada.kowalczyk@gmail.com}
+  - value: "Ada"
+    table: wp_usermeta
+    column: meta_value
+    row: {meta_key: first_name}
+  - value: "Kowalczyk"
+    table: wp_wc_order_addresses
+    column: last_name
+  - value: "Ada Kowalczyk"
+    table: wp_comments
+    column: comment_author
+    row: {comment_author_email: ada.kowalczyk@gmail.com}
+  - value: "Ada Kowalczyk"
+    table: users
+    column: name
+    row: {email: ada.kowalczyk@gmail.com}
+    note: Laravel users table
+  - value: "  María López  "
+    table: wp_postmeta
+    column: meta_value
+    row: {meta_key: _billing_first_name}
+    match: "María López"
+  - value: "Ada Kowalczyk"
+    kind: full_name
+    column: holder
+negative:
+  - value: "Ada Kowalczyk"
+    table: wp_users
+    column: display_name
+    row: {user_email: ada@example.com}
+    note: WooCommerce sample data at example.com
+  - value: "John Doe"
+    table: wp_wc_customer_lookup
+    column: first_name
+    row: {email: john@shop.test}
+  - value: "Ada Kowalczyk"
+    table: wp_users
+    column: display_name
+    row: {user_email: ada.kowalczyk@gmail.com}
+    allow:
+      kept: [ada.kowalczyk@gmail.com]
+    note: a kept user
+  - value: "Ada Kowalczyk"
+    table: wp_users
+    column: display_name
+    row: {user_email: u0123456789abcdef@example.invalid}
+    note: a Roadie fake row
+  - value: "James"
+    table: wp_usermeta
+    column: meta_value
+    row: {meta_key: first_name}
+    needs: values
+    note: a name from Roadie's lists
+  - value: "A"
+    table: wp_users
+    column: display_name
+  - value: "Ada Kowalczyk"
+    table: wp_posts
+    column: post_title
+    note: not a name column
+  - value: "Product name"
+    table: wp_products
+    column: name
+    note: name outside a users-like table
+  - value: "42"
+    table: wp_posts
+    column: author
+  - value: "ada@gmail.com"
+    table: wp_users
+    column: display_name
+    note: an email is the email detector's

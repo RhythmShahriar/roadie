@@ -14,7 +14,7 @@ import "github.com/RhythmShahriar/roadie/core"
 
 // All returns every PII detector of PRD 15.2.
 func All() []core.Detector {
-	return []core.Detector{Email(), Phone(), IP(), Card(), IBAN()}
+	return []core.Detector{Email(), Phone(), IP(), Card(), IBAN(), Name(), Address()}
 }
 
 // Email finds real email addresses (pii.email, pii.email-role).
@@ -33,10 +33,10 @@ func Card() core.Detector { return cardDetector{} }
 func IBAN() core.Detector { return ibanDetector{} }
 
 // Name finds real names in name columns (pii.name).
-func Name() core.Detector { return nil }
+func Name() core.Detector { return nameDetector{} }
 
 // Address finds real street addresses (pii.address).
-func Address() core.Detector { return nil }
+func Address() core.Detector { return addressDetector{} }
 
 // TextSpans finds emails, strong phones, cards and IPs in free text, for
 // pseudo.Scrub. Spans are of kind email, phone, ip or KCard.
