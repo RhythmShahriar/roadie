@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/dump/mysql"
 )
 
 // usersRows is more than two keyset pages, so paging is exercised.
@@ -572,5 +573,40 @@ func TestSQLiteSourceCancel(t *testing.T) {
 	cancel()
 	if _, err := src.Next(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("after cancel: %v", err)
+	}
+}
+
+// A mysql client DELIMITER line is never sent to the database, and the
+// statements it covers reach it without the custom delimiter.
+func TestSinkDelimiterNeverRuns(t *testing.T) {
+	ctx := context.Background()
+	to := emptySQLite(t)
+	sk, err := openT(t, to, ReadWrite).Sink(ctx, SinkOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stmts := []*core.Statement{
+		{Kind: mysql.KindDelimiter, Text: []byte("DELIMITER $$\n")},
+		{Kind: core.StmtOther, Text: []byte("CREATE VIEW v AS SELECT 1 AS a$$\n")},
+		{Kind: mysql.KindDelimiter, Text: []byte("DELIMITER ;\n")},
+		{Kind: core.StmtOther, Text: []byte("CREATE VIEW w AS SELECT 2 AS a;\n")},
+		{Kind: mysql.KindClient, Text: []byte("\\! id\n")},
+	}
+	for i, st := range stmts {
+		if err := sk.Write(ctx, &core.Batch{Seq: uint64(i + 1), Pass: st}); err != nil {
+			t.Fatalf("statement %d: %v", i+1, err)
+		}
+	}
+	if err := sk.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := sql.Open("sqlite", to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	var n int
+	if err := conn.QueryRow("SELECT (SELECT a FROM v) + (SELECT a FROM w)").Scan(&n); err != nil || n != 3 {
+		t.Fatalf("views %d %v", n, err)
 	}
 }

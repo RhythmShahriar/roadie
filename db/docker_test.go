@@ -268,6 +268,33 @@ func testMySQLFamily(t *testing.T, image string, ports []int, engine core.Dialec
 	}
 	copyAll(t, fsrc, fsk)
 
+	// Triggers and routines between DELIMITER lines load: the DELIMITER
+	// lines stay with the client and ;; or $$ is cut off each body.
+	rf, err := os.Open("../dump/mysql/testdata/routines.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rf.Close()
+	rsrc, err := dump.Open(ctx, rf, dump.Options{Name: "routines.sql", KeepRoutines: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustExec(t, admin, "CREATE DATABASE routines")
+	routC := waitOpen(t, myEP(port, "root", root, "routines"), ReadWrite)
+	rsk, err := routC.Sink(ctx, SinkOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	copyAll(t, rsrc, rsk)
+	for q, want := range map[string]int{
+		"SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = 'routines' AND TRIGGER_NAME = 'keep_email'": 1,
+		"SELECT COUNT(*) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = 'routines' AND ROUTINE_NAME = 'p'":          1,
+	} {
+		if err := admin.conn.QueryRowContext(ctx, q).Scan(&n); err != nil || n != want {
+			t.Fatalf("%s: %d %v", q, n, err)
+		}
+	}
+
 	// A collation the server doesn't know stops the import before the
 	// table is dropped.
 	bad := "utf8mb4_uca1400_ai_ci"

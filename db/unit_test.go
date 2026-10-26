@@ -455,3 +455,23 @@ func TestCheckDDL(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestDelimiter(t *testing.T) {
+	for in, want := range map[string]string{
+		"DELIMITER ;;\n": ";;", "delimiter $$": "$$", "DELIMITER ;\n": "", "DELIMITER": "", "DELIMITER // trailing\n": "//",
+	} {
+		if got := delimiterArg([]byte(in)); got != want {
+			t.Errorf("delimiterArg(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for _, c := range []struct{ in, delim, want string }{
+		{"END */;;\n", ";;", "END */"},
+		{"END$$\r\n", "$$", "END"},
+		{"SELECT 1;\n", "", "SELECT 1"},
+		{"SELECT ';;' AS a\n", ";;", "SELECT ';;' AS a"},
+	} {
+		if got := stmtText(trimDelim([]byte(c.in), c.delim)); got != c.want {
+			t.Errorf("trimDelim(%q, %q) = %q, want %q", c.in, c.delim, got, c.want)
+		}
+	}
+}

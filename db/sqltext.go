@@ -22,6 +22,29 @@ func stmtText(b []byte) string {
 	return strings.TrimRight(string(b), "; \t\r\n")
 }
 
+// delimiterArg is the delimiter a mysql client "DELIMITER x" line sets,
+// or "" when it sets ';' or names none.
+func delimiterArg(b []byte) string {
+	f := strings.Fields(string(b))
+	if len(f) < 2 || f[1] == ";" {
+		return ""
+	}
+	return f[1]
+}
+
+// trimDelim cuts a custom delimiter (";;" or "$$") off the end of a
+// statement, after any trailing space.
+func trimDelim(b []byte, delim string) []byte {
+	if delim == "" {
+		return b
+	}
+	t := bytes.TrimRight(b, " \t\r\n")
+	if bytes.HasSuffix(t, []byte(delim)) {
+		return t[:len(t)-len(delim)]
+	}
+	return b
+}
+
 // hasWordPrefix reports whether s starts with the word w, any case.
 func hasWordPrefix(s, w string) bool {
 	if len(s) < len(w) || !strings.EqualFold(s[:len(w)], w) {

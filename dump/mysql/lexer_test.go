@@ -449,7 +449,7 @@ func TestDelimiterBlocks(t *testing.T) {
 	for _, p := range ps {
 		got = append(got, string(p.st.Kind))
 	}
-	want := "comment comment set create-table set set delimiter routine delimiter set delimiter routine delimiter comment"
+	want := "comment comment set create-table set set set delimiter routine delimiter set delimiter routine delimiter comment"
 	if strings.Join(got, " ") != want {
 		t.Errorf("kinds\n got %s\nwant %s", strings.Join(got, " "), want)
 	}
