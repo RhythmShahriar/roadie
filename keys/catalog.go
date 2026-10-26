@@ -44,6 +44,10 @@ var gateways = []Gateway{
 		EnabledPath: "enabled", ModePath: "test_mode", TestValue: "yes", LiveValue: "no"},
 	// Square for WooCommerce: includes/Settings.php (enable_sandbox,
 	// sandbox_token); production tokens come from the Square connection.
+	// Square keeps its on switch in another option
+	// (woocommerce_square_credit_card_settings) and the scan reads one
+	// option at a time, so there is no EnabledPath: sandbox off flags live
+	// mode even when the gateway is off, which errs on the safe side.
 	// https://github.com/woocommerce/woocommerce-square
 	{ID: "square", Name: "Square", Option: "wc_square_settings",
 		ModePath: "enable_sandbox", TestValue: "yes", LiveValue: "no",

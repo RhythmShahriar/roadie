@@ -5,8 +5,8 @@
 // and side effects left on. It returns the findings, checks and coverage
 // a pass or fail verdict rests on.
 //
-// The exported names in this file are the frozen cross-lane API; the
-// detect lane replaces the bodies, which return core.ErrNotBuilt until then.
+// The exported names in this file are the cross-lane API other lanes
+// build on; new fields are only ever added.
 package verify
 
 import (

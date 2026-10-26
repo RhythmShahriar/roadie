@@ -25,7 +25,7 @@ Every ID is a constant in `core/ids.go`. Severities are fixed unless the row say
 | `key.generic` | high | kit's secret rules on a value, or on `name="value"` built from a secret-looking setting name | the site's own settings (`DB_PASSWORD DB_USER DB_USERNAME DB_NAME DB_HOST DB_DATABASE DATABASE_PASSWORD REDIS_PASSWORD WP_REDIS_PASSWORD MEMCACHED_PASSWORD WP_CACHE_KEY_SALT APP_KEY` and the eight salts); names that look secret but aren't: `_order_key order_key _edit_lock session_key _wp_session_key meta_key option_key _transient_key session_tokens`; kit's name = value rules never run on whole posts or comments |
 | `url.production` | medium | a production host in a text value (codec/urlrw forms) | lookalike hosts; email domains; other sites |
 | `url.production-siteurl` | critical | `siteurl` or `home` in any `*options` table, or `WP_HOME`, `WP_SITEURL`, `APP_URL` in the config files, still on production. Title `<NAME> is still production's` for config | none |
-| `config.points-at-production` | critical | `DB_HOST WP_REDIS_HOST AS3CF_SETTINGS REDIS_HOST MEMCACHED_HOST AWS_BUCKET AWS_ACCESS_KEY_ID` equal to production's or on a production host; `AS3CF_SETTINGS` also by its bucket or keys. Title `<NAME> points at production` | text comparison only, no DNS |
+| `config.points-at-production` | critical | `DB_HOST WP_REDIS_HOST AS3CF_SETTINGS REDIS_HOST MEMCACHED_HOST AWS_BUCKET AWS_ACCESS_KEY_ID` equal to production's or on a production host; `AS3CF_SETTINGS` also by its bucket or keys. Title `<NAME> points at production` | text comparison only, no DNS; a server setting that is machine-local (localhost, a loopback, unspecified or link-local address, a socket path or a one-label name such as `db`) is not compared with production's text, only with the production hosts |
 | `config.salts` | medium | exact mode: the eight salts or `APP_KEY` equal to production's | none |
 | `side-effect.mail` | critical | `--echo`: Echo unreachable, not in seal mode or let messages through | none |
 | `search.indexable` | medium | `--site`: no `noindex` header or meta tag, or robots.txt lets `*` crawl | none |
@@ -53,8 +53,8 @@ Every example passes through `core.Mask*`; no flag prints a raw value.
 - `--sample N` scans the first N rows of each table and sets `coverage.sample`. Every row otherwise.
 - `--jobs` workers (default GOMAXPROCS); results merge in input order, so examples and locations are the same on every run.
 - Findings group by ID and table and column (or file), at most 3 examples and locations each.
-- A table that can't be read is listed under coverage skipped with its reason. Zero rows read: exit 3 `nothing-scanned: verify read 0 rows from <target> (<why>). A verify that sees nothing can't pass; check the user's SELECT rights.`
-- Code files (local sites only): `.php` under `wp-content/themes` and `wp-content/plugins`, depth 6, up to 2 MiB, live provider keys only, action `manual`, fix text PRD 17's key-manual sentence. Over ssh: coverage skipped `code files`, `not read over ssh (PRD 6.13 allowlist)`.
+- A table that can't be read is listed under coverage skipped with its reason. When the input fails part way, the entry is `(input after <last table read>)` with the reason plus `; the tables after it weren't read`; before any table it is `(input)` with the reason. Zero rows read: exit 3 `nothing-scanned: verify read 0 rows from <target> (<why>). A verify that sees nothing can't pass; check the user's SELECT rights.`
+- Code files (local sites only): `.php` under `wp-content/themes` and `wp-content/plugins`, depth 6, up to 2 MiB, live provider keys only, action `manual`, fix text PRD 17's key-manual sentence. Over ssh: coverage skipped `code files`, `not read over ssh (PRD 6.13 allowlist)`. A folder that can't be listed adds `code files`, `<folder> not listed: <error>`; unreadable files add `code files`, `<N> file(s) in <folder> not read; first <path>: <error>`. A missing folder adds nothing.
 - `--skip`: `emails`, `phones`, `names`, `addresses`, `ips`, `cards` (cards and IBANs), `keys`, `urls`, `side-effects`, `config`, `uploads`.
 
 ## Checks
@@ -79,7 +79,8 @@ Every example passes through `core.Mask*`; no flag prints a raw value.
 - `--site <url>` (a bare host means https) is refused on a production host before any request: exit 3 `target-is-production: --site <url> is <host>, which production: lists. Roadie never fetches production. Point --site at the staging copy.` A bad URL is exit 2 `verify --site: "<s>" isn't a URL; give the staging site's address, e.g. https://staging.shop.test`.
 - It fetches `/` and `/robots.txt` through kit httpx and its guard: 10 s, 2 MiB per body, user agent `rhythm-roadie verify`, redirects only within the host. Failures are listed under coverage skipped as `--site /` or `--site /robots.txt`.
 - `--insecure-tls <host>` skips certificate checks only for the `--site` host.
-- `--echo[=<url>]` (default `http://127.0.0.1:8025`) must be https, localhost or a loopback, private or link-local address, else exit 2 `verify --echo: <url> is plain http beyond this machine and its network, which would send Echo's token in the clear. Use https:// for an Echo elsewhere.`
+- `--echo[=<url>]` (default `http://127.0.0.1:8025`) must be https, localhost or a loopback, private or link-local address, else exit 2 `verify --echo: <url> is plain http beyond this machine and its network, where anyone on the way could read or fake its answers. Use https:// for an Echo elsewhere.`
+- `--echo` counts the messages Echo let through since `Options.EchoSince` (when the copy started); the finding is `Echo let <N> messages through since the copy`. When `EchoSince` is zero it counts from verify's own start, the finding says `since verify started` and the passing `side-effect.mail` check has the detail `counted only messages since verify started; the copy's start time wasn't known`.
 - `verify.Soundcheck` runs `rhythm-soundcheck run <url> --json [--echo=<url>]` for at most 10 minutes; missing binary: note `Soundcheck not run: install it with rhythm install soundcheck`.
 
 ## Live keys
@@ -122,6 +123,8 @@ Placeholders never hit: empty, `xxx...`, `***`, `•`, `${VAR}`, `{{ var }}`, `<
 | `razorpay` | `woocommerce_razorpay_settings` | `enabled` | `key_id` prefix `rzp_test_` / `rzp_live_` | `key_id key_secret` | |
 | `klarna` | `woocommerce_klarna_payments_settings` | `enabled` | `testmode` yes / no | `merchant_id_eu shared_secret_eu merchant_id_us shared_secret_us` | `test_` of each |
 | `authorize-net` | `woocommerce_authorize_net_cim_credit_card_settings` | `enabled` | `environment` test / production | `api_login_id api_transaction_key api_signature_key` | `test_` of each |
+
+Square keeps its on switch in another option (`woocommerce_square_credit_card_settings`) and the scan reads one option at a time, so Square has no enabled guard: sandbox off flags `key.live-mode` even when the Square gateway is off.
 
 ### Mailer catalog
 

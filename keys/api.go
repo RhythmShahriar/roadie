@@ -5,9 +5,8 @@
 // tells live keys from test keys (PRD 12.2) and swaps or blanks the live
 // ones. It also holds the gateway and mailer lists the kill switch uses.
 //
-// The exported names in this file are the frozen cross-lane API; the
-// detect lane replaces the bodies, which return core.ErrNotBuilt or zero
-// values until then.
+// The exported names in this file are the cross-lane API other lanes
+// build on; new fields are only ever added.
 package keys
 
 import "github.com/RhythmShahriar/roadie/core"
