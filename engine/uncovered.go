@@ -60,12 +60,18 @@ func (s *samples) full(table, column string) bool {
 
 // textColumn reports whether a column holds text the scan reads: char,
 // varchar, the text types and JSON. Binary columns and numbers can't
-// hold an email the way the scan looks for one.
+// hold an email the way the scan looks for one. A column with no type
+// (a data-only dump names its columns in INSERT but never types them)
+// may hold anything, so it is read as text: skipping it would let a
+// personal column through with no uncovered stop.
 func textColumn(c core.Column) bool {
 	if c.Binary || c.Generated {
 		return false
 	}
-	t := strings.ToLower(c.Type)
+	t := strings.ToLower(strings.TrimSpace(c.Type))
+	if t == "" {
+		return true
+	}
 	for _, p := range []string{"char", "varchar", "nchar", "nvarchar", "character varying", "character", "tinytext",
 		"text", "mediumtext", "longtext", "json", "jsonb", "citext"} {
 		if t == p || strings.HasPrefix(t, p+"(") || strings.HasPrefix(t, p+" ") {

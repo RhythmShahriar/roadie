@@ -501,12 +501,22 @@ func TestBuildURLPlan(t *testing.T) {
 
 // loyalty is a WordPress fixture with a plugin table no profile knows.
 func loyalty(n int) func() []tableData {
+	return loyaltyCols(n, "id:int(11)", "email", "phone")
+}
+
+// loyaltyUntyped is loyalty as a data-only dump reads it: the INSERT
+// names the columns and nothing types them.
+func loyaltyUntyped(n int) func() []tableData {
+	return loyaltyCols(n, "id:", "email:", "phone:")
+}
+
+func loyaltyCols(n int, cols ...string) func() []tableData {
 	return func() []tableData {
 		var rs rows
 		for i := range n {
 			rs = append(rs, []any{i, fmt.Sprintf("m%d@example.com", i), ""})
 		}
-		return append(wpUsers(), tableData{table("wp_loyalty_members", "id:int(11)", "email", "phone"), rs})
+		return append(wpUsers(), tableData{table("wp_loyalty_members", cols...), rs})
 	}
 }
 
@@ -545,6 +555,32 @@ func TestPipelineUncovered(t *testing.T) {
 	p.sink = nil
 	if _, err := p.run(context.Background()); err != nil {
 		t.Errorf("plan stopped: %v", err)
+	}
+}
+
+// An untyped personal column, as a data-only dump gives it, stops copy
+// the same way: its values are sampled and detect sees it.
+func TestPipelineUncoveredUntyped(t *testing.T) {
+	useFakes(t)
+	calls := fakeUncovered(t)
+	p, sink, _ := fixture(t, Copy, "wp_", loyaltyUntyped(30), nil, Options{})
+	_, err := p.run(context.Background())
+	var ce *core.Error
+	if !errors.As(err, &ce) || ce.Code != core.ErrUncovered || ce.Exit != 1 ||
+		!strings.Contains(ce.Msg, "wp_loyalty_members.email, wp_loyalty_members.phone") {
+		t.Fatalf("err %v", err)
+	}
+	if len(sink.Batches()) != 0 || sink.Committed() {
+		t.Errorf("wrote %d batches", len(sink.Batches()))
+	}
+	saw := false
+	for _, c := range *calls {
+		if c.table == "wp_loyalty_members" {
+			saw = len(c.samples["email"]) == 30
+		}
+	}
+	if !saw {
+		t.Error("the untyped email column wasn't sampled for detect")
 	}
 }
 
