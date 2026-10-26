@@ -36,7 +36,7 @@ Every ID is a constant in `core/ids.go`. Severities are fixed unless the row say
 
 PRD 15.2 IDs verify doesn't raise itself:
 
-- `config.environment` and every `side-effect.*` except `side-effect.mail` with `--echo` (`side-effect.connector-changed`, `side-effect.cron`, `side-effect.action-scheduler`, `side-effect.webhooks`, `side-effect.gateways`, `side-effect.subscriptions`, `side-effect.automatewoo`, `side-effect.queue`, `side-effect.jetpack`, `side-effect.not-applicable`) come from the site lane's Steps through `Job.Steps`; verify records their side effects and findings as they come, each Step is one check, and `--skip` leaves a Step out by its ID (`side-effects` for a `side-effect.*` Step, `config` for a `config.*` one).
+- `config.environment` and every `side-effect.*` except `side-effect.mail` with `--echo` (`side-effect.connector-changed`, `side-effect.cron`, `side-effect.action-scheduler`, `side-effect.webhooks`, `side-effect.gateways`, `side-effect.subscriptions`, `side-effect.automatewoo`, `side-effect.queue`, `side-effect.jetpack`, `side-effect.not-applicable`) come from the site lane's Steps through `Job.Steps`; verify records their side effects and findings as they come. Each Step is one check; `--skip` leaves a Step out by its ID (`side-effects` for a `side-effect.*` Step, `config` for a `config.*` one).
 - `data.unparseable` and `info.kept-users` are copy and prepare findings (engine lane).
 - `soundcheck.failed` comes from `verify.SoundcheckFinding` over the result of `verify.Soundcheck`, which the CLI runs.
 

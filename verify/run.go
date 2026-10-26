@@ -510,7 +510,7 @@ func (r *run) uncovered(tables []*core.Table, samples map[string]map[string][][]
 
 // noteUnparsed lists the columns holding serialized-looking values that
 // didn't parse under coverage skipped. Verify reads such a value as plain
-// text, so an email inside it is still found, but one written escaped or
+// text, so an email inside it is still found; one written escaped or
 // with a length prefix that broke the parse may not be. Only copy and
 // prepare report data.unparseable, since only they can blank the value.
 func (r *run) noteUnparsed() {
