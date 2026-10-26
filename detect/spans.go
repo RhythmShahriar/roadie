@@ -11,10 +11,11 @@ import (
 )
 
 // textSpanner finds the personal values the scrubber replaces in free
-// text: personal emails, strong-format phones, grouped cards and public
-// IPs. It applies every detector guard but the allow lists, which belong
-// to verify: a business address on the allow list is still replaced in a
-// customer's order note.
+// text: personal emails, strong-format phones, grouped cards (or cards
+// after a card word), public IPs and streets written as a number and a
+// street name. It applies every detector guard but the allow lists,
+// which belong to verify: a business address on the allow list is still
+// replaced in a customer's order note.
 type textSpanner struct{}
 
 // Spans returns the values in text, sorted and without overlap; where two
@@ -34,6 +35,9 @@ func (textSpanner) Spans(text []byte) []core.Span {
 	})
 	ipSpans(text, func(start, end int) {
 		out = append(out, core.Span{Start: start, End: end, Kind: core.KIP})
+	})
+	scanStreets(text, func(start, end int) {
+		out = append(out, core.Span{Start: start, End: end, Kind: core.KStreet})
 	})
 	if len(out) < 2 {
 		return out

@@ -38,8 +38,9 @@ func Name() core.Detector { return nameDetector{} }
 // Address finds real street addresses (pii.address).
 func Address() core.Detector { return addressDetector{} }
 
-// TextSpans finds emails, strong phones, cards and IPs in free text, for
-// pseudo.Scrub. Spans are of kind email, phone, ip or KCard.
+// TextSpans finds emails, strong phones, cards, IPs and streets in free
+// text, for pseudo.Scrub. Spans are of kind email, phone, ip, street or
+// KCard.
 func TextSpans() core.Spanner { return textSpanner{} }
 
 // Survivors finds production values that survived in the copy, in any

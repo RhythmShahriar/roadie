@@ -32,10 +32,31 @@ type cardMatch struct {
 	digits     string
 }
 
+// cardWords are the words that say an ungrouped number in free text is
+// a card: "paid with card 4789...", "Visa 4111...".
+var cardWords = []string{"card", "visa", "mastercard", "amex", "maestro", "credit", "debit", "karte", "carte", "tarjeta", "kaart"}
+
+// cardWordWindow is how far before a number a card word may stand.
+const cardWordWindow = 40
+
+// cardWordBefore reports whether a card word stands in the bytes just
+// before v[i].
+func cardWordBefore(v []byte, i int) bool {
+	lo := max(0, i-cardWordWindow)
+	before := strings.ToLower(string(v[lo:i]))
+	for _, w := range cardWords {
+		if strings.Contains(before, w) {
+			return true
+		}
+	}
+	return false
+}
+
 // scanCards calls fn for every Luhn-valid card number in v that is not a
-// published test card: grouped like a card anywhere, or any run of 13 to
-// 19 digits in a card column. Ungrouped digits in free text are order IDs
-// as often as cards and are left alone.
+// published test card: grouped like a card anywhere, any run of 13 to 19
+// digits in a card column, or one in free text with a card word (card,
+// Visa, credit) in the 40 bytes before it. Other ungrouped digits in
+// free text are order IDs as often as cards and are left alone.
 func scanCards(v []byte, cardCol bool, fn func(m cardMatch)) {
 	if !hasDigit(v) {
 		return
@@ -48,7 +69,7 @@ func scanCards(v []byte, cardCol bool, fn func(m cardMatch)) {
 			continue
 		}
 		end, n, grouped := readCard(v, i, &buf)
-		if (grouped || cardCol) && cardValid(buf[:n]) && !isWordRune(runeAt(v, end)) {
+		if (grouped || cardCol || cardWordBefore(v, i)) && cardValid(buf[:n]) && !isWordRune(runeAt(v, end)) {
 			fn(cardMatch{start: i, end: end, digits: string(buf[:n])})
 		}
 		i = max(end, i+size)

@@ -108,3 +108,29 @@ func TestDigitsAheadBrackets(t *testing.T) {
 		}
 	}
 }
+
+// A street written as a number, capitalised name words and a street word
+// is a span of free text; other numbers and words are not.
+func TestStreetSpans(t *testing.T) {
+	for text, want := range map[string]string{
+		"Hello, I live at 457 Sabafoben Close. Reach me": "457 Sabafoben Close",
+		"Straße 870 Bukovulir Close, 1. OG, Köln":        "870 Bukovulir Close",
+		"Ship to 12a High St. please":                    "12a High St.",
+		"Flat 3, 221 Baker Street, London":               "221 Baker Street",
+		"Deliver to 9 Upper Saint Mary's Road":           "9 Upper Saint Mary's Road",
+		"Order 12345 shipped on Close date":              "",
+		"We open at 9 Monday Street sales":               "9 Monday Street",
+		"Room 101 is closed":                             "",
+		"1234567 Long Road":                              "",
+		"see 12 the road":                                "",
+		"12 Very Long Name Of Road":                      "",
+		"v2 Release Road":                                "",
+		"12 Main Streetwise":                             "",
+	} {
+		var got []string
+		scanStreets([]byte(text), func(a, b int) { got = append(got, text[a:b]) })
+		if want == "" && len(got) != 0 || want != "" && (len(got) != 1 || got[0] != want) {
+			t.Errorf("%q: %q, want %q", text, got, want)
+		}
+	}
+}
