@@ -223,10 +223,7 @@ func configCheck(p *parsed, stdout, stderr io.Writer) error {
 	fmt.Fprintf(stdout, "%s is valid.\n", path)
 	seen := map[string]bool{}
 	for i, line := range strings.Split(string(b), "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
-			continue
-		}
-		for _, m := range roadieVar.FindAllStringSubmatch(line, -1) {
+		for _, m := range roadieVar.FindAllStringSubmatch(yamlCode(line), -1) {
 			if _, ok := dep.env(m[1]); !ok && !seen[m[1]] {
 				seen[m[1]] = true
 				fmt.Fprintf(stdout, "Unset: %s (line %d); set it before a run that reads it.\n", m[1], i+1)
@@ -234,6 +231,27 @@ func configCheck(p *parsed, stdout, stderr io.Writer) error {
 		}
 	}
 	return nil
+}
+
+// yamlCode is a config line without its comment: a # at the start or
+// after a space or tab, outside quotes, starts one (YAML 1.2).
+func yamlCode(line string) string {
+	var quote rune
+	prev := ' '
+	for i, c := range line {
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		case c == '#' && (prev == ' ' || prev == '\t'):
+			return line[:i]
+		}
+		prev = c
+	}
+	return line
 }
 
 // configFile is the settings file config check and show read.

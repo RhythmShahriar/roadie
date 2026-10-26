@@ -280,7 +280,7 @@ func TestAddSuggestionsHostileNames(t *testing.T) {
 func TestConfigCheck(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	os.WriteFile(path, []byte("source: \"\"\nkeys:\n  test_keys: {stripe: \"${ROADIE_STRIPE_TEST}\", paypal: \"${ROADIE_SET}\"}\n# ${ROADIE_IN_A_COMMENT}\n"), 0o600)
+	os.WriteFile(path, []byte("source: \"\"\nkeys:\n  test_keys: {stripe: \"${ROADIE_STRIPE_TEST}\", paypal: \"${ROADIE_SET}\"}\n# ${ROADIE_IN_A_COMMENT}\nurl: \"https://s.test/#${ROADIE_SET}\" # ${ROADIE_AFTER_A_VALUE}\n"), 0o600)
 	testDeps(t, func(d *deps) {
 		d.loadConfig = func(p string, _ func(string) (string, bool)) (*roadiecfg.Config, error) {
 			if p == "bad.yaml" {
@@ -306,6 +306,21 @@ func TestConfigCheck(t *testing.T) {
 	}
 	if _, errOut, code := runCmd(t, "config"); code != 2 || !strings.Contains(errOut, "say what to do: init, check, show or key") {
 		t.Errorf("no subcommand: exit %d %q", code, errOut)
+	}
+}
+
+func TestYAMLCode(t *testing.T) {
+	for in, want := range map[string]string{
+		"# all comment":                 "",
+		"a: b # note":                   "a: b ",
+		"a: b#c":                        "a: b#c",
+		`a: "x # y" # z`:                `a: "x # y" `,
+		`a: 'it''s # x'`:                `a: 'it''s # x'`,
+		"a: ${ROADIE_A}\t# ${ROADIE_B}": "a: ${ROADIE_A}\t",
+	} {
+		if got := yamlCode(in); got != want {
+			t.Errorf("yamlCode(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 
