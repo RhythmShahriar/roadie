@@ -45,10 +45,19 @@ func TestRewriteForms(t *testing.T) {
 		{"https://shop.com.", "https://staging.shop.test.", 1},
 		{"a https://shop.com b http://shop.com", "a https://staging.shop.test b https://staging.shop.test", 2},
 		{"ftp://shop.com", "ftp://staging.shop.test", 1},
+		{"https://shop.com/a@b", "https://staging.shop.test/a@b", 1},
+		{"https://shop.com:8443/a?u=x@y", "https://staging.shop.test:8443/a?u=x@y", 1},
+		{"https://shop.com mail jane@x.example", "https://staging.shop.test mail jane@x.example", 1},
+		{"https%3A%2F%2Fshop.com%2Fa%40b", "https%3A%2F%2Fstaging.shop.test%2Fa%40b", 1},
 		// left alone
 		{"jane@shop.com", "jane@shop.com", 0},
 		{"mailto:jane@shop.com", "mailto:jane@shop.com", 0},
 		{"https://jane@shop.com", "https://jane@shop.com", 0},
+		// shop.com as the user part of a URL to another host
+		{"https://shop.com@other.example/x", "https://shop.com@other.example/x", 0},
+		{"https://shop.com:pw@other.example", "https://shop.com:pw@other.example", 0},
+		{"https://shop.com:8443@other.example", "https://shop.com:8443@other.example", 0},
+		{"https%3A%2F%2Fshop.com%40other.example", "https%3A%2F%2Fshop.com%40other.example", 0},
 		{"https://myshop.com", "https://myshop.com", 0},
 		{"https://shop.com.au", "https://shop.com.au", 0},
 		{"https://shop.community", "https://shop.community", 0},
@@ -302,6 +311,12 @@ func decodeEntities(s string) string {
 
 // survivor reports a //shop.com at a host boundary in text.
 func survivor(text []byte, host string) bool {
+	return survivorAt(text, host, true)
+}
+
+// survivorAt is survivor; skipUser false also counts a host that is the
+// user part of a URL to another host.
+func survivorAt(text []byte, host string, skipUser bool) bool {
 	low := asciiLower(text)
 	for i := 0; ; {
 		j := bytes.Index(low[i:], []byte("//"+host))
@@ -309,7 +324,7 @@ func survivor(text []byte, host string) bool {
 			return false
 		}
 		end := i + j + 2 + len(host)
-		if hostEnds(text, end) {
+		if hostEnds(text, end) && (!skipUser || !userinfo(text, end)) {
 			return true
 		}
 		i += j + 1
@@ -328,7 +343,7 @@ func asciiLower(b []byte) []byte {
 func FuzzURLRewrite(f *testing.F) {
 	for _, s := range []string{
 		"https://shop.com/x", `https:\/\/shop.com`, "https%3A%2F%2Fshop.com", "https:&#x2F;&#x2F;shop.com",
-		"//www.shop.com", "jane@shop.com", "https://myshop.com", "https://shop.com.au", "https://shop.community",
+		"//www.shop.com", "jane@shop.com", "https://shop.com@other.example", "https%3A%2F%2Fshop.com%40x", "https://myshop.com", "https://shop.com.au", "https://shop.community",
 		`/\/shop.com`, "&#0047;/shop.com", "%2f/SHOP.com:80", "https://staging.shop.test",
 	} {
 		f.Add([]byte(s))
@@ -344,7 +359,7 @@ func FuzzURLRewrite(f *testing.F) {
 		if n == 0 && !bytes.Equal(out, b) {
 			t.Fatalf("no match but changed: %q", out)
 		}
-		if !survivor(decodeAll(b), "shop.com") && !survivor(decodeAll(b), "www.shop.com") && n != 0 {
+		if !survivorAt(decodeAll(b), "shop.com", false) && !survivorAt(decodeAll(b), "www.shop.com", false) && n != 0 {
 			t.Fatalf("rewrote %q without a production URL: %q", b, out)
 		}
 		again, n2 := m.Rewrite(out)

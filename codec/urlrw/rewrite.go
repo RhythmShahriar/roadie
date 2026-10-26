@@ -198,6 +198,36 @@ func hostEnds(text []byte, i int) bool {
 	return !hostByte(c)
 }
 
+// userinfo reports whether the host that ends at i is the user part of
+// another URL's authority, as in https://shop.com@other.example: an '@'
+// (or %40) before any byte that ends an authority, a '/', '?' or '#' in
+// any spelling among them. That URL points at the other host, so it
+// stays.
+func userinfo(text []byte, i int) bool {
+	for ; i < len(text); i++ {
+		c := text[i]
+		switch {
+		case c == '@':
+			return true
+		case c == '%':
+			if i+2 >= len(text) {
+				return false
+			}
+			a, b := text[i+1], text[i+2]|0x20 // b lower-cased if a letter
+			switch {
+			case a == '4' && b == '0':
+				return true
+			case a == '2' && (b == 'f' || b == '3'), a == '3' && b == 'f':
+				return false
+			}
+		case alnum(c), c == '-', c == '.', c == '_', c == '~', c == ':', c == '!', c == '$', c == '*', c == '+', c == '=':
+		default:
+			return false
+		}
+	}
+	return false
+}
+
 func alnum(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
@@ -225,7 +255,7 @@ func (r *rule) try(text []byte, h int) (match, bool) {
 	}
 	slashes := h - s2 - s1
 	end := h + len(r.host)
-	if !hostEnds(text, end) {
+	if !hostEnds(text, end) || userinfo(text, end) {
 		return match{}, false
 	}
 	// The port: From's own must be there; otherwise one in the text goes
