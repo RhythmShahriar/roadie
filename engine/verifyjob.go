@@ -37,6 +37,9 @@ func VerifyJob(ctx context.Context, j Job, target core.Endpoint, from *core.Endp
 	if r.opts.URL == "" {
 		r.opts.URL = cfg.URL
 	}
+	if err := needConfig(cfg, j.Opts, core.Endpoint{}, target, true); err != nil {
+		return verify.Job{}, err
+	}
 	defer func() {
 		for _, s := range r.opened {
 			_ = s.Close()

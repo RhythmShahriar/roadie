@@ -1006,3 +1006,63 @@ func TestVerifyJobProductionHosts(t *testing.T) {
 		t.Errorf("stdin twice: %v", err)
 	}
 }
+
+// loadConfig writes yaml as .roadie/config.yaml in a temp project and
+// loads it with no ROADIE_ variables set.
+func loadConfig(t *testing.T, yaml string) *roadiecfg.Config {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), ".roadie")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := roadiecfg.Load(path, func(string) (string, bool) { return "", false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// A key the run uses that reads an unset ${ROADIE_*} stops the run with
+// config, exit 2, before the lock: the literal placeholder is never used
+// as a drop glob, a test key or a rewrite target. A key a flag replaces
+// doesn't stop it.
+func TestRunUnsetVariable(t *testing.T) {
+	for _, tc := range []struct{ name, yaml, want string }{
+		{"drop", "drop: ['${ROADIE_T}']\n", "drop[0] reads ${ROADIE_T}, which isn't set."},
+		{"test key", "keys:\n  test_keys:\n    stripe: '${ROADIE_STRIPE_TEST}'\n", "keys.test_keys.stripe reads ${ROADIE_STRIPE_TEST}, which isn't set."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := useRunFakes(t)
+			j := f.job(Copy)
+			j.Config = loadConfig(t, tc.yaml)
+			_, err := Run(context.Background(), j)
+			var ce *core.Error
+			if !errors.As(err, &ce) || ce.Code != core.ErrConfig || ce.Exit != 2 || !strings.Contains(ce.Msg, tc.want) ||
+				!strings.HasSuffix(ce.Msg, "Set it in the environment, or remove the entry.") {
+				t.Fatalf("err %v", err)
+			}
+			if f.rec.index("lock") >= 0 || len(f.opened) != 0 || len(f.staging.Writes()) != 0 {
+				t.Errorf("ran past the check: %v", f.rec.all())
+			}
+			vj := Job{Config: j.Config, Opts: Options{FailOn: core.SeverityHigh}}
+			if _, err := VerifyJob(context.Background(), vj, stagingEP, nil); !isCode(err, core.ErrConfig) {
+				t.Errorf("verify: %v", err)
+			}
+		})
+	}
+	// --url replaces url:, so its unset variable is never read.
+	f := useRunFakes(t)
+	j := f.job(Copy)
+	j.Config = loadConfig(t, "url: '${ROADIE_URL}'\n")
+	if _, err := Run(context.Background(), j); err != nil {
+		t.Errorf("url replaced by the flag: %v", err)
+	}
+	j.Opts.URL = ""
+	if _, err := Run(context.Background(), j); !isCode(err, core.ErrConfig) {
+		t.Errorf("url read from the file: %v", err)
+	}
+}

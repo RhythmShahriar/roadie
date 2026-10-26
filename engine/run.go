@@ -138,6 +138,12 @@ func (r *runner) run(ctx context.Context) error {
 	if err := r.endpoints(); err != nil {
 		return err
 	}
+	// Before the lock and before anything opens: a literal ${ROADIE_X}
+	// would otherwise be used as the value (a drop glob that matches
+	// nothing, a test key, a rewrite target).
+	if err := needConfig(cfg, r.j.Opts, r.j.From, r.j.To, r.mode == Prepare); err != nil {
+		return err
+	}
 	if r.mode == Prepare {
 		if r.only, err = parseOnly(r.opts.Only); err != nil {
 			return err
@@ -437,6 +443,51 @@ func effective(base *roadiecfg.Config, o Options) (*roadiecfg.Config, error) {
 		c.SideEffects.Echo.Proxy = o.EchoProxy
 	}
 	return &c, nil
+}
+
+// needConfig fails when a key the run uses reads a ${ROADIE_*} variable
+// that isn't set (roadiecfg.Config.Need, exit 2). A key a flag replaces
+// isn't used, so its unset variable doesn't stop the run; source: and
+// target: count only when the endpoint is the config's value, and
+// prepare never reads source:.
+func needConfig(c *roadiecfg.Config, o Options, from, to core.Endpoint, prepare bool) error {
+	keys := make([]string, 0, len(c.Unset))
+	for k := range c.Unset {
+		if !flagReplaces(k, o) {
+			keys = append(keys, k)
+		}
+	}
+	slices.Sort(keys)
+	for _, k := range keys {
+		switch {
+		case k == "source" && (prepare || from.Raw != c.Source),
+			k == "target" && to.Raw != c.Target:
+			continue
+		}
+		if err := c.Need(k); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// flagReplaces reports whether a flag set in o replaces the config key k,
+// so the value read from the file is never used.
+func flagReplaces(k string, o Options) bool {
+	under := func(key string) bool {
+		return k == key || strings.HasPrefix(k, key+".") || strings.HasPrefix(k, key+"[")
+	}
+	switch {
+	case o.URL != "" && under("url"),
+		o.Stack != "" && under("stack"),
+		o.EmailDomain != "" && under("pseudonymise.email_domain"),
+		len(o.KeepUsers) > 0 && under("pseudonymise.keep_users"),
+		o.Keys != "" && under("keys.mode"),
+		o.EchoURL != "" && under("side_effects.echo.url"),
+		o.EchoProxy != "" && under("side_effects.echo.proxy"):
+		return true
+	}
+	return false
 }
 
 // stripData is the config of a prepare that leaves the data alone: no
