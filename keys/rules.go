@@ -274,14 +274,24 @@ func findTokensFrom(v []byte, src ctxSource) []keyToken {
 	for i := 0; i < len(v); i++ {
 		if i >= runEnd {
 			// No key is shorter than minKeyLen bytes of key characters,
-			// so a shorter run (a word, a number) is skipped whole.
-			runEnd = i
+			// so a shorter run (a word, a number) is skipped whole. The
+			// window is read from its far end: the last non-key byte in
+			// it is where the next run can start, so prose is passed over
+			// a word at a time, not a byte at a time.
+			if i+minKeyLen > len(v) {
+				break
+			}
+			k := i + minKeyLen - 1
+			for k >= i && isKeyByte(v[k]) {
+				k--
+			}
+			if k >= i {
+				i = k
+				continue
+			}
+			runEnd = i + minKeyLen
 			for runEnd < len(v) && isKeyByte(v[runEnd]) {
 				runEnd++
-			}
-			if runEnd-i < minKeyLen {
-				i = runEnd
-				continue
 			}
 		}
 		if i > 0 && isWord(v[i-1]) {
@@ -320,9 +330,17 @@ func findTokensFrom(v []byte, src ctxSource) []keyToken {
 const minKeyLen = 20
 
 // isKeyByte reports whether c can be part of a key of the table.
-func isKeyByte(c byte) bool {
-	return isAlnum(c) || c == '_' || c == '-' || c == '$' || c == '.' || c == '+' || c == '/' || c == '='
-}
+func isKeyByte(c byte) bool { return keyBytes[c] }
+
+// keyBytes is isKeyByte as a table: findTokens tests every byte of every
+// value with it.
+var keyBytes = func() (t [256]bool) {
+	for c := range 256 {
+		b := byte(c)
+		t[c] = isAlnum(b) || strings.IndexByte("_-$.+/=", b) >= 0
+	}
+	return t
+}()
 
 // nameRule finds a key with no marker by where it is stored: the
 // setting's name, the option or meta key of its row and the path to it.
@@ -775,17 +793,22 @@ func scanRules(in scanInput) []Hit {
 	if len(out) > 0 {
 		return out
 	}
-	val := strings.TrimSpace(string(in.v))
-	if in.name != "" && credentialShaped(val) {
+	// The value is only copied to a string, and tested for a stand-in,
+	// once its shape passed and a name rule matched: most values in a
+	// dump are prose or numbers under names no rule knows.
+	if raw := bytes.TrimSpace(in.v); in.name != "" && credentialShaped(raw) {
 		for _, r := range nameRules {
 			if !r.match(in.name, in.context()) {
 				continue
+			}
+			if len(raw) <= 64 && placeholder(string(raw)) {
+				break
 			}
 			provider := r.provider
 			if provider == "mail" {
 				provider = mailProvider(in.name, in.context())
 			}
-			return []Hit{newHit(provider, r.sev, r.env(in.name, in.sib), val, in)}
+			return []Hit{newHit(provider, r.sev, r.env(in.name, in.sib), string(raw), in)}
 		}
 	}
 	if ownSecrets[in.name] {
@@ -795,13 +818,10 @@ func scanRules(in scanInput) []Hit {
 }
 
 // credentialShaped reports whether a value marked as a credential by its
-// name could be one: no spaces and 8 or more bytes, or a JSON or
-// serialized value never.
-func credentialShaped(v string) bool {
-	if len(v) < 8 || len(v) > 4096 || placeholder(v) {
-		return false
-	}
-	return !strings.ContainsAny(v, " \t\r\n{};")
+// name could be one: no spaces and 8 to 4096 bytes, so a JSON or
+// serialized value never. The caller tests for a placeholder.
+func credentialShaped(v []byte) bool {
+	return len(v) >= 8 && len(v) <= 4096 && !bytes.ContainsAny(v, " \t\r\n{};")
 }
 
 // genericHits runs kit's rules: token formats on the value itself and
@@ -841,18 +861,28 @@ func genericHits(in scanInput) []Hit {
 // characters from [A-Za-z0-9_.+=~$-] holding a letter and a digit; the
 // formats without one are a PEM private key and a URL with a password.
 func mayHoldToken(v []byte) bool {
-	run, seen := 0, uint8(0)
-	for _, c := range v {
-		k := tokenClass[c]
-		if k == 0 {
-			run, seen = 0, 0
+	const minRun = 20
+	for s := 0; s+minRun <= len(v); {
+		// Read the window from its far end: a byte that ends a run there
+		// means no run of minRun starts before it, so the scan moves on
+		// past it after reading a few bytes, not all of them.
+		k := s + minRun - 1
+		for k >= s && tokenClass[v[k]] != 0 {
+			k--
+		}
+		if k >= s {
+			s = k + 1
 			continue
 		}
-		run++
-		seen |= k
-		if run >= 20 && seen&(classLetter|classDigit) == classLetter|classDigit {
+		seen := uint8(0)
+		e := s
+		for ; e < len(v) && tokenClass[v[e]] != 0; e++ {
+			seen |= tokenClass[v[e]]
+		}
+		if seen&(classLetter|classDigit) == classLetter|classDigit {
 			return true
 		}
+		s = e + 1
 	}
 	return bytes.Contains(v, []byte("PRIVATE KEY")) || bytes.Contains(v, []byte("://")) && bytes.IndexByte(v, '@') >= 0
 }
@@ -886,13 +916,28 @@ func secretishName(name string) bool {
 	if name == "" || notSecretNames[name] {
 		return false
 	}
-	for _, w := range []string{"pass", "pw", "secret", "token", "key", "auth", "dsn", "credential", "otp"} {
-		if strings.Contains(name, w) {
-			return true
+	// One pass over the name, trying only the words its byte can start:
+	// this runs for every value of a named setting.
+	for i := 0; i < len(name); i++ {
+		for _, w := range secretWordsByFirst[name[i]] {
+			if strings.HasPrefix(name[i:], w) {
+				return true
+			}
 		}
 	}
 	return false
 }
+
+// secretWords are the words of kit's name rules, indexed by first byte
+// in secretWordsByFirst.
+var secretWords = []string{"pass", "pw", "secret", "token", "key", "auth", "dsn", "credential", "otp"}
+
+var secretWordsByFirst = func() (m [256][]string) {
+	for _, w := range secretWords {
+		m[w[0]] = append(m[w[0]], w)
+	}
+	return m
+}()
 
 // notSecretNames are settings whose names look secret to kit and whose
 // values are not credentials: WooCommerce's order key is in every order

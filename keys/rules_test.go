@@ -413,9 +413,98 @@ func TestMayHoldToken(t *testing.T) {
 		"abcdefghij 0123456789":                    false,
 		"https://shop.example/a@2x.png":            true,
 		"":                                         false,
+		"word abcdefghij0123456789":                true,
+		"abcdefghij012345678 abcdefghij012345678":  false,
+		"abcdefghijklmnopqrs 0123456789abcdefghij": true,
+		"0123456789012345678a":                     true,
 	} {
 		if got := mayHoldToken([]byte(v)); got != want {
 			t.Errorf("mayHoldToken(%q) = %v, want %v", v, got, want)
 		}
 	}
+}
+
+// mayHoldTokenRef is mayHoldToken read byte by byte, as it was before
+// the window skip: the fuzz target holds the two to the same answer.
+func mayHoldTokenRef(v []byte) bool {
+	run, seen := 0, uint8(0)
+	for _, c := range v {
+		k := tokenClass[c]
+		if k == 0 {
+			run, seen = 0, 0
+			continue
+		}
+		run++
+		seen |= k
+		if run >= 20 && seen&(classLetter|classDigit) == classLetter|classDigit {
+			return true
+		}
+	}
+	return bytes.Contains(v, []byte("PRIVATE KEY")) || bytes.Contains(v, []byte("://")) && bytes.IndexByte(v, '@') >= 0
+}
+
+// findTokensRef is findTokens reading every run forward, as it was
+// before the window skip.
+func findTokensRef(v []byte, ctx string) []keyToken {
+	var out []keyToken
+	runEnd := 0
+	for i := 0; i < len(v); i++ {
+		if i >= runEnd {
+			runEnd = i
+			for runEnd < len(v) && isKeyByte(v[runEnd]) {
+				runEnd++
+			}
+			if runEnd-i < minKeyLen {
+				i = runEnd
+				continue
+			}
+		}
+		if i > 0 && isWord(v[i-1]) {
+			continue
+		}
+		for _, ri := range rulesByFirst[v[i]] {
+			r := &tokenRules[ri]
+			if r.context != "" && !strings.Contains(ctx, r.context) {
+				continue
+			}
+			end, env, body := r.match(v, i)
+			if end < 0 {
+				continue
+			}
+			if !placeholderBody(v[body:end]) {
+				out = append(out, keyToken{rule: r, start: i, end: end, env: env})
+			}
+			i = end - 1
+			break
+		}
+	}
+	return out
+}
+
+// The window skip of mayHoldToken and findTokens finds what a byte by
+// byte read finds, on any input.
+func FuzzTokenSkip(f *testing.F) {
+	for _, s := range []string{
+		"abcdefghij0123456789", "word abcdefghij0123456789", "abcdefghij012345678 abcdefghij012345678",
+		"key=" + "sk_" + "live_" + "51Hc8d2e3f4g5h6i7j8k9l0m", "x " + "AKIA" + "IOSFODNN7EXAMPLQ" + " y",
+		"Lorem ipsum dolor sit amet, consectetur adipiscing elit.", "-----BEGIN RSA PRIVATE KEY-----", "",
+	} {
+		f.Add([]byte(s))
+	}
+	f.Fuzz(func(t *testing.T, v []byte) {
+		if got, want := mayHoldToken(v), mayHoldTokenRef(v); got != want {
+			t.Fatalf("mayHoldToken(%q) = %v, the byte read says %v", v, got, want)
+		}
+		const ctx = "woocommerce_stripe_settings secret_key wp_options"
+		got := findTokens(v, func() string { return ctx })
+		want := findTokensRef(v, ctx)
+		if len(got) != len(want) {
+			t.Fatalf("findTokens(%q) = %d keys, the byte read finds %d", v, len(got), len(want))
+		}
+		for i := range got {
+			if got[i].start != want[i].start || got[i].end != want[i].end || got[i].rule != want[i].rule {
+				t.Fatalf("findTokens(%q)[%d] = %+v, the byte read finds %+v", v, i, got[i], want[i])
+			}
+		}
+	})
 }
