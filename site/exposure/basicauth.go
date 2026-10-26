@@ -38,8 +38,8 @@ const (
 	passwordLen = 20
 	passwordABC = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 	// bcryptRounds is htpasswd -B's default. The servers check the hash on
-	// every request (each image of a page), and a 20-character random
-	// password needs no slow hash to resist guessing.
+	// every request (each image of a page); a 20-character random password
+	// needs no slow hash to resist guessing.
 	bcryptRounds = 5
 )
 

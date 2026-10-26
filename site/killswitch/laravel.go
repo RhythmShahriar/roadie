@@ -212,7 +212,7 @@ func laravelSaltsStep(o Options) core.Step {
 	plan, apply := envEdit(o, id,
 		func(*dotenv.File) []string {
 			if o.KeepAppKey {
-				return []string{"APP_KEY kept (--keep-app-key): it is production's key, so encrypted columns and old sessions stay readable only with it, and this copy can read what production encrypts"}
+				return []string{"APP_KEY kept (--keep-app-key): it is production's key, so encrypted columns and old sessions stay readable only with it; this copy can also read what production encrypts"}
 			}
 			return []string{o.setLine("APP_KEY", "base64: and 32 random bytes") + ": encrypted columns and old sessions from production become unreadable (pass --keep-app-key to keep the key)"}
 		},
@@ -256,7 +256,7 @@ var mailCredentialKeys = map[string][]string{
 
 // laravelMailStep points MAIL_* at Echo's SMTP sink. MAIL_URL, MAIL_SCHEME
 // and MAIL_ENCRYPTION are blanked when the file has them: a MAIL_URL wins
-// over MAIL_HOST, and TLS to the sink would fail.
+// over MAIL_HOST; TLS to the sink would fail.
 func laravelMailStep(o Options) core.Step {
 	id := core.FindingSideEffectMail
 	rel := o.envFile()

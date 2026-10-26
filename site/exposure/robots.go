@@ -142,7 +142,7 @@ func (st *robots) Check(ctx context.Context, s core.Site) (core.SideEffect, []co
 		return se, nil, nil
 	}
 	if physical && !Blocks(b) {
-		se.Status, se.How = "on", rel+" lets crawlers in, and a physical robots.txt wins over WordPress's own"
+		se.Status, se.How = "on", rel+" lets crawlers in; a physical robots.txt wins over WordPress's own"
 		if s.Stack() == core.StackLaravel {
 			se.How = rel + " lets crawlers in"
 		}
