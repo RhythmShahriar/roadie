@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("User-agent: Googlebot\nDisallow:\n\nuser-agent: *\r\nDisallow: / # all\r\nAllow:\n")

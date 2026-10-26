@@ -1,0 +1,9 @@
+# Roadie basic auth for a staging copy (Caddy 2).
+# Put these lines in the site's block and reload Caddy. The hash is in
+# the file itself; Caddy needs no .htpasswd.
+# Loopback requests pass without a password, so WP-Cron spawns and Site
+# Health keep working.
+@notLocal not remote_ip 127.0.0.1 ::1
+basicauth @notLocal {
+	staging $2a$05$AAAAAAAAAAAAAAAAAAAAAAbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+}

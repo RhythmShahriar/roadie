@@ -4,8 +4,8 @@
 // Package exposure keeps a staging copy out of search engines and away
 // from visitors: noindex, robots.txt and a basic auth snippet.
 //
-// The exported names in this file are the frozen cross-lane API; the site
-// lane replaces the bodies, which return core.ErrNotBuilt until then.
+// The exported names in this file are the frozen cross-lane API; new
+// names are added, never changed.
 package exposure
 
 import (
@@ -13,13 +13,18 @@ import (
 	"github.com/RhythmShahriar/roadie/site/killswitch"
 )
 
-// Steps returns the exposure steps.
+// Steps returns the exposure steps: one search.indexable step that
+// replaces a physical robots.txt (WordPress and Laravel) and checks that
+// the copy tells crawlers to stay out. The noindex hooks themselves are in
+// the Roadie mu-plugin, which the kill switch writes.
 func Steps(o killswitch.Options) []core.Step {
-	return nil
+	return []core.Step{robotsStep(o)}
 }
 
 // BasicAuth returns the files of a basic auth setup for user and the
-// password it chose.
+// password it chose: apache.htaccess, .htpasswd, nginx.conf and Caddyfile,
+// to go under BasicAuthDir. The password is in no file; the caller prints
+// it once.
 func BasicAuth(user string) (files map[string][]byte, password string, err error) {
-	return nil, "", core.ErrNotBuilt
+	return basicAuth(user, PasswdFile)
 }
