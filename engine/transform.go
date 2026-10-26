@@ -989,10 +989,14 @@ func (t *transformer) keys(out *batchOut, rc rowCtx, col core.Column, leafPath s
 	}
 	cur, changed := leaf, false
 	mode := t.sh.cfg.Keys.Mode
+	// The report shows the path masked: a key the data chose (a session
+	// hash, an address) is never printed. replaceKey reads the real one.
+	shown := at
+	shown.Path = core.MaskPath(leafPath)
 	for _, h := range hits {
 		h.At = at
 		if h.Env != "live" {
-			h.Action = "kept"
+			h.Action, h.At = "kept", shown
 			out.keys = append(out.keys, h)
 			continue
 		}
@@ -1000,7 +1004,7 @@ func (t *transformer) keys(out *batchOut, rc rowCtx, col core.Column, leafPath s
 		if err != nil {
 			return leaf, false, err
 		}
-		h.Action = action
+		h.Action, h.At = action, shown
 		out.keys = append(out.keys, h)
 		if !bytes.Equal(nv, cur) {
 			cur, changed = nv, true

@@ -174,3 +174,113 @@ func MaskRow(table string, pk map[string]string) string {
 	}
 	return strings.Join(parts, ",")
 }
+
+// pathFormats are the prefixes codec/nested gives each format level of a
+// leaf path.
+var pathFormats = []string{"serialized:", "json:", "base64:"}
+
+// MaskPath masks every key of a leaf path that came from the data rather
+// than from a program (PRD 15.3: a location holds row keys, never values).
+// A plugin may key its data by an address, a name, a phone or a session
+// hash: {"Jane Doe": {...}}. A key that reads as a program's name
+// (letters, digits, _ and -, starting with a letter, short and with few
+// digits) or a small number stays; an address is masked as MaskEmail
+// masks it; any other key becomes <key>. "json:jane@shop\.com.name"
+// gives "json:ja•••@sh•••.com.name" and "json:Jane Doe.phone" gives
+// "json:<key>.phone".
+func MaskPath(p string) string {
+	if p == "" {
+		return p
+	}
+	segs := splitPath(p)
+	for i, s := range segs {
+		var prefix string
+		for again := true; again; {
+			again = false
+			for _, f := range pathFormats {
+				if strings.HasPrefix(s, f) {
+					prefix, s, again = prefix+f, s[len(f):], true
+				}
+			}
+		}
+		key, idx := s, ""
+		for strings.HasSuffix(key, "]") {
+			open := strings.LastIndexByte(key, '[')
+			if open < 0 || !allDigits(key[open+1:len(key)-1]) {
+				break
+			}
+			key, idx = key[:open], key[open:]+idx
+		}
+		segs[i] = prefix + maskPathKey(key) + idx
+	}
+	return strings.Join(segs, ".")
+}
+
+// splitPath splits a leaf path at each dot that codec/nested didn't
+// escape; a dot inside a key is written as \..
+func splitPath(p string) []string {
+	var out []string
+	start := 0
+	for i := 0; i < len(p); i++ {
+		switch p[i] {
+		case '\\':
+			i++
+		case '.':
+			out = append(out, p[start:i])
+			start = i + 1
+		}
+	}
+	return append(out, p[start:])
+}
+
+// maskPathKey masks one key of a leaf path, as MaskPath says.
+func maskPathKey(k string) string {
+	plain := strings.ReplaceAll(k, `\.`, ".")
+	switch {
+	case plain == "":
+		return k
+	case allDigits(plain) && len(plain) <= 6:
+		return k
+	case programKey(plain):
+		return k
+	case strings.Count(plain, "@") == 1 && !strings.ContainsAny(plain, " \t"):
+		return MaskEmail(plain)
+	}
+	return "<key>"
+}
+
+// programKey reports a key a program chose: an identifier of at most 40
+// bytes with at most 4 digits, "billing_address_1" or "sandbox-on".
+func programKey(k string) bool {
+	if len(k) > 40 {
+		return false
+	}
+	digits := 0
+	for i := 0; i < len(k); i++ {
+		switch c := k[i]; {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c == '_':
+		case c >= '0' && c <= '9':
+			if i == 0 {
+				return false
+			}
+			digits++
+		case c == '-' && i > 0:
+		default:
+			return false
+		}
+	}
+	return digits <= 4
+}
+
+// allDigits reports a non-empty run of ASCII digits.
+func allDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}

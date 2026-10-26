@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -243,7 +242,7 @@ func (f *field) keys() {
 		}
 		seen = append(seen, l.path)
 		f.lat = f.at
-		f.lat.Path = maskPath(l.path)
+		f.lat.Path = core.MaskPath(l.path)
 		// nested escapes a dot inside a key (ada\.lee@shop\.com).
 		key := []byte(strings.ReplaceAll(l.path, `\.`, "."))
 		if !f.public {
@@ -255,21 +254,6 @@ func (f *field) keys() {
 			s.survivors.Scan(key, f.sc, f.emitFn)
 		}
 	}
-}
-
-// pathEmail is an address inside a leaf path, whose dots nested may
-// have escaped with a backslash.
-var pathEmail = regexp.MustCompile(`(?:[A-Za-z0-9_%+-]|\\?\.)+@[A-Za-z0-9-]+(?:\\?\.[A-Za-z0-9-]+)+`)
-
-// maskPath masks every address in a leaf path, for the location of a
-// finding: json:jane@shop\.com.name reads as json:ja•••@sh•••.name.
-func maskPath(p string) string {
-	if strings.IndexByte(p, '@') < 0 {
-		return p
-	}
-	return pathEmail.ReplaceAllStringFunc(p, func(m string) string {
-		return core.MaskEmail(strings.ReplaceAll(m, `\.`, "."))
-	})
 }
 
 // collect keeps one walked leaf until the walk ends. The bytes are
@@ -290,7 +274,7 @@ func (f *field) emit(h core.Hit) {
 func (f *field) leaf(p string, l []byte) {
 	s := f.s
 	f.lat = f.at
-	f.lat.Path = maskPath(p)
+	f.lat.Path = core.MaskPath(p)
 	lsc := f.sc
 	inner, key := keys.LeafKey(p)
 	if p != "" {

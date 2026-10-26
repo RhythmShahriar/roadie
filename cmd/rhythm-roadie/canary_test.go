@@ -446,3 +446,58 @@ func TestLeakScannerFindsEveryForm(t *testing.T) {
 		t.Errorf("the scanner flagged a masked value: %v", got)
 	}
 }
+
+// TestCanaryKeys seeds canaries as the keys of JSON and serialized
+// values: a plugin that keys its data by a customer's name, phone or
+// address, and WordPress's session tokens keyed by a hash. Finding
+// locations name those keys; no canary may reach any output of verify.
+func TestCanaryKeys(t *testing.T) {
+	requireLanes(t, "io", "values", "site", "detect", "engine")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	c := testutil.Canaries(20261027)
+	hash := strings.Repeat(strings.ToLower(c[core.KLastName][1])+"9f3a", 8)[:64]
+	scan := newLeakScanner(c, hash)
+	members, _ := json.Marshal(map[string]any{
+		c[core.KFullName][0]: map[string]string{"phone": c[core.KPhone][0], "tier": "gold"},
+		c[core.KPhone][1]:    map[string]string{"tier": "silver"},
+		c[core.KEmail][2]:    map[string]string{"tier": "bronze"},
+	})
+	tokens := "a:1:{" + phpString(hash) + "a:2:{" + phpString("ip") + phpString(c[core.KIP][0]) +
+		phpString("ua") + phpString("Mozilla/5.0") + "}}"
+	named := "a:1:{" + phpString(c[core.KFullName][1]) + "a:1:{" + phpString("email") + phpString(c[core.KEmail][3]) + "}}"
+	dump := "-- MySQL dump 10.13  Distrib 8.0.36, for Linux (x86_64)\n/*!40101 SET NAMES utf8mb4 */;\n" +
+		"CREATE TABLE `wp_options` (\n  `option_id` bigint unsigned NOT NULL,\n  `option_name` varchar(191) NOT NULL,\n  `option_value` longtext NOT NULL,\n  `autoload` varchar(20) NOT NULL,\n  PRIMARY KEY (`option_id`)\n);\n" +
+		"INSERT INTO `wp_options` VALUES (1,'siteurl','https://canary-shop.example','yes'),(2,'loyalty_members'," + sqlString(string(members)) + ",'no'),(3,'gift_list'," + sqlString(named) + ",'no');\n" +
+		"CREATE TABLE `wp_usermeta` (\n  `umeta_id` bigint unsigned NOT NULL,\n  `user_id` bigint unsigned NOT NULL,\n  `meta_key` varchar(255) DEFAULT NULL,\n  `meta_value` longtext,\n  PRIMARY KEY (`umeta_id`)\n);\n" +
+		"INSERT INTO `wp_usermeta` VALUES (1,1,'session_tokens'," + sqlString(tokens) + ");\n" +
+		"-- Dump completed on 2026-10-26 14:02:11\n"
+	input := filepath.Join(dir, "keys.sql")
+	if err := os.WriteFile(input, []byte(dump), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := dep
+	t.Cleanup(func() { dep = old })
+	dep = realDeps()
+	dep.parseEndpoint = site.ParseEndpoint
+	dep.defaultConfig = roadiecfg.Default
+	testutil.NoNetwork(t)
+	found := false
+	for i, format := range []string{"--plain", "--json", "--md", "--html", "--sarif", "--junit"} {
+		args := []string{input, "--production", "canary-shop.example", "--offline", "--no-config", "--debug", "-v", format}
+		for _, ext := range []string{"json", "md", "html", "sarif", "xml"} {
+			args = append(args, "-o", filepath.Join(dir, "out", fmt.Sprintf("keys-%d.%s", i, ext)))
+		}
+		out, errOut, code := runCmd(t, "verify", args...)
+		if code != 1 {
+			t.Errorf("verify %s: exit %d, want 1\n%s", format, code, errOut)
+		}
+		found = found || strings.Contains(out, "<key>")
+		scan.scan(t, "verify "+format+" stdout", out)
+		scan.scan(t, "verify "+format+" stderr", errOut)
+	}
+	if !found {
+		t.Error("no location names a masked key: the keys weren't found")
+	}
+	scan.scanDir(t, dir, input)
+}

@@ -38,6 +38,7 @@ FUZZ_TARGETS := \
 	engine:FuzzSerializedStrings \
 	keys:FuzzSettings \
 	keys:FuzzTokenSkip \
+	core:FuzzMaskPath \
 	profile:FuzzChecksumOf \
 	profile:FuzzExtract \
 	profile:FuzzFieldTypes \

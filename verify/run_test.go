@@ -1002,18 +1002,6 @@ func TestRunPersonalKeys(t *testing.T) {
 	}
 }
 
-func TestMaskPath(t *testing.T) {
-	for in, want := range map[string]string{
-		`json:ada\.kowalczyk@gmail\.com.plan`: core.MaskEmail("ada.kowalczyk@gmail.com.plan"),
-		"serialized:billing.email":            "serialized:billing.email",
-		`json:a\.b@c\.de.x.json:y`:            core.MaskEmail("a.b@c.de.x.json") + ":y",
-	} {
-		if got := maskPath(in); !strings.HasSuffix(got, want) || strings.Contains(got, "kowalczyk") {
-			t.Errorf("maskPath(%q) = %q, want ...%q", in, got, want)
-		}
-	}
-}
-
 // A database target has no site: only its database-only step runs, so
 // a standalone verify of a DSN says so as a copy to it does.
 func TestRunDatabaseOnlySteps(t *testing.T) {
