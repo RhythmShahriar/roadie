@@ -38,22 +38,37 @@ type Options struct {
 	// keys of woocommerce_gateway_order, see GatewayIDs). DataRules
 	// disables each one the gateway list doesn't know.
 	GatewayIDs []string
+	// AppKey makes one Laravel APP_KEY; nil is pseudo.AppKey. Tests pass a
+	// fixed one for golden files.
+	AppKey func() string
 }
 
 // Steps returns the kill-switch steps for the stack, in the order they
-// apply. For WordPress every step is in phase "files": option changes are
-// DataRules. The exposure steps come from the exposure package.
+// apply. Every step is in phase "files": WordPress option changes are
+// DataRules, Laravel's are .env edits. A sql target (a DSN, or a folder
+// with neither stack) gets one check-only step that reports
+// side-effect.not-applicable. The exposure steps come from the exposure
+// package.
 func Steps(stack core.Stack, o Options) []core.Step {
-	if stack == core.StackWordPress {
+	switch stack {
+	case core.StackWordPress:
 		return wordpressSteps(o)
+	case core.StackLaravel:
+		return laravelSteps(o)
+	case core.StackSQL:
+		return []core.Step{databaseOnlyStep()}
 	}
 	return nil
 }
 
-// DataRules returns the option-level changes made in the data stream.
+// DataRules returns the changes made in the data stream: WordPress option
+// leaves, webhooks and queues; Laravel's queued jobs. A sql target has none.
 func DataRules(stack core.Stack, o Options) []core.Rule {
-	if stack == core.StackWordPress {
+	switch stack {
+	case core.StackWordPress:
 		return wordpressRules(o)
+	case core.StackLaravel:
+		return laravelRules(o)
 	}
 	return nil
 }

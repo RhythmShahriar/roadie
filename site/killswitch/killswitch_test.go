@@ -43,8 +43,8 @@ func TestStepOrderAndIDs(t *testing.T) {
 	if !slices.Equal(got, wantSteps) {
 		t.Fatalf("steps %v\nwant %v", got, wantSteps)
 	}
-	if Steps(core.StackSQL, Options{}) != nil || DataRules(core.StackSQL, Options{}) != nil {
-		t.Fatal("steps for sql")
+	if DataRules(core.StackSQL, Options{}) != nil {
+		t.Fatal("data rules for sql")
 	}
 	for _, r := range DataRules(core.StackWordPress, fixtureOptions()) {
 		if r.Profile != Profile || !strings.HasPrefix(r.ID, Profile+".") || !strings.HasPrefix(r.Table, "{prefix}") {
