@@ -142,6 +142,14 @@ func TestParseEndpointRefused(t *testing.T) {
 		{"sqlite://relative.db", "sqlite:///absolute/path.sqlite"},
 		{"mysql:///shop", "has no host"},
 		{"mysql://db.example:99999/shop", "bad port"},
+		{"mysql:///shop?password=hunter2-pw", "endpoint: mysql:///shop?password=••• has no host"},
+		{"mysql:///shop?a=1&PASSWORD=hunter2-pw#x", "endpoint: mysql:///shop?a=1&PASSWORD=•••#x has no host"},
+		{"mysql:///shop?pass%77ord=hunter2-pw", "endpoint: mysql:///shop?pass%77ord=••• has no host"},
+		{"mysql://h b/shop?pwd=hunter2-pw", "endpoint: mysql://h b/shop?pwd=••• is not a valid mysql DSN"},
+		{"mysql://u:hunter2-pw@h b/shop?pass=hunter2-pw", "endpoint: mysql://•••@h b/shop?pass=••• is not a valid mysql DSN"},
+		{"postgres://u@:99999/db?sslpassword=hunter2-pw", "endpoint: postgres://u@:99999/db?sslpassword=••• has no host"},
+		{"postgres://u@pg.example:99999/db?sslpassword=hunter2-pw", "endpoint: postgres://u@pg.example:99999/db?sslpassword=••• has a bad port"},
+		{"sqlite://rel.db?password=hunter2-pw", "endpoint: sqlite://rel.db?password=•••: a SQLite DSN"},
 	}
 	for _, tt := range tests {
 		_, err := ParseEndpoint(tt.in)
@@ -196,6 +204,23 @@ func FuzzEndpoint(f *testing.F) {
 		pw = "Pw" + pw
 		raw := func(p string) string {
 			return "mysql://" + url.UserPassword("user", p).String() + "@db.example/" + url.PathEscape(s) + "?x=" + url.QueryEscape(s)
+		}
+		// The host part is fuzzed too, so the errors show up: a password in
+		// the user info or in a query parameter must never reach the text.
+		host := strings.Map(func(r rune) rune {
+			if r == '?' || r == '#' || r == '&' {
+				return -1
+			}
+			return r
+		}, s)
+		for _, form := range []func(p string) string{
+			func(p string) string { return "mysql://" + url.UserPassword("user", p).String() + "@" + host + "/db" },
+			func(p string) string { return "mysql://" + host + "/db?a=1&password=" + url.QueryEscape(p) },
+			func(p string) string { return "postgres://" + host + "/db?SSLPassword=" + url.QueryEscape(p) + "#f" },
+		} {
+			if _, err := ParseEndpoint(form(pw)); err != nil && strings.Contains(err.Error(), pw) && !strings.Contains(form("other"), pw) {
+				t.Fatalf("error shows the password: %v", err)
+			}
 		}
 		a, errA := ParseEndpoint(raw(pw))
 		b, errB := ParseEndpoint(raw("other"))
