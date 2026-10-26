@@ -4,9 +4,11 @@
 package site
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/url"
 	"os"
@@ -158,28 +160,47 @@ func readTarget(ctx context.Context, in GuardInput) (*targetFacts, error) {
 	if id, err := s.DBIdentity(ctx); err == nil && !loopback(id.Host) {
 		t.add(id.Host, "uses database host", false, false)
 	}
-	if b, err := s.ReadFile(ctx, "wp-config.php"); err == nil {
+	// A config file that is there but can't be read or parsed counts as
+	// production: the guard can't tell, so it fails closed.
+	b, err := s.ReadFile(ctx, "wp-config.php")
+	switch {
+	case err == nil:
 		t.hasFiles = true
-		if f, err := wpconfig.Parse(b); err == nil {
-			for _, n := range []string{"WP_HOME", "WP_SITEURL"} {
-				if p, ok := f.Get(n); ok {
-					t.add(urlHost(p.Value), "is", true, false)
-				}
-			}
-			d, ok := f.Lookup("WP_ENVIRONMENT_TYPE")
-			switch {
-			case !ok:
-				t.env = "has WP_ENVIRONMENT_TYPE unset, which WordPress reads as production"
-			case !d.Literal:
-				t.env = "sets WP_ENVIRONMENT_TYPE from " + exprSource(d.Value) + ", which Roadie can't run, so it counts as production"
-			case d.Value == "production":
-				t.env = "has WP_ENVIRONMENT_TYPE set to production"
-			}
+		f, err := wpconfig.Parse(b)
+		if err != nil {
+			t.env = "has a wp-config.php Roadie can't parse, so it counts as production"
 			t.envFix = "set WP_ENVIRONMENT_TYPE to staging there"
+			break
 		}
-	} else if b, err := s.ReadFile(ctx, ".env"); err == nil {
-		t.hasFiles = true
-		if f, err := dotenv.Parse(b); err == nil {
+		for _, n := range []string{"WP_HOME", "WP_SITEURL"} {
+			if p, ok := f.Get(n); ok {
+				t.add(urlHost(p.Value), "is", true, false)
+			}
+		}
+		d, ok := f.Lookup("WP_ENVIRONMENT_TYPE")
+		switch {
+		case !ok:
+			t.env = "has WP_ENVIRONMENT_TYPE unset, which WordPress reads as production"
+		case !d.Literal:
+			t.env = "sets WP_ENVIRONMENT_TYPE from " + exprSource(d.Value) + ", which Roadie can't run, so it counts as production"
+		case d.Value == "production":
+			t.env = "has WP_ENVIRONMENT_TYPE set to production"
+		}
+		t.envFix = "set WP_ENVIRONMENT_TYPE to staging there"
+	case !errors.Is(err, fs.ErrNotExist):
+		t.env = "has a wp-config.php Roadie can't read (" + readReason(err) + "), so it counts as production"
+		t.envFix = "make it readable"
+	default:
+		b, err := s.ReadFile(ctx, ".env")
+		switch {
+		case err == nil:
+			t.hasFiles = true
+			f, err := dotenv.Parse(b)
+			if err != nil {
+				t.env = "has a .env Roadie can't parse, so it counts as production"
+				t.envFix = "set APP_ENV=staging there"
+				break
+			}
 			if p, ok := f.Get("APP_URL"); ok {
 				t.add(urlHost(p.Value), "is", true, false)
 			}
@@ -187,6 +208,9 @@ func readTarget(ctx context.Context, in GuardInput) (*targetFacts, error) {
 				t.env = "has APP_ENV=production in .env"
 				t.envFix = "set APP_ENV=staging there"
 			}
+		case !errors.Is(err, fs.ErrNotExist):
+			t.env = "has a .env Roadie can't read (" + readReason(err) + "), so it counts as production"
+			t.envFix = "make it readable"
 		}
 	}
 	t.siteURL = in.SiteURL
@@ -195,6 +219,18 @@ func readTarget(ctx context.Context, in GuardInput) (*targetFacts, error) {
 	}
 	t.add(urlHost(t.siteURL), "is", true, true)
 	return t, nil
+}
+
+// readReason says why a config file couldn't be read without echoing
+// the remote stderr, which is not Roadie's to print.
+func readReason(err error) string {
+	var re *remote.RunError
+	switch {
+	case errors.Is(err, fs.ErrPermission),
+		errors.As(err, &re) && bytes.Contains(re.Stderr, []byte("Permission denied")):
+		return "permission denied"
+	}
+	return "the read failed"
 }
 
 // readSiteURL asks WP-CLI (ssh, alias) or the options table (local) for

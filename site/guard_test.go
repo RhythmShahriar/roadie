@@ -6,6 +6,7 @@ package site
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/internal/testutil"
+	"github.com/RhythmShahriar/roadie/site/remote"
 )
 
 // stagingSite is a writable WordPress target whose wp-config sets env
@@ -347,5 +349,73 @@ func TestLockIdentity(t *testing.T) {
 	}
 	if lockIdentity(core.Endpoint{Kind: core.Stdio}) != "" {
 		t.Fatal("stdio has a lock")
+	}
+}
+
+// unreadable is a site whose named file can't be read for a reason
+// other than "not there".
+type unreadable struct {
+	*testutil.Site
+	name string
+	err  error
+}
+
+func (u unreadable) ReadFile(ctx context.Context, rel string) ([]byte, error) {
+	if rel == u.name {
+		return nil, u.err
+	}
+	return u.Site.ReadFile(ctx, rel)
+}
+
+// A config the guard can't read or parse counts as production; a
+// missing one does not.
+func TestGuardFailsClosedOnUnreadableConfig(t *testing.T) {
+	ctx := context.Background()
+	denied := &remote.RunError{Template: remote.Cat, Exit: 1, Stderr: []byte("cat: /var/www/staging/wp-config.php: Permission denied\n")}
+	tests := []struct {
+		name string
+		site func() core.Site
+		msg  string
+	}{
+		{"wp-config.php permission denied", func() core.Site {
+			return unreadable{stagingSite("staging", "https://staging.shop.test"), "wp-config.php", denied}
+		}, "target-says-production: /var/www/staging has a wp-config.php Roadie can't read (permission denied), so it counts as production. If it's staging, make it readable, or pass --target-is-staging staging.shop.test."},
+		{"wp-config.php other error", func() core.Site {
+			return unreadable{stagingSite("staging", "https://staging.shop.test"), "wp-config.php", errors.New("connection reset")}
+		}, "target-says-production: /var/www/staging has a wp-config.php Roadie can't read (the read failed), so it counts as production. If it's staging, make it readable, or pass --target-is-staging staging.shop.test."},
+		{".env permission denied", func() core.Site {
+			s := testutil.FakeSite(nil)
+			s.StackName = core.StackLaravel
+			s.EP = core.Endpoint{Kind: core.LocalSite, Display: "/srv/app", Path: "/nonexistent/app"}
+			return unreadable{s, ".env", &fs.PathError{Op: "read", Path: ".env", Err: fs.ErrPermission}}
+		}, "target-says-production: /srv/app has a .env Roadie can't read (permission denied), so it counts as production. If it's staging, make it readable, or pass --target-is-staging staging.shop.test."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := tt.site()
+			err := Guard(ctx, GuardInput{From: dumpEP(), To: s.Endpoint(), ToSite: s, URL: "https://staging.shop.test", Mode: "copy"})
+			wantCode(t, err, core.ErrTargetSaysProduction, 3, tt.msg)
+			if strings.Contains(err.Error(), "connection reset") {
+				t.Errorf("error echoes the remote stderr: %v", err)
+			}
+		})
+	}
+	// A wp-config.php that doesn't parse can't say staging either.
+	bad := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\ndefine( 'WP_ENVIRONMENT_TYPE', 'staging );\n")})
+	bad.EP = core.Endpoint{Kind: core.LocalSite, Display: "/var/www/staging", Path: "/nonexistent/staging"}
+	wantCode(t, Guard(ctx, GuardInput{From: dumpEP(), To: bad.EP, ToSite: bad, URL: "https://staging.shop.test", Mode: "copy"}),
+		core.ErrTargetSaysProduction, 3,
+		"target-says-production: /var/www/staging has a wp-config.php Roadie can't parse, so it counts as production. If it's staging, set WP_ENVIRONMENT_TYPE to staging there, or pass --target-is-staging staging.shop.test.")
+	// --target-is-staging still lets the run through.
+	s := unreadable{stagingSite("staging", "https://staging.shop.test"), "wp-config.php", denied}
+	if err := Guard(ctx, GuardInput{From: dumpEP(), To: s.Endpoint(), ToSite: s, URL: "https://staging.shop.test", TargetIsStaging: "staging.shop.test", Mode: "copy"}); err != nil {
+		t.Fatal(err)
+	}
+	// A Laravel site with no wp-config.php and no .env passes.
+	l := testutil.FakeSite(nil)
+	l.StackName = core.StackLaravel
+	l.EP = core.Endpoint{Kind: core.LocalSite, Display: "/srv/app", Path: "/nonexistent/app"}
+	if err := Guard(ctx, GuardInput{From: dumpEP(), To: l.EP, ToSite: l, URL: "https://staging.app.test", Mode: "copy"}); err != nil {
+		t.Fatal(err)
 	}
 }
