@@ -12,11 +12,7 @@ import (
 
 // The frozen stubs answer core.ErrNotBuilt until the lane builds them.
 func TestStubsNotBuilt(t *testing.T) {
-	_, err := NewFileSink("x.sql", WriterOptions{})
-	if !errors.Is(err, core.ErrNotBuilt) {
-		t.Fatalf("call 3: %v, want core.ErrNotBuilt", err)
-	}
-	_, err = NewSpool(t.TempDir())
+	_, err := NewSpool(t.TempDir())
 	if !errors.Is(err, core.ErrNotBuilt) {
 		t.Fatalf("call 4: %v, want core.ErrNotBuilt", err)
 	}

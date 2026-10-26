@@ -55,14 +55,19 @@ type WriterOptions struct {
 }
 
 // NewFileSink writes to a temp file in the same folder as path (0600) and
-// renames it on Commit.
+// renames it on Commit. The temp file is '<path>.roadie-tmp-<random>';
+// Abort, a canceled context and any write error remove it. Compression
+// "" takes gzip or zstd from the extension of path. With ExpectBytes set
+// it refuses up front, and every 64 MiB written, when the folder has less
+// free space than is still to come (disk-full).
 func NewFileSink(path string, o WriterOptions) (core.Sink, error) {
-	return nil, core.ErrNotBuilt
+	return newFileSink(path, o)
 }
 
-// NewStreamSink writes to w, such as stdout.
+// NewStreamSink writes to w, such as stdout, compressed when
+// o.Compression says so. A setup error comes back from the first Write.
 func NewStreamSink(w io.Writer, o WriterOptions) core.Sink {
-	return nil
+	return newStreamSink(w, o)
 }
 
 // Spool is an encrypted temporary file holding a copy of the input, so a
