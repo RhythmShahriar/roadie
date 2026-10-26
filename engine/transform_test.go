@@ -275,7 +275,11 @@ func TestKeptUsers(t *testing.T) {
 				{4, 3, "wp_capabilities", `a:1:{s:13:"administrator";b:1;}`}, {5, 2, "session_tokens", "a:0:{}"}}},
 			{table("wp_users", "ID:bigint(20)", "user_login", "user_email", "user_pass"), rows{
 				{1, "anna", "anna.lee@example.com", "$P$Banna"}, {2, "ben", "ben@example.com", "$P$Bben"}, {3, "cat", "cat@example.com", "$P$Bcat"}}},
+			{table("wp_wc_order_addresses", "id:bigint(20)", "order_id:bigint(20)", "address_type", "first_name", "email"), rows{
+				{1, 10, "billing", "Anna", "anna.lee@example.com"}, {2, 11, "billing", "Ben", "ben@example.com"}}},
 			{table("wp_wc_orders", "id:bigint(20)", "customer_id:bigint(20)", "billing_email"), rows{{10, 1, "anna.lee@example.com"}, {11, 2, "ben@example.com"}}},
+			{table("wp_wc_orders_meta", "id:bigint(20)", "order_id:bigint(20)", "meta_key", "meta_value:longtext"), rows{
+				{1, 10, "_billing_address_index", "Anna anna.lee@example.com"}, {2, 11, "_billing_address_index", "Ben ben@example.com"}}},
 		}
 	}
 	cfg := roadiecfg.Default()
@@ -288,13 +292,18 @@ func TestKeptUsers(t *testing.T) {
 		col   string
 		want  string
 	}{{"wp_users", 0, "user_login", "anna"}, {"wp_users", 0, "user_email", "anna.lee@example.com"}, {"wp_users", 0, "user_pass", "$P$hash-of-11"},
-		{"wp_usermeta", 0, "meta_value", "Anna"}, {"wp_wc_orders", 0, "billing_email", "anna.lee@example.com"}} {
+		{"wp_usermeta", 0, "meta_value", "Anna"}, {"wp_wc_orders", 0, "billing_email", "anna.lee@example.com"},
+		{"wp_wc_order_addresses", 0, "email", "anna.lee@example.com"}, {"wp_wc_order_addresses", 0, "first_name", "Anna"},
+		{"wp_wc_orders_meta", 0, "meta_value", "Anna anna.lee@example.com"}} {
 		if got, _ := valueOf(t, sink, c.table, c.row, c.col); got != c.want {
 			t.Errorf("kept %s.%s: %q, want %q", c.table, c.col, got, c.want)
 		}
 	}
 	if got, _ := valueOf(t, sink, "wp_users", 1, "user_email"); got == "ben@example.com" {
 		t.Error("ben wasn't faked")
+	}
+	if got, _ := valueOf(t, sink, "wp_wc_order_addresses", 1, "email"); got == "ben@example.com" {
+		t.Error("ben's order address wasn't faked")
 	}
 	if got, _ := valueOf(t, sink, "wp_usermeta", 4, "meta_value"); got != "<dropped>" {
 		t.Errorf("session_tokens row kept: %q", got)

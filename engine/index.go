@@ -128,9 +128,17 @@ type keptUsers struct {
 	ids    map[string]bool
 	emails []string
 	logins []string
+	// orders are the HPOS orders of kept users, as blog prefix + "|" +
+	// order ID, so the order's addresses, meta and operational data stay
+	// with the order row.
+	orders map[string]bool
 }
 
 func (k *keptUsers) has(id []byte) bool { return k != nil && len(id) > 0 && k.ids[string(id)] }
+
+func (k *keptUsers) hasOrder(blog string, id []byte) bool {
+	return k != nil && len(id) > 0 && k.orders[blog+"|"+string(id)]
+}
 
 // formRow is a row of a form plugin's field list, kept for the field-type
 // row fixes until the final rules are known.
@@ -173,7 +181,7 @@ type indexer struct {
 func newIndexer(ctx context.Context, cfg *roadiecfg.Config, defs []profile.Def, site core.Site, known core.Known) *indexer {
 	return &indexer{ctx: ctx, cfg: cfg, defs: defs, site: site, known: known, samples: newSamples(),
 		options: map[string]bool{}, siteURLs: map[string][2]string{}, rows: map[string]int64{},
-		kept: &keptUsers{ids: map[string]bool{}}, addr: map[addrKey]*addrLens{}, nTables: -1}
+		kept: &keptUsers{ids: map[string]bool{}, orders: map[string]bool{}}, addr: map[addrKey]*addrLens{}, nTables: -1}
 }
 
 // refresh rebuilds the provisional rule sets when the schema has new
@@ -301,6 +309,15 @@ func (x *indexer) collect(b *core.Batch, pos map[string]int) {
 			x.blogs = append(x.blogs, blogDomain{Domain: str("domain"), Path: str("path")})
 		case p != "" && name == p+"users":
 			x.keepUser(get)
+		case len(x.kept.ids) > 0 && strings.HasSuffix(name, "wc_orders"):
+			// A dump has the users table before wc_orders, so the kept
+			// IDs are known by now.
+			if blog, ok := blogOf(name, p, "wc_orders"); ok {
+				if c, _ := get("customer_id"); x.kept.has(c) {
+					id, _ := get("id")
+					x.kept.orders[blog+"|"+string(id)] = true
+				}
+			}
 		case p != "" && name == p+"usermeta":
 			if str("meta_key") == p+"capabilities" {
 				if v, _ := get("meta_value"); bytes.Contains(v, []byte(`"administrator"`)) {
@@ -457,7 +474,8 @@ func (x *indexer) rules(b *core.Batch, pos map[string]int) {
 }
 
 // keptRow reports whether a row belongs to a kept user: the users row
-// itself, their user meta and their orders.
+// itself, their user meta, their HPOS orders and those orders' addresses,
+// meta and operational data.
 func keptRow(kept *keptUsers, table, prefix string, get func(string) ([]byte, bool)) bool {
 	if kept == nil || len(kept.ids) == 0 || prefix == "" {
 		return false
@@ -471,6 +489,13 @@ func keptRow(kept *keptUsers, table, prefix string, get func(string) ([]byte, bo
 	default:
 		if _, ok := blogOf(table, prefix, "wc_orders"); ok {
 			col = "customer_id"
+			break
+		}
+		for _, child := range []string{"wc_order_addresses", "wc_orders_meta", "wc_order_operational_data"} {
+			if blog, ok := blogOf(table, prefix, child); ok {
+				id, _ := get("order_id")
+				return kept.hasOrder(blog, id)
+			}
 		}
 	}
 	if col == "" {
