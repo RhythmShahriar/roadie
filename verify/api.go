@@ -53,11 +53,6 @@ type Ignore struct {
 	Until                time.Time
 }
 
-// Run scans the copy.
-func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
-	return nil, core.ErrNotBuilt
-}
-
 // Soundcheck runs rhythm-soundcheck against url when it is installed.
 func Soundcheck(ctx context.Context, url, echoURL string) *core.SoundcheckResult {
 	return nil

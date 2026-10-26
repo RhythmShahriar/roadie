@@ -131,13 +131,16 @@ func mailerList() []Mailer {
 }
 
 // Enabled reports whether the gateway is switched on in settings (as
-// Settings reads its option). A gateway with no EnabledPath counts as on,
-// so a mode switch alone still flags live mode.
+// Settings reads its option). Only an explicit off (no, 0, false) counts
+// as off: a gateway with no EnabledPath or without the setting is on, so
+// a mode switch alone still flags live mode.
 func (g Gateway) Enabled(settings map[string]string) bool {
 	if g.EnabledPath == "" {
 		return true
 	}
-	return truthy(strings.ToLower(strings.TrimSpace(settings[g.EnabledPath])))
+	v, ok := settings[g.EnabledPath]
+	v = strings.ToLower(strings.TrimSpace(v))
+	return !ok || v == "" || !falsy(v)
 }
 
 // Mode returns "live" or "test" for the gateway's mode setting, or
