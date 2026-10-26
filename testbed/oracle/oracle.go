@@ -7,6 +7,7 @@ import (
 	"archive/zip"
 	"bufio"
 	"bytes"
+	"compress/bzip2"
 	"compress/gzip"
 	"context"
 	"errors"
@@ -16,13 +17,15 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 // Options says what one oracle run judges.
 type Options struct {
 	Canaries []Canary
-	// Dump is the output database dump (plain or gzip), Tree a directory
-	// of output files. Either may be empty.
+	// Dump is the output database dump (plain, gzip, zstd or bzip2),
+	// Tree a directory of output files. Either may be empty.
 	Dump string
 	Tree string
 	// Input is the scenario's input dump, for the row count comparison.
@@ -62,16 +65,17 @@ type Report struct {
 	RowsDiffer      bool           `json:"rows_differ"`
 	// Links are the symbolic links in the tree, by path inside it. The
 	// oracle doesn't follow them (a link may point anywhere on this
-	// machine), so whatever they point to went unread: reported, never
-	// counted as clean or as a survivor.
+	// machine), so whatever they point to went unread: the output is
+	// never clean while there is one.
 	Links []string `json:"links,omitempty"`
 }
 
 // Clean reports whether the output passed gates 1 and 2: no canary or
-// live key survived, every test key is still there, every serialized
-// value still unserializes and every table kept its row count.
+// live key survived, no link left part of the output unread, every test
+// key is still there, every serialized value still unserializes and
+// every table kept its row count.
 func (r Report) Clean() bool {
-	ok := len(r.Survivors) == 0 && len(r.TestKeysMissing) == 0 && !r.RowsDiffer
+	ok := len(r.Survivors) == 0 && len(r.Links) == 0 && len(r.TestKeysMissing) == 0 && !r.RowsDiffer
 	if r.Integrity != nil {
 		ok = ok && r.Integrity.Failures == 0 && r.Integrity.Missing == 0
 	}
@@ -106,7 +110,12 @@ func patterns(canaries []Canary, inDump bool) []pattern {
 // (a backup left in the uploads, say), so it is read as one.
 func isDumpName(path string) bool {
 	p := strings.ToLower(path)
-	return strings.HasSuffix(p, ".sql") || strings.HasSuffix(p, ".sql.gz")
+	for _, ext := range []string{".sql", ".sql.gz", ".sql.zst", ".sql.bz2"} {
+		if strings.HasSuffix(p, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 // tableAfter reads the table name after a marker.
@@ -140,7 +149,7 @@ func (s *scanState) scanStream(m *matcher, r io.Reader, where string, tables boo
 }
 
 // scanFile scans one file, then its decompressed bytes when it is gzip,
-// or each compressed member when it is a zip archive.
+// zstd or bzip2, or each member when it is a zip archive.
 func (s *scanState) scanFile(m *matcher, path, where string, tables bool) error {
 	f, err := os.Open(path) // #nosec G304 -- output the operator names
 	if err != nil {
@@ -152,18 +161,7 @@ func (s *scanState) scanFile(m *matcher, path, where string, tables bool) error 
 	}
 	var magic [4]byte
 	n, _ := f.ReadAt(magic[:], 0)
-	switch {
-	case n >= 2 && magic[0] == 0x1f && magic[1] == 0x8b:
-		if _, err := f.Seek(0, io.SeekStart); err != nil {
-			return err
-		}
-		zr, err := gzip.NewReader(f)
-		if err != nil {
-			return nil // not really gzip: the raw scan above covered it
-		}
-		zr.Multistream(true)
-		return s.scanStream(m, zr, where, tables)
-	case n == 4 && string(magic[:]) == "PK\x03\x04":
+	if n == 4 && string(magic[:]) == "PK\x03\x04" {
 		fi, err := f.Stat()
 		if err != nil {
 			return err
@@ -180,14 +178,61 @@ func (s *scanState) scanFile(m *matcher, path, where string, tables bool) error 
 				return err
 			}
 		}
+		return nil
 	}
-	return nil
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	return s.scanDecoded(m, bufio.NewReader(f), where, tables)
 }
+
+// scanDecoded scans the decompressed bytes of r when it starts with the
+// magic of gzip, zstd or bzip2. Other bytes were covered by the raw scan
+// and are left alone. A stream that fails to decode part way is an
+// error on purpose: bytes the oracle couldn't read can't be called clean.
+func (s *scanState) scanDecoded(m *matcher, r *bufio.Reader, where string, tables bool) error {
+	dr, closeFn := decoder(r)
+	if dr == nil {
+		return nil
+	}
+	defer closeFn()
+	return s.scanStream(m, dr, where, tables)
+}
+
+// decoder returns a reader of the decompressed bytes of r and a func to
+// release it, or nil when r holds none of the formats Roadie can write
+// (gzip, zstd) or a backup plugin may leave (bzip2). The magic bytes
+// decide, never the name: an output can call a file anything.
+func decoder(r *bufio.Reader) (io.Reader, func()) {
+	magic, _ := r.Peek(4)
+	switch {
+	case len(magic) >= 2 && magic[0] == 0x1f && magic[1] == 0x8b:
+		zr, err := gzip.NewReader(r)
+		if err != nil {
+			return nil, nil
+		}
+		zr.Multistream(true)
+		return zr, func() { _ = zr.Close() }
+	case len(magic) == 4 && bytes.Equal(magic, zstdMagic):
+		zr, err := zstd.NewReader(r, zstd.WithDecoderConcurrency(1))
+		if err != nil {
+			return nil, nil
+		}
+		return zr, zr.Close
+	case len(magic) == 4 && string(magic[:3]) == "BZh" && magic[3] >= '1' && magic[3] <= '9':
+		return bzip2.NewReader(r), func() {}
+	}
+	return nil, nil
+}
+
+// zstdMagic opens every zstd frame (RFC 8878, 3.1.1).
+var zstdMagic = []byte{0x28, 0xb5, 0x2f, 0xfd}
 
 // scanMember scans one zip member. A stored member's bytes are already
 // in the archive as they are, so the raw scan of the archive saw them:
-// it is read again only when it is gzip. A member that can't be opened
-// (encrypted, an unknown method) is skipped like any unreadable bytes.
+// it is read again only when it is compressed itself. A member that
+// can't be opened (encrypted, an unknown method) is skipped like any
+// unreadable bytes.
 func (s *scanState) scanMember(m *matcher, zf *zip.File, where string, tables bool) error {
 	rc, err := zf.Open()
 	if err != nil {
@@ -195,13 +240,9 @@ func (s *scanState) scanMember(m *matcher, zf *zip.File, where string, tables bo
 	}
 	defer func() { _ = rc.Close() }()
 	br := bufio.NewReader(rc)
-	if magic, _ := br.Peek(2); len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
-		zr, err := gzip.NewReader(br)
-		if err != nil {
-			return nil
-		}
-		zr.Multistream(true)
-		return s.scanStream(m, zr, where, tables)
+	if dr, closeFn := decoder(br); dr != nil {
+		defer closeFn()
+		return s.scanStream(m, dr, where, tables)
 	}
 	if zf.Method == zip.Store {
 		return nil

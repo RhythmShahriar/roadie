@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 // The oracle may not use Roadie's code, directly or through another
@@ -368,6 +370,156 @@ func TestOracleReadsZipAndReportsLinks(t *testing.T) {
 	}
 }
 
+// A link alone in a tree leaves the output unclean: whatever it points
+// to went unread.
+func TestOracleLinkIsNotClean(t *testing.T) {
+	dir := t.TempDir()
+	tree := filepath.Join(dir, "tree")
+	if err := os.MkdirAll(tree, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tree, "readme.txt"), []byte("nothing here"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Run(context.Background(), Options{Tree: tree})
+	if err != nil || len(rep.Links) != 0 || !rep.Clean() {
+		t.Fatalf("no link: %+v %v", rep, err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "prod-backup.sql"), filepath.Join(tree, "backup.sql")); err != nil {
+		t.Skip("no symlinks here:", err)
+	}
+	rep, err = Run(context.Background(), Options{Tree: tree})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Survivors) != 0 || len(rep.Links) != 1 || rep.Clean() {
+		t.Errorf("a link must make the output unclean: %+v", rep)
+	}
+}
+
+// bzipped holds "INSERT INTO `wp_users` VALUES (1,'<z-email-5>');\n"
+// compressed by bzip2 -9: the standard library reads bzip2 but can't
+// write it.
+const bzipped = "425a683931415926535943ff6eea00000adf80001040e5620862259f00fea7dab0200041500620d34c8326834186a1801934d06430434c468c1509d52db064bf76c40d89d0c3b137e8a164a16cc9595ba132bb72f917a31b7c5b9efa2d02545a621184e60fc5dc914e142410ffdbba80"
+
+// zstdBytes compresses b with zstd.
+func zstdBytes(t *testing.T, b []byte) []byte {
+	t.Helper()
+	enc, err := zstd.NewWriter(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = enc.Close() }()
+	return enc.EncodeAll(b, nil)
+}
+
+// A canary inside zstd or bzip2 is found by the magic bytes, whatever
+// the file is called, in a tree, in a zip and as the output dump; bytes
+// that only start like one are no error and no finding.
+func TestOracleReadsZstdAndBzip2(t *testing.T) {
+	dir := t.TempDir()
+	tree := filepath.Join(dir, "tree")
+	if err := os.MkdirAll(tree, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	cs := []Canary{
+		{ID: "z-email-4", Kind: "email", Scenario: "z", Value: "zstded.canary.z04@gmail.com"},
+		{ID: "z-email-5", Kind: "email", Scenario: "z", Value: "bzipped.canary.z05@gmail.com"},
+		{ID: "z-email-6", Kind: "email", Scenario: "z", Value: "zipzstd.canary.z06@gmail.com"},
+	}
+	row := func(v string) []byte { return []byte("INSERT INTO `wp_users` VALUES (1,'" + v + "');\n") }
+	bz, err := hex.DecodeString(bzipped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var zb bytes.Buffer
+	zw := zip.NewWriter(&zb)
+	w, err := zw.CreateHeader(&zip.FileHeader{Name: "db.sql.zst", Method: zip.Store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = w.Write(zstdBytes(t, row(cs[2].Value)))
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{
+		"db.sql.zst":  zstdBytes(t, row(cs[0].Value)),
+		"archive.dat": bz,
+		"site.zip":    zb.Bytes(),
+	}
+	for name, b := range files {
+		if err := os.WriteFile(filepath.Join(tree, name), b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rep, err := Run(context.Background(), Options{Canaries: cs, Tree: tree})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, sv := range rep.Survivors {
+		got[sv.ID] = sv.Where
+	}
+	want := map[string]string{
+		"z-email-4": "file:db.sql.zst:wp_users",
+		"z-email-5": "file:archive.dat",
+		"z-email-6": "file:site.zip!db.sql.zst:wp_users",
+	}
+	for id, w := range want {
+		if got[id] != w {
+			t.Errorf("%s: found in %q, want %q", id, got[id], w)
+		}
+	}
+
+	// The output dump itself as zstd: the canary and the row count.
+	dump := filepath.Join(dir, "out.sql.zst")
+	if err := os.WriteFile(dump, files["db.sql.zst"], 0o600); err != nil {
+		t.Fatal(err)
+	}
+	input := filepath.Join(dir, "in.sql")
+	if err := os.WriteFile(input, row("someone@example.test"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = Run(context.Background(), Options{Canaries: cs, Dump: dump, Input: input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Survivors) != 1 || rep.Survivors[0].Where != "db:wp_users" || rep.RowsDiffer {
+		t.Errorf("zstd dump: %+v", rep)
+	}
+
+	// A clean compressed file: nothing found.
+	clean := filepath.Join(dir, "clean")
+	if err := os.MkdirAll(clean, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(clean, "db.sql.zst"), zstdBytes(t, row("someone@example.test")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = Run(context.Background(), Options{Canaries: cs, Tree: clean})
+	if err != nil || len(rep.Survivors) != 0 || !rep.Clean() {
+		t.Errorf("clean tree: %+v %v", rep, err)
+	}
+
+	// Bytes that only start like zstd or bzip2 can't be read: an error,
+	// never a clean verdict.
+	for name, b := range map[string][]byte{
+		"fake.zst": append([]byte{0x28, 0xb5, 0x2f, 0xfd}, []byte("not zstd "+cs[0].Value[:5])...),
+		"fake.bz2": []byte("BZh9 not bzip2 " + cs[1].Value[:5]),
+	} {
+		bad := filepath.Join(dir, "bad-"+name)
+		if err := os.MkdirAll(bad, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(bad, name), b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Run(context.Background(), Options{Canaries: cs, Tree: bad}); err == nil {
+			t.Errorf("%s: no error for bytes that don't decode", name)
+		}
+	}
+}
+
 func TestKeys(t *testing.T) {
 	dir := t.TempDir()
 	live := "sk" + "_live_" + "Q3vX9mP2kL7wR4tY8nB6cD1f"
@@ -542,8 +694,8 @@ func BenchmarkScan(b *testing.B) {
 }
 
 // The tree scan never panics or hangs on a file of any bytes, archive
-// or not. A corrupt gzip stream is an error on purpose: unread bytes
-// can't be called clean.
+// or not. A corrupt gzip, zstd or bzip2 stream is an error on purpose:
+// unread bytes can't be called clean.
 func FuzzScanFile(f *testing.F) {
 	var zb bytes.Buffer
 	zw := zip.NewWriter(&zb)
@@ -558,6 +710,8 @@ func FuzzScanFile(f *testing.F) {
 	f.Add(gz.Bytes())
 	f.Add([]byte("PK\x03\x04"))
 	f.Add([]byte{0x1f, 0x8b})
+	f.Add([]byte{0x28, 0xb5, 0x2f, 0xfd})
+	f.Add([]byte("BZh9"))
 	cs := []Canary{{ID: "f-email-1", Kind: "email", Scenario: "f", Value: "fuzz.canary.f01@gmail.com"}}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		tree := t.TempDir()

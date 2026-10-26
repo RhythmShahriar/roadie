@@ -6,7 +6,6 @@ package oracle
 import (
 	"bufio"
 	"bytes"
-	"compress/gzip"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -70,23 +69,24 @@ type dumpReader struct {
 	fn     func(Row) error
 }
 
-// OpenDump opens a dump file, through gzip when it starts with the gzip magic.
+// OpenDump opens a dump file, through gzip, zstd or bzip2 when it starts
+// with that format's magic.
 func OpenDump(path string) (io.ReadCloser, error) {
 	f, err := os.Open(path) // #nosec G304 -- a dump the operator names
 	if err != nil {
 		return nil, err
 	}
 	br := bufio.NewReaderSize(f, 1<<20)
-	if magic, _ := br.Peek(2); len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
-		zr, err := gzip.NewReader(br)
-		if err != nil {
-			_ = f.Close()
-			return nil, err
-		}
-		return readCloser{zr, f}, nil
+	if dr, closeFn := decoder(br); dr != nil {
+		return readCloser{dr, closerFunc(func() error { closeFn(); return f.Close() })}, nil
 	}
 	return readCloser{br, f}, nil
 }
+
+// closerFunc makes a func an io.Closer.
+type closerFunc func() error
+
+func (c closerFunc) Close() error { return c() }
 
 type readCloser struct {
 	io.Reader
