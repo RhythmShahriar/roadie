@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -145,7 +144,7 @@ func loadReportSigner(keyFile string, stderr io.Writer) (signer, error) {
 	if created {
 		path := "the signing key"
 		if dir, err := config.Dir(); err == nil {
-			path = filepath.Join(dir, "roadie", "signing.key")
+			path = report.DefaultKeyPath(dir)
 		}
 		fmt.Fprintf(stderr, "Created a signing key for Roadie reports: %s (keep %s private; set ROADIE_SIGNING_KEY in CI to sign with one identity).\n",
 			shortKeyID(s.KeyID()), path)

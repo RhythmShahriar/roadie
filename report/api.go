@@ -12,36 +12,8 @@
 package report
 
 import (
-	"io"
-
 	"github.com/RhythmShahriar/roadie/core"
 )
-
-// Signer signs envelopes with an Ed25519 key.
-type Signer struct{} // its fields are unexported and added by the owning lane
-
-// LoadSigner loads the signing key from ROADIE_SIGNING_KEY, keyFile or the
-// default path, creating it on first use (created reports that).
-func LoadSigner(keyFile string, env func(string) (string, bool)) (*Signer, bool, error) {
-	return nil, false, core.ErrNotBuilt
-}
-
-// Sign adds data.signature to e.
-func (s *Signer) Sign(e *core.Envelope) error {
-	return core.ErrNotBuilt
-}
-
-// KeyID returns "roadie:" and 16 characters of the public key's hash.
-func (s *Signer) KeyID() string {
-	return ""
-}
-
-// Check verifies a report's signature (against pinned when set) and the
-// input fingerprint against input when given: *core.Error report-edited or
-// report-unsigned.
-func Check(b []byte, pinned []byte, input io.Reader) error {
-	return core.ErrNotBuilt
-}
 
 // Markdown renders e for a pull request comment.
 func Markdown(e *core.Envelope) ([]byte, error) {
