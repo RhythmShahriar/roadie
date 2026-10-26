@@ -61,6 +61,8 @@ up: binaries keys seed gen ## build, start and seed everything
 
 down: ## stop and delete everything; fails if a volume is left
 	$(COMPOSE) down -v --remove-orphans
+	@# The harness's copy of staging's fresh install belongs to these containers.
+	@rm -f $(RUNTIME)/pristine-staging.sql
 	@left=$$(docker volume ls -q --filter label=com.docker.compose.project=roadie-testbed); \
 	if [ -n "$$left" ]; then echo "volumes left after down: $$left" >&2; exit 1; fi
 
