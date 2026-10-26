@@ -5,10 +5,13 @@ package pseudo
 
 import (
 	"bytes"
+	"crypto/hmac"
 	"crypto/md5" // #nosec G501 -- phpass portable hashes are md5 by definition
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -75,6 +78,28 @@ func resetHash(stack core.Stack) ([]byte, error) {
 		pw := make([]byte, 32)
 		random(pw)
 		return bcryptHash(pw, resetCost)
+	}
+	return nil, unknownStack(stack)
+}
+
+// bcryptB64 is bcrypt's own base64: its alphabet, no padding.
+var bcryptB64 = base64.NewEncoding("./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789").WithPadding(base64.NoPadding)
+
+func resetHashFor(stack core.Stack, key Key, original []byte) ([]byte, error) {
+	// Two HMAC blocks give the 39 bytes a bcrypt string holds (16 of
+	// salt and 23 of digest); WordPress uses the first 16.
+	mac := hmac.New(sha256.New, key[:])
+	mac.Write([]byte("reset-password\x00" + string(stack) + "\x00"))
+	mac.Write(original)
+	d := mac.Sum(nil)
+	mac.Reset()
+	mac.Write(d)
+	d = mac.Sum(d)
+	switch stack {
+	case core.StackWordPress:
+		return append([]byte(resetPrefix), phpassEncode(d[:16])...), nil
+	case core.StackLaravel, core.StackSQL:
+		return fmt.Appendf(nil, "$2y$%02d$%s%s", resetCost, bcryptB64.EncodeToString(d[:16]), bcryptB64.EncodeToString(d[16:39])), nil
 	}
 	return nil, unknownStack(stack)
 }

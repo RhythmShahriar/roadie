@@ -118,6 +118,17 @@ func ResetHash(stack core.Stack) ([]byte, error) {
 	return resetHash(stack)
 }
 
+// ResetHashFor is ResetHash made deterministic under key: one key, stack
+// and original hash give one reset hash, so two runs with a stable key
+// write byte-identical copies (PRD 22.3). No password matches it either.
+// WordPress gets "$P$roadie" and 22 phpass characters of an HMAC of the
+// original, refused like ResetHash's. Laravel and sql get a "$2y$10$"
+// bcrypt string whose salt and digest are HMAC bytes: finding a password
+// for it is a bcrypt preimage. The key never leaves the HMAC.
+func ResetHashFor(stack core.Stack, key Key, original []byte) ([]byte, error) {
+	return resetHashFor(stack, key, original)
+}
+
 // PasswordHash hashes password for the stack: phpass $P$ or bcrypt.
 //
 // WordPress gets a phpass portable hash ("$P$B", an 8-character salt,

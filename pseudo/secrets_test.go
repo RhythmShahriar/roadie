@@ -176,6 +176,48 @@ func TestResetHash(t *testing.T) {
 	}
 }
 
+// The keyed reset hash is the same for one key and original, differs
+// for another key or original and keeps ResetHash's shapes.
+func TestResetHashFor(t *testing.T) {
+	k1, k2 := Key{1}, Key{2}
+	for _, stack := range []core.Stack{core.StackWordPress, core.StackLaravel, core.StackSQL} {
+		a, err := ResetHashFor(stack, k1, []byte("old-hash"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := ResetHashFor(stack, k1, []byte("old-hash"))
+		if !bytes.Equal(a, b) {
+			t.Errorf("%s: one key gave %q and %q", stack, a, b)
+		}
+		if c, _ := ResetHashFor(stack, k2, []byte("old-hash")); bytes.Equal(a, c) {
+			t.Errorf("%s: two keys gave %q", stack, a)
+		}
+		if c, _ := ResetHashFor(stack, k1, []byte("other-hash")); bytes.Equal(a, c) {
+			t.Errorf("%s: two originals gave %q", stack, a)
+		}
+		if stack == core.StackWordPress {
+			if len(a) != len(resetPrefix)+22 || !bytes.HasPrefix(a, []byte(resetPrefix)) || bytes.ContainsFunc(a[len(resetPrefix):], func(r rune) bool { return !strings.ContainsRune(itoa64, r) }) {
+				t.Errorf("WordPress keyed reset hash %q", a)
+			}
+			for _, pw := range randomPasswords(200) {
+				if refCheck(pw, string(a)) {
+					t.Fatalf("keyed reset hash %q matches %q", a, pw)
+				}
+			}
+			continue
+		}
+		if cost, err := bcrypt.Cost(a); err != nil || cost != resetCost || len(a) != 60 || !bytes.HasPrefix(a, []byte("$2y$10$")) {
+			t.Errorf("%s keyed reset hash %q: cost %d %v", stack, a, cost, err)
+		}
+		if bcrypt.CompareHashAndPassword(a, []byte("old-hash")) == nil {
+			t.Errorf("%s keyed reset hash matches its original", stack)
+		}
+	}
+	if _, err := ResetHashFor("drupal", k1, nil); err == nil {
+		t.Fatal("ResetHashFor of an unknown stack gave no error")
+	}
+}
+
 // randomPasswords returns n passwords: the obvious ones and random bytes.
 func randomPasswords(n int) []string {
 	pws := []string{"", "password", "admin", "roadie", "correct horse", resetPrefix}
@@ -266,6 +308,12 @@ func TestPasswordHashPHP(t *testing.T) {
 	bc, _ := ResetHash(core.StackLaravel)
 	for _, pw := range randomPasswords(6) {
 		c.ask("bcrypt", pw, bc, false)
+	}
+	kwp, _ := ResetHashFor(core.StackWordPress, Key{7}, []byte("$P$Bold"))
+	kbc, _ := ResetHashFor(core.StackLaravel, Key{7}, []byte("$2y$10$old"))
+	for _, pw := range randomPasswords(6) {
+		c.ask("phpass", pw, kwp, false)
+		c.ask("bcrypt", pw, kbc, false)
 	}
 	c.run(php)
 }

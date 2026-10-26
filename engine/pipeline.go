@@ -167,6 +167,7 @@ type shared struct {
 	adminID     string     // the first administrator's ID
 	addr        *addrIndex // sealed; nil with --one-pass
 	adminHash   []byte     // the kept users' password hash for --admin-password-env
+	key         pseudo.Key // keys the reset hashes, so a stable key repeats them
 	onePass     bool
 	parts       parts
 }
@@ -598,7 +599,7 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 	} else {
 		p.phase("transform")
 	}
-	sh := &shared{cfg: p.cfg, opts: p.opts, known: known, spans: textSpans(), kept: idx.kept,
+	sh := &shared{cfg: p.cfg, opts: p.opts, known: known, spans: textSpans(), kept: idx.kept, key: p.key,
 		siteUsers: idx.siteUsers, adminID: idx.firstAdmin(), addr: idx.addr, onePass: p.opts.OnePass, parts: p.parts}
 	if p.opts.OnePass {
 		// The reader goroutine fills the address lengths and Known while

@@ -407,7 +407,7 @@ func (t *transformer) apply(r core.Rule, orig []byte, col core.Column) ([]byte, 
 		if len(orig) == 0 {
 			return orig, false, false, nil
 		}
-		h, err := resetHash(t.stack)
+		h, err := resetHash(t.stack, t.sh.key, orig)
 		if err != nil {
 			return nil, false, false, err
 		}

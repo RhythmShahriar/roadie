@@ -318,7 +318,7 @@ func useFakes(t testing.TB) *fakes {
 	}
 	{
 		old := resetHash
-		resetHash = func(core.Stack) ([]byte, error) { return []byte("$P$roadieRESET"), nil }
+		resetHash = func(core.Stack, pseudo.Key, []byte) ([]byte, error) { return []byte("$P$roadieRESET"), nil }
 		swap(func() { resetHash = old })
 	}
 	{

@@ -35,7 +35,7 @@ var (
 	newFaker      = pseudo.NewFaker
 	newKnown      = pseudo.NewKnown
 	scrubText     = pseudo.Scrub
-	resetHash     = pseudo.ResetHash
+	resetHash     = pseudo.ResetHashFor
 	passwordHash  = pseudo.PasswordHash
 	nestedRewrite = nested.Rewrite
 	nestedLeaves  = nested.Leaves
