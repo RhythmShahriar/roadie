@@ -165,7 +165,7 @@ type shared struct {
 	kept        *keptUsers
 	siteUsers   *siteUsers // copy --site's user limit, nil for none
 	adminID     string // the first administrator's ID
-	addr        map[addrKey]addrLens
+	addr        *addrIndex // sealed; nil with --one-pass
 	adminHash   []byte // the kept users' password hash for --admin-password-env
 	onePass     bool
 	parts       parts
@@ -387,6 +387,7 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 			return out, err
 		}
 		known.Seal()
+		idx.addr.seal()
 		idx.siteUsers.seal(idx.kept)
 		uncov = p.uncovered(schema, final, idx)
 		if plan, err = p.urlPlan(ctx, idx, final); err != nil {

@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"hash/maphash"
-	"math"
 	"path"
 	"slices"
 	"strconv"
@@ -135,13 +134,6 @@ func newAddrKey(table string, id []byte, billing bool) addrKey {
 	return addrKey(h.Sum64())
 }
 
-// addrLens holds the byte length of each address part pass 1 saw, 0 for
-// a part it didn't. Lengths, not values: with them pass 2 splits the
-// index back into its parts, so memory stays small for big shops. A part
-// of 64 KiB or more saturates, so the lengths don't add up and the index
-// keeps its own text rule.
-type addrLens [11]uint16
-
 // keptUsers are the users keep_users names, found in pass 1.
 type keptUsers struct {
 	ids    map[string]bool
@@ -187,7 +179,7 @@ type indexer struct {
 	siteUsers *siteUsers
 	admins    []uint64
 	forms    []formRow
-	addr     map[addrKey]addrLens
+	addr     *addrIndex
 	rows     map[string]int64
 	order    []string // tables in the order their rows came
 
@@ -204,7 +196,7 @@ type indexer struct {
 func newIndexer(ctx context.Context, cfg *roadiecfg.Config, defs []profile.Def, site core.Site, known core.Known) *indexer {
 	return &indexer{ctx: ctx, cfg: cfg, defs: defs, site: site, known: known, samples: newSamples(),
 		options: map[string]bool{}, siteURLs: map[string][2]string{}, rows: map[string]int64{},
-		kept: &keptUsers{ids: map[string]bool{}, orders: map[string]bool{}}, addr: map[addrKey]addrLens{}, nTables: -1}
+		kept: &keptUsers{ids: map[string]bool{}, orders: map[string]bool{}}, addr: newAddrIndex(), nTables: -1}
 }
 
 // refresh rebuilds the provisional rule sets when the schema has new
@@ -427,9 +419,7 @@ func (x *indexer) address(table string, get func(string) ([]byte, bool)) {
 		if i < 0 {
 			return
 		}
-		l := x.addr[k]
-		l[i] = uint16(min(len(v), math.MaxUint16)) // #nosec G115 -- capped above
-		x.addr[k] = l
+		x.addr.set(k, i, len(v))
 	}
 	for _, meta := range []struct{ suffix, idCol string }{{"postmeta", "post_id"}, {"wc_orders_meta", "order_id"}} {
 		if _, ok := blogOf(table, x.prefix, meta.suffix); !ok {
