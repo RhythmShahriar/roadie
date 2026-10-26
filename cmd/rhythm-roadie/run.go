@@ -107,7 +107,12 @@ func runEngine(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 		if !out.live() {
 			w = stderr // never on stdout next to a report
 		}
-		(&view{w: w, o: vo}).basicAuthLine(job.Opts.BasicAuth, r.BasicAuthPassword)
+		bv := &view{w: w, o: vo}
+		if v, _ := dep.env("GITHUB_ACTIONS"); v == "true" {
+			bv.basicAuthActions(job.Opts.BasicAuth, r.BasicAuthPassword)
+		} else {
+			bv.basicAuthLine(job.Opts.BasicAuth, r.BasicAuthPassword)
+		}
 	}
 
 	code := core.ExitFor(r, job.Opts.FailOn)

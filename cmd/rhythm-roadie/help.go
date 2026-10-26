@@ -109,7 +109,8 @@ const keysHelp = `Keys and side effects:
       --echo-proxy <addr>    also route raw cURL through Echo's proxy, e.g. 127.0.0.1:8026
       --noindex=off          don't add noindex, robots and the crawler block (default on)
       --basic-auth <user>    also write basic-auth snippets with a generated password,
-                             printed once (default off)
+                             printed once (default off; on GitHub Actions it is
+                             masked and kept in .roadie/basic-auth/password)
 `
 
 const safetyHelp = `Target safety:

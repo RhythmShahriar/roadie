@@ -4,7 +4,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -744,6 +748,54 @@ func (v *view) basicAuthLine(user, password string) {
 		return
 	}
 	fmt.Fprintf(v.w, "\n  Basic auth for %s: password %s (shown once; %s holds only its hash)\n", safe(user), safe(password), basicAuthDir)
+}
+
+// basicAuthPasswordFile is where a GitHub Actions run keeps the
+// basic-auth password, since its job log can't show it.
+const basicAuthPasswordFile = basicAuthDir + "password"
+
+// basicAuthActions is basicAuthLine on GitHub Actions, where the job log
+// is readable by everyone who can read the workflow runs (everyone, for a
+// public repository). It masks the password first, so the runner hides it
+// wherever it shows up, then writes it to a 0600 file a later step can
+// read and prints only that file's path.
+func (v *view) basicAuthActions(user, password string) {
+	if password == "" {
+		return
+	}
+	fmt.Fprintf(v.w, "::add-mask::%s\n", workflowEscape(password))
+	if err := writeSecretFile(basicAuthPasswordFile, password+"\n"); err != nil {
+		fmt.Fprintf(v.w, "\n  Basic auth for %s: couldn't save the password (%v); run --basic-auth again\n", safe(user), err)
+		return
+	}
+	fmt.Fprintf(v.w, "\n  Basic auth for %s: password in %s (0600; the job log masks it)\n", safe(user), basicAuthPasswordFile)
+}
+
+// workflowEscape escapes a GitHub Actions workflow command's value: %,
+// CR and LF, so a value can't end the command and start another.
+func workflowEscape(s string) string {
+	return strings.NewReplacer("%", "%25", "\r", "%0D", "\n", "%0A").Replace(s)
+}
+
+// writeSecretFile writes text to path as a new 0600 file in a 0700
+// folder. It removes an old file first, since writing over one would
+// keep that file's mode.
+func writeSecretFile(path, text string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- a fixed path under .roadie/
+	if err != nil {
+		return err
+	}
+	if _, err := f.WriteString(text); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 // stopView is the screen of a run that stopped with an error: what it

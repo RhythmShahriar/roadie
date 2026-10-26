@@ -196,6 +196,31 @@ check "summary-details puts the full report in the summary" contains "$work/runn
 act action-run.sh run MODE=verify FAIL_ON=none FAKE_REPORT="$fixtures/report-verify-fail.json"
 check "fail-on none counts every finding" out findings=7
 
+# --- the --basic-auth password stays out of the job log --------------------
+# runner_view FILE prints FILE as the runner shows it in the job log: the
+# ::add-mask:: commands are gone and every value they mask, from that
+# line on, reads ***. It models the runner on its own, apart from
+# action-run.sh's masked.
+runner_view() {
+	awk '
+		index($0, "::add-mask::") == 1 { masks[++n] = substr($0, 13); next }
+		{ for (i = 1; i <= n; i++) while ((j = index($0, masks[i])) > 0) $0 = substr($0, 1, j - 1) "***" substr($0, j + length(masks[i])); print }
+	' "$1"
+}
+pw="Qx7-pw-$(printf 'staging')-only"
+auth_line="  Basic auth for team: password in .roadie/basic-auth/password (0600; the job log masks it)"
+act action-run.sh run MODE=copy SOURCE=prod.sql TARGET=out.sql ARGS="--basic-auth team" \
+	FAKE_REPORT="$fixtures/report-copy-pass.json" FAKE_STDERR=$'::add-mask::'"$pw"$'\n'"$auth_line"$'\n  (debug echo: '"$pw"')'
+runner_view "$work/log" >"$work/log.masked"
+if [ "$code" = 0 ] && contains "$work/log.masked" "$auth_line" && contains "$work/log.masked" "(debug echo: ***)" &&
+	lacks "$work/log.masked" "$pw" && lacks "$work/runner/summary" "$pw" && lacks "$work/runner/output" "$pw" &&
+	lacks "$work/runner/temp/roadie-stderr.log" "$pw"; then
+	ok "the basic-auth password is masked in the log and kept out of the summary"
+else bad "the basic-auth password is masked in the log and kept out of the summary"; fi
+act action-run.sh run MODE=copy SOURCE=prod.sql TARGET=out.sql ARGS="--basic-auth team" FAKE_EXIT=3 \
+	FAKE_STDERR=$'::add-mask::'"$pw"$'\nrhythm roadie copy: the target went away'
+check "a failed run's summary never shows the mask command" bash -c '! grep -qF -- "$1" "$2" && grep -qF "the target went away" "$2"' _ "$pw" "$work/runner/summary"
+
 act action-run.sh run MODE=copy SOURCE=ssh://deploy@shop.com/var/www/shop TARGET=out.sql URL=https://staging.shop.test PRODUCTION=shop.com \
 	CONFIRM_TARGET=staging.shop.test FAKE_REPORT="$fixtures/report-copy-pass.json"
 want=$(printf '%s\n' copy --from ssh://deploy@shop.com/var/www/shop --to out.sql --url https://staging.shop.test --production shop.com \

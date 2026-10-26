@@ -125,6 +125,21 @@ couldnt() {
 	exit "$code"
 }
 
+# masked prints its input as the runner shows it in the job log: the
+# ::add-mask:: commands are gone and every value they mask, from that line
+# on, reads ***. The runner unescapes %25, %0D and %0A in a value; Roadie's
+# masked values never hold them.
+masked() {
+	awk '
+		index($0, "::add-mask::") == 1 { m = substr($0, 13); if (m != "") masks[++n] = m; next }
+		{
+			for (i = 1; i <= n; i++)
+				while ((j = index($0, masks[i])) > 0)
+					$0 = substr($0, 1, j - 1) "***" substr($0, j + length(masks[i]))
+			print
+		}'
+}
+
 # event QUERY reads the workflow event's payload with jq; empty when
 # there is none.
 event() {
@@ -322,6 +337,13 @@ run() {
 	# log as it happens and to a file for the summary.
 	{ "${cmd[@]}" ${extra[@]+"${extra[@]}"} 2>&1 1>&3 3>&- | tee "$errlog" >&2; } 3>"$stdout_json"
 	local code=$?
+	# Roadie masks a secret with ::add-mask:: before it prints anything
+	# that holds it (the --basic-auth password). The runner hides the value
+	# in the job log; the copy kept for the summary gets the same.
+	if grep -q '^::add-mask::' "$errlog"; then
+		masked <"$errlog" >"$errlog.tmp"
+		mv "$errlog.tmp" "$errlog"
+	fi
 
 	local env=""
 	if [ -s "$json" ] && jq -e .schema "$json" >/dev/null 2>&1; then

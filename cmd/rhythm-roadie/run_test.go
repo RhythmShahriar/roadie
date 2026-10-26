@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -285,6 +286,60 @@ func TestBasicAuthPasswordOnlyOnScreen(t *testing.T) {
 	out, errOut, _ = runCmd(t, "copy", args(copyArgs, "--basic-auth", "team", "--json")...)
 	if strings.Contains(out, r.BasicAuthPassword) || strings.Count(errOut, r.BasicAuthPassword) != 1 {
 		t.Errorf("--json: stdout has it %v, stderr %d times", strings.Contains(out, r.BasicAuthPassword), strings.Count(errOut, r.BasicAuthPassword))
+	}
+}
+
+// On GitHub Actions the password never reaches the job log as text: it
+// is masked first, then kept in a 0600 file whose path is all the log
+// shows.
+func TestBasicAuthPasswordOnActions(t *testing.T) {
+	r := copyPass()
+	r.BasicAuthPassword = "Qx7-pw-" + "on-actions"
+	t.Chdir(t.TempDir())
+	useFixture(t, r, nil, func(d *deps) {
+		d.env = func(k string) (string, bool) {
+			if k == "GITHUB_ACTIONS" {
+				return "true", true
+			}
+			return "", false
+		}
+	})
+	// A file from an earlier run, readable by others, is replaced.
+	os.MkdirAll(basicAuthDir, 0o700)
+	os.WriteFile(basicAuthPasswordFile, []byte("old\n"), 0o644)
+	out, errOut, code := runCmd(t, "copy", args(copyArgs, "--basic-auth", "team", "--json")...)
+	if code != 0 || strings.Contains(out, r.BasicAuthPassword) {
+		t.Fatalf("exit %d, stdout has the password %v", code, strings.Contains(out, r.BasicAuthPassword))
+	}
+	mask := "::add-mask::" + r.BasicAuthPassword + "\n"
+	if !strings.HasPrefix(errOut, mask) || strings.Count(errOut, r.BasicAuthPassword) != 1 {
+		t.Errorf("stderr must mask the password first and show it nowhere else:\n%s", errOut)
+	}
+	if !strings.Contains(errOut, "Basic auth for team: password in .roadie/basic-auth/password (0600; the job log masks it)") {
+		t.Errorf("line: %s", errOut)
+	}
+	b, err := os.ReadFile(basicAuthPasswordFile)
+	if err != nil || string(b) != r.BasicAuthPassword+"\n" {
+		t.Fatalf("password file: %q %v", b, err)
+	}
+	if fi, _ := os.Stat(basicAuthPasswordFile); runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
+		t.Errorf("password file mode %v, want 0600", fi.Mode().Perm())
+	}
+	// Off GitHub Actions nothing is masked or saved.
+	os.Remove(basicAuthPasswordFile)
+	useFixture(t, r, nil, nil)
+	_, errOut, _ = runCmd(t, "copy", args(copyArgs, "--basic-auth", "team", "--json")...)
+	if strings.Contains(errOut, "::add-mask::") {
+		t.Errorf("masked off GitHub Actions: %s", errOut)
+	}
+	if _, err := os.Stat(basicAuthPasswordFile); err == nil {
+		t.Error("saved the password off GitHub Actions")
+	}
+}
+
+func TestWorkflowEscape(t *testing.T) {
+	if got := workflowEscape("a%b\r\n::x"); got != "a%25b%0D%0A::x" {
+		t.Errorf("workflowEscape = %q", got)
 	}
 }
 
