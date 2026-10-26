@@ -50,7 +50,10 @@ func runEngine(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 	mode := p.mode()
 	job, err := p.buildJob(mode, cfg, stderr)
 	if err != nil {
-		return err
+		if xe := (*cli.ExitError)(nil); errors.As(err, &xe) {
+			return err
+		}
+		return runError(err)
 	}
 	if cfgPath != "" {
 		// The key and the basic-auth files live next to the config, not

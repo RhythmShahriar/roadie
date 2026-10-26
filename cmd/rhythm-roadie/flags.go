@@ -730,7 +730,9 @@ func (p *parsed) engineOptions(cfg *roadiecfg.Config, mode engine.Mode, env envF
 		if o.Keys == "" {
 			o.Keys = cfg.Keys.Mode
 		}
-		if o.EchoURL == "" {
+		// RHYTHM_ECHO_URL stands in for the default URL, not for one the
+		// config names.
+		if o.EchoURL == "" && cfg.SideEffects.Echo.URL != defaultEchoURL {
 			o.EchoURL = cfg.SideEffects.Echo.URL
 		}
 		if o.EchoProxy == "" {
@@ -759,11 +761,35 @@ func (p *parsed) engineOptions(cfg *roadiecfg.Config, mode engine.Mode, env envF
 	if o.Keys == "" {
 		o.Keys = "swap"
 	}
+	urlFrom := "--echo-url"
+	if f.echoURL == "" {
+		urlFrom = "side_effects.echo.url"
+	}
 	if o.EchoURL == "" {
 		if v, ok := env("RHYTHM_ECHO_URL"); ok && v != "" {
-			o.EchoURL = v
+			o.EchoURL, urlFrom = v, "RHYTHM_ECHO_URL"
 		} else {
 			o.EchoURL = defaultEchoURL
+		}
+	}
+	// The connector sends captured mail to these URLs: plain http only
+	// on this machine or a private network (security N6), whichever of
+	// the flag, the variable or the config named them.
+	if err := roadiecfg.ValidateEchoURL(o.EchoURL); err != nil {
+		return o, core.Errorf(core.ErrConfig, cli.ExitUsage, "%s %v", urlFrom, err)
+	}
+	if o.EchoProxy != "" {
+		proxyFrom := "--echo-proxy"
+		if f.echoProxy == "" {
+			proxyFrom = "side_effects.echo.proxy"
+		}
+		// cURL takes a proxy as host:port too (the help's example).
+		proxy := o.EchoProxy
+		if !strings.Contains(proxy, "://") {
+			proxy = "http://" + proxy
+		}
+		if err := roadiecfg.ValidateEchoURL(proxy); err != nil {
+			return o, core.Errorf(core.ErrConfig, cli.ExitUsage, "%s %v", proxyFrom, err)
 		}
 	}
 	if o.Jobs == 0 {

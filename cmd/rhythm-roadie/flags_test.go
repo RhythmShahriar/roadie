@@ -734,3 +734,41 @@ func TestVerifyEchoToken(t *testing.T) {
 		t.Errorf("token without the variable: %q", o.EchoToken)
 	}
 }
+
+// The Echo URLs a copy hands the connector are checked wherever they
+// come from (security N6): plain http only to this machine or a private
+// network, never with credentials. RHYTHM_ECHO_URL stands in for the
+// default, not for a URL the config names.
+func TestEchoURLChecked(t *testing.T) {
+	for _, c := range []struct {
+		args []string
+		env  string
+		want string // "" = accepted
+	}{
+		{[]string{"--echo-url", "http://8.8.8.8:8025"}, "", "--echo-url is http://8.8.8.8:8025 over plain http to a public host"},
+		{nil, "http://8.8.8.8:8025", "RHYTHM_ECHO_URL is http://8.8.8.8:8025 over plain http"},
+		{[]string{"--echo-proxy", "http://echo.example.com"}, "", "--echo-proxy is http://echo.example.com over plain http"},
+		{[]string{"--echo-proxy", "https://u:p@echo.example.com"}, "", "--echo-proxy holds a user name or password"},
+		{[]string{"--echo-proxy", "203.0.113.9:3128"}, "", "--echo-proxy is http://203.0.113.9:3128 over plain http"},
+		{[]string{"--echo-proxy", "127.0.0.1:8026"}, "", ""},
+		{[]string{"--echo-url", "https://echo.example.com"}, "", ""},
+		{[]string{"--echo-url", "http://echo.internal:8025"}, "", ""},
+		{nil, "http://10.0.0.5:8025", ""},
+		{[]string{"--echo-url", "http://127.0.0.1:9025"}, "http://8.8.8.8:8025", ""},
+	} {
+		testDeps(t, func(d *deps) {
+			d.env = func(n string) (string, bool) { return c.env, n == "RHYTHM_ECHO_URL" && c.env != "" }
+		})
+		p := mustParse(t, "copy", append([]string{"--from", "prod.sql", "--to", "out.sql"}, c.args...)...)
+		j, err := p.buildJob(engine.Copy, roadiecfg.Default(), io.Discard)
+		var ce *core.Error
+		switch {
+		case c.want == "" && err != nil:
+			t.Errorf("%v %q: %v", c.args, c.env, err)
+		case c.want != "" && (!errors.As(err, &ce) || ce.Code != core.ErrConfig || ce.Exit != 2 || !strings.Contains(ce.Msg, c.want)):
+			t.Errorf("%v %q: %v, want %q", c.args, c.env, err, c.want)
+		case c.want == "" && c.env != "" && len(c.args) == 0 && j.Opts.EchoURL != c.env:
+			t.Errorf("RHYTHM_ECHO_URL not used: %q", j.Opts.EchoURL)
+		}
+	}
+}

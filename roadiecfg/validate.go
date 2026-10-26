@@ -351,7 +351,12 @@ func (l *loader) validateSideEffects(c *Config) error {
 		}
 	}
 	if s.Echo.Proxy != "" && l.unset["side_effects.echo.proxy"] == "" {
-		if err := ValidateEchoURL(s.Echo.Proxy); err != nil {
+		// cURL takes a proxy as host:port too, as --echo-proxy does.
+		proxy := s.Echo.Proxy
+		if !strings.Contains(proxy, "://") {
+			proxy = "http://" + proxy
+		}
+		if err := ValidateEchoURL(proxy); err != nil {
 			return l.errAt("side_effects.echo.proxy", "side_effects.echo.proxy %v", err)
 		}
 	}
