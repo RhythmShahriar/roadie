@@ -15,6 +15,7 @@ FUZZ_TARGETS := \
 	codec/phpser:FuzzPHPSerializedRoundTrip \
 	codec/phpser:FuzzPHPSerializedRewrite \
 	codec/phpser:FuzzDifferentialPHP \
+	codec/phpser:FuzzRewriteScalars \
 	codec/nested:FuzzNested \
 	codec/urlrw:FuzzURLRewrite \
 	pseudo:FuzzScrub \

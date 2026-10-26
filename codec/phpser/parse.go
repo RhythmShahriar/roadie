@@ -81,6 +81,8 @@ type parser struct {
 	// onEnum sees the span of every E: value; tests use it to swap enums
 	// for objects before asking PHP, which can't load an unknown enum.
 	onEnum func(start, end int)
+	// scalar sees every b: and i: value whole (RewriteScalars).
+	scalar func(path string, tok []byte) ([]byte, bool)
 }
 
 func (p *parser) fail(why error) bool {
@@ -221,14 +223,19 @@ func (p *parser) value(bucket int32) bool {
 	case 'N':
 		ok = p.lit("N;")
 	case 'b':
+		start := p.pos
 		ok = p.lit("b:") && p.pos+1 < len(p.b) && (p.b[p.pos] == '0' || p.b[p.pos] == '1') && p.b[p.pos+1] == ';'
 		if ok {
 			p.pos += 2
+			p.scalarLeaf(start)
 		} else {
 			p.fail(errBadByte)
 		}
 	case 'i':
-		ok = p.integer()
+		start := p.pos
+		if ok = p.integer(); ok {
+			p.scalarLeaf(start)
+		}
 	case 'd':
 		ok = p.float()
 	case 's':
@@ -258,6 +265,28 @@ func (p *parser) value(bucket int32) bool {
 		p.buckets[bucket] = t
 	}
 	return ok
+}
+
+// scalarLeaf hands the b: or i: value from start to pos to the scalar
+// function and splices in what it returns.
+func (p *parser) scalarLeaf(start int) {
+	if p.scalar == nil {
+		return
+	}
+	if !p.pathOK {
+		p.pathStr, p.pathOK = string(p.path), true
+	}
+	tok := p.b[start:p.pos]
+	out, changed := p.scalar(p.pathStr, tok)
+	if !changed || bytes.Equal(out, tok) {
+		return
+	}
+	if p.out == nil {
+		p.out = make([]byte, 0, len(p.b)+len(out))
+	}
+	p.out = append(p.out, p.b[p.last:start]...)
+	p.out = append(p.out, out...)
+	p.last = p.pos
 }
 
 func (p *parser) integer() bool {
