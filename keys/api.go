@@ -51,8 +51,18 @@ func Classify(provider string, value string, siblings map[string]string) (env st
 
 // Replace swaps or blanks a live key per mode ("swap" or "blank") and
 // returns the new value and the action taken.
+//
+// A live key whose provider has a keys.test_keys entry (stripe,
+// stripe_publishable, paypal_client_id, paypal_client_secret, mollie,
+// razorpay_key_id, razorpay_key_secret, square; underscore or hyphen
+// names) is swapped for it in swap mode when Classify reads the entry as
+// test; an entry whose provider has no test marker (PayPal, the Razorpay
+// secret, Square tokens) is swapped unless it reads as live. Otherwise
+// the key is blanked. A key inside a longer value is replaced alone; one
+// known by its field is the whole value. A test or unknown key comes back
+// unchanged with action "kept". An unknown mode is a config error.
 func Replace(h Hit, value []byte, mode string, testKeys map[string]string) (out []byte, action string, err error) {
-	return nil, "", core.ErrNotBuilt
+	return replace(h, value, mode, testKeys)
 }
 
 // Gateway describes one payment gateway's settings option.
@@ -63,8 +73,10 @@ type Gateway struct {
 	LiveSecretPaths, TestSecretPaths []string
 }
 
-// Gateways returns the gateway list.
-func Gateways() []Gateway { return nil }
+// Gateways returns the gateway list: Stripe, PayPal Payments (its
+// settings and its gateway option), WooPayments, Square, Braintree,
+// Mollie, Razorpay, Klarna Payments and Authorize.net.
+func Gateways() []Gateway { return gatewayList() }
 
 // Mailer describes one SMTP or mail API plugin's settings option.
 type Mailer struct {
@@ -72,10 +84,13 @@ type Mailer struct {
 	SecretPaths                           []string
 }
 
-// Mailers returns the mailer list.
-func Mailers() []Mailer { return nil }
+// Mailers returns the mailer list: WP Mail SMTP, Post SMTP and FluentSMTP.
+// SecretPaths may hold a "*" segment (see PathMatch).
+func Mailers() []Mailer { return mailerList() }
 
 // ValidateTestKey returns a *core.Error test-key-is-live when value is a live key.
+// provider is a keys.test_keys name, with underscores or hyphens. An
+// empty value is accepted (the entry blanks).
 func ValidateTestKey(provider, value string) error {
-	return core.ErrNotBuilt
+	return validateTestKey(provider, value)
 }
