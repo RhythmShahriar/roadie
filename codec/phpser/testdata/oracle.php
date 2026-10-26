@@ -2,10 +2,10 @@
 // Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 // SPDX-License-Identifier: MIT
 
-// The differential oracle for codec/phpser. It reads frames from stdin,
-// each a 4-byte big-endian length and that many bytes, and answers one
-// byte per frame: '1' when PHP's unserialize accepts the bytes and '0'
-// when it doesn't. Classes are never loaded (allowed_classes false), so
+// The differential oracle for codec/phpser. It first writes a line with
+// PHP_VERSION_ID, then reads frames from stdin, each a 4-byte big-endian
+// length and that many bytes, and answers one byte per frame: '1' when
+// PHP's unserialize accepts the bytes and '0' when it doesn't. Classes are never loaded (allowed_classes false), so
 // no object code runs. Run as: php -n oracle.php
 
 error_reporting(0);
@@ -13,6 +13,10 @@ ini_set('display_errors', '0');
 
 $in = fopen('php://stdin', 'rb');
 $out = fopen('php://stdout', 'wb');
+
+// The first line says which PHP answers, since the grammar changed in 8.3.
+fwrite($out, PHP_VERSION_ID . "\n");
+fflush($out);
 
 function read_exactly($in, int $n): ?string
 {

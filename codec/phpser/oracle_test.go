@@ -11,6 +11,8 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -24,6 +26,9 @@ type oracle struct {
 	cmd *exec.Cmd
 	in  io.WriteCloser
 	out *bufio.Reader
+	// lax is PHP before 8.3, which didn't check the ":{" after an
+	// object's count.
+	lax bool
 }
 
 func startOracle(t testing.TB) *oracle {
@@ -46,6 +51,15 @@ func startOracle(t testing.TB) *oracle {
 		_ = in.Close()
 		_ = cmd.Wait()
 	})
+	line, err := o.out.ReadString('\n')
+	if err != nil {
+		t.Fatalf("oracle version: %v", err)
+	}
+	id, err := strconv.Atoi(strings.TrimSpace(line))
+	if err != nil {
+		t.Fatalf("oracle version %q: %v", line, err)
+	}
+	o.lax = id < 80300
 	return o
 }
 
@@ -68,14 +82,15 @@ func (o *oracle) valid(t testing.TB, b []byte) bool {
 
 // goPrefix is what Go says PHP should answer: PHP accepts a valid value
 // with any bytes after it. skip is true for the inputs where Roadie
-// differs from PHP on purpose (S: strings, more than 512 levels); php is
-// what to send PHP, with each E: enum swapped for an empty object since
-// PHP refuses an enum whose class isn't loaded.
-func goPrefix(b []byte) (ok, skip bool, php []byte) {
+// differs from PHP on purpose (S: strings, more than 512 levels or the
+// unchecked object separator of PHP before 8.3 when lax); php is what to
+// send PHP, with each E: enum swapped for an empty object since PHP
+// refuses an enum whose class isn't loaded.
+func goPrefix(b []byte, lax bool) (ok, skip bool, php []byte) {
 	var spans [][2]int
 	p := parser{onEnum: func(s, e int) { spans = append(spans, [2]int{s, e}) }}
 	n, err := p.run(b)
-	if errors.Is(err, errEscaped) || errors.Is(err, errTooDeep) {
+	if errors.Is(err, errEscaped) || errors.Is(err, errTooDeep) || (lax && errors.Is(err, errSeparator)) {
 		return false, true, b
 	}
 	if err != nil {
@@ -101,6 +116,7 @@ const (
 	trailing // PHP accepts the value and ignores the rest; Valid says no
 	escaped  // PHP accepts S:; Valid says no
 	enum     // PHP refuses an enum it can't load; Valid accepts it
+	lax      // PHP before 8.3 accepts any two bytes after an object's count
 )
 
 type oracleCase struct {
@@ -145,15 +161,15 @@ var oracleCases = []oracleCase{
 	{`O:1:" ":0:{}`, false, same}, {`O:1:"_":0:{}`, true, same}, {`O:8:"stdClass":+1:{s:1:"a";N;}`, true, same},
 	{`O:8:"stdClass":01:{s:1:"a";N;}`, true, same}, {`O:8:"stdClass"::{}`, true, same}, {`O:8:"stdClass":-0:{}`, true, same},
 	{`O:8:"stdClass":-1:{}`, false, same}, {`O:+8:"stdClass":0:{}`, false, same}, {`O:8:"stdClass":1:{i:0;N;}`, true, same},
-	{`O:8:"stdClass":1:{d:0;N;}`, false, same}, {`O:8:"stdClass":1:XXs:1:"a";N;}`, false, same}, {`O:8:"stdClass":1XXs:1:"a";N;}`, true, same},
-	{`O:8:"stdClass":0XX}`, true, same}, {`O:8:"stdClass":0::}`, true, same}, {`O:8:"stdClass"X0:{}`, false, same}, {`O:8:"stdClass:0:{}`, false, same},
+	{`O:8:"stdClass":1:{d:0;N;}`, false, same}, {`O:8:"stdClass":1:XXs:1:"a";N;}`, false, same}, {`O:8:"stdClass":1XXs:1:"a";N;}`, false, lax},
+	{`O:8:"stdClass":0XX}`, false, lax}, {`O:8:"stdClass":0::}`, false, lax}, {`O:8:"stdClass"X0:{}`, false, same}, {`O:8:"stdClass:0:{}`, false, same},
 	{`O:8:"stdClass":0:`, false, same}, {`O:8:"stdClass":0:{`, false, same}, {`O:18446744073709551624:"stdClass":0:{}`, true, same},
 	{`O:8:"stdClass":99999999999999999999999:{}`, false, same}, {"O:8:\"Customer\":1:{s:8:\"\x00*\x00email\";N;}", true, same},
 	{`O:22:"__PHP_Incomplete_Class":0:{}`, true, same}, {`O:8:"stdClass":1:{s:1:"a";N;}`, true, same}, {`O:8:"stdClass":1:{i:+5;N;}`, true, same},
 	// custom objects
 	{`C:8:"stdClass":0:{}`, true, same}, {`C:8:"stdClass":3:{abc}`, true, same}, {`C:8:"stdClass":+3:{abc}`, true, same},
 	{`C:8:"stdClass":03:{abc}`, true, same}, {`C:8:"stdClass":-0:{}`, true, same}, {`C:3:"a-b":0:{}`, false, same}, {`C:8:"stdClass"::{}`, true, same},
-	{`C:8:"stdClass":99999999999999999999999:{}`, false, same}, {`C:8:"stdClass":3XXabc}`, true, same}, {`C:8:"stdClass":0XX}`, true, same},
+	{`C:8:"stdClass":99999999999999999999999:{}`, false, same}, {`C:8:"stdClass":3XXabc}`, false, lax}, {`C:8:"stdClass":0XX}`, false, lax},
 	{`C:8:"stdClass":0:{`, false, same}, {`C:8:"stdClass":1:{}`, false, same}, {`C:8:"stdClass":1:{}}`, true, same},
 	{`C:8:"stdClass":0:{}x`, false, trailing}, {`a:1:{i:0;C:8:"stdClass":2:{N;}}`, true, same}, {`C:22:"__PHP_Incomplete_Class":0:{}`, true, same},
 	{`C:8:"stdClass":2:{"}}`, true, same},
@@ -206,11 +222,13 @@ func TestOracleCases(t *testing.T) {
 			phpWant = true
 		case enum:
 			phpWant = false
+		case lax:
+			phpWant = o.lax
 		}
 		if got := o.valid(t, []byte(c.in)); got != phpWant {
 			t.Errorf("PHP says %v for %q, the case says %v", got, c.in, phpWant)
 		}
-		ok, skip, php := goPrefix([]byte(c.in))
+		ok, skip, php := goPrefix([]byte(c.in), o.lax)
 		if !skip && o.valid(t, php) != ok {
 			t.Errorf("Go and PHP disagree on %q: Go says %v", c.in, ok)
 		}
@@ -229,7 +247,7 @@ func FuzzDifferentialPHP(f *testing.F) {
 	}
 	o := startOracle(f)
 	f.Fuzz(func(t *testing.T, b []byte) {
-		ok, skip, php := goPrefix(b)
+		ok, skip, php := goPrefix(b, o.lax)
 		if skip {
 			return
 		}
@@ -251,7 +269,7 @@ func FuzzDifferentialPHP(f *testing.F) {
 		if !changed {
 			return
 		}
-		_, _, php = goPrefix(out)
+		_, _, php = goPrefix(out, o.lax)
 		if !o.valid(t, php) {
 			t.Fatalf("PHP refuses the rewrite of %q: %q", b, out)
 		}

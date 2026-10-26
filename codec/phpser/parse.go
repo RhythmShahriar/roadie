@@ -24,6 +24,9 @@ var (
 	errEscaped = errors.New("escaped S: strings are not supported")
 	errBadByte = errors.New("unexpected byte")
 	errTrail   = errors.New("bytes after the value")
+	// errSeparator is a missing ":{" after an object's count, which PHP
+	// before 8.3 didn't check.
+	errSeparator = errors.New(`no ":{" after the count`)
 )
 
 // parseError says where the bytes stopped being serialized data.
@@ -559,7 +562,8 @@ func classByte(c byte) bool {
 // object parses O:<len>:"<class>":<count>:{...} and, when custom,
 // C:<len>:"<class>":<len>:{<bytes>}, whose bytes stay opaque. PHP reads
 // the count with parse_iv2 (sign and leading zeros allowed, even no
-// digits) and then skips the two bytes after it without looking at them.
+// digits). PHP before 8.3 then skipped the two bytes after the count
+// without looking at them; 8.3 requires ":{" there and so does Roadie.
 func (p *parser) object(custom bool) bool {
 	p.pos++ // 'O' or 'C', seen by value
 	if !p.lit(":") || !p.className() {
@@ -569,8 +573,8 @@ func (p *parser) object(custom bool) bool {
 	if !ok {
 		return false
 	}
-	if len(p.b)-p.pos < 2 {
-		return p.fail(errBadByte)
+	if !bytes.HasPrefix(p.b[p.pos:], []byte(":{")) {
+		return p.fail(errSeparator)
 	}
 	p.pos += 2
 	if !custom {
