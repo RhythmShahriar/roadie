@@ -1,0 +1,38 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r02: HPOS compatibility mode (data sync on). 60 customers and 120 orders,
+each order in wp_posts, wp_postmeta, wp_wc_orders, wp_wc_order_addresses
+and wp_wc_orders_meta with the same person's values. */ -}}
+{{template "head"}}
+{{- template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'admin_email','owner@shop.example.com','on'),(5,'blog_public','1','on'),(6,'woocommerce_custom_orders_table_enabled','yes','on'),(7,'woocommerce_custom_orders_table_data_sync_enabled','yes','on');
+UNLOCK TABLES;
+{{template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+{{template "users" (dict "p" "wp_" "n" 60 "tag" "c" "base" 1)}}UNLOCK TABLES;
+{{template "wp_usermeta" "wp_"}}
+LOCK TABLES `wp_usermeta` WRITE;
+{{template "usermeta" (dict "p" "wp_" "n" 60 "tag" "c" "base" 1 "meta" 0)}}UNLOCK TABLES;
+{{template "wp_posts" "wp_"}}
+LOCK TABLES `wp_posts` WRITE;
+INSERT INTO `wp_posts` VALUES {{range $o := seq 120}}{{if gt $o 1}},{{end}}({{add $o 2000}},1,'2026-07-01 11:00:00','','Order &ndash; July 1, 2026','','wc-completed','order-{{$o}}',0,'https://shop.example.com/?post_type=shop_order&p={{add $o 2000}}','shop_order',''){{end}};
+UNLOCK TABLES;
+{{template "wp_postmeta" "wp_"}}
+LOCK TABLES `wp_postmeta` WRITE;
+INSERT INTO `wp_postmeta` VALUES {{range $o := seq 120}}{{$n := printf "c%d" (add (mod $o 60) 1)}}{{$m := mul $o 6}}{{if gt $o 1}},{{end}}({{$m}},{{add $o 2000}},'_billing_email','{{sql (canary "email" $n)}}'),({{add $m 1}},{{add $o 2000}},'_billing_first_name','{{sql (canary "first_name" $n)}}'),({{add $m 2}},{{add $o 2000}},'_billing_last_name','{{sql (canary "last_name" $n)}}'),({{add $m 3}},{{add $o 2000}},'_billing_phone','{{sql (canary "phone" $n)}}'),({{add $m 4}},{{add $o 2000}},'_billing_address_1','{{sql (canary "street" $n)}}'),({{add $m 5}},{{add $o 2000}},'_customer_ip_address','{{sql (canary "ip" $n "wp_postmeta.meta_value")}}'){{end}};
+UNLOCK TABLES;
+{{template "wp_wc_orders" "wp_"}}
+LOCK TABLES `wp_wc_orders` WRITE;
+INSERT INTO `wp_wc_orders` VALUES {{range $o := seq 120}}{{$c := add (mod $o 60) 1}}{{$n := printf "c%d" $c}}{{if gt $o 1}},{{end}}({{add $o 2000}},'wc-completed','GBP','shop_order',18.50000000,{{add $c 1}},'{{sql (canary "email" $n)}}','2026-07-01 11:00:00',0,'stripe','ch_testbed{{$o}}','{{sql (canary "ip" $n)}}','Mozilla/5.0 (X11; Linux x86_64) Firefox/141.0',''){{end}};
+UNLOCK TABLES;
+{{template "wp_wc_order_addresses" "wp_"}}
+LOCK TABLES `wp_wc_order_addresses` WRITE;
+INSERT INTO `wp_wc_order_addresses` VALUES {{range $o := seq 120}}{{$n := printf "c%d" (add (mod $o 60) 1)}}{{if gt $o 1}},{{end}}({{$o}},{{add $o 2000}},'billing','{{sql (canary "first_name" $n)}}','{{sql (canary "last_name" $n)}}','{{sql (canary "street" $n)}}','York','YO1 7HH','GB','{{sql (canary "email" $n)}}','{{sql (canary "phone" $n)}}'){{end}};
+UNLOCK TABLES;
+{{template "wp_wc_orders_meta" "wp_"}}
+LOCK TABLES `wp_wc_orders_meta` WRITE;
+INSERT INTO `wp_wc_orders_meta` VALUES {{range $o := seq 120}}{{$n := printf "c%d" (add (mod $o 60) 1)}}{{if gt $o 1}},{{end}}({{$o}},{{add $o 2000}},'_billing_address_index','{{sql (canary "first_name" $n) " " (canary "last_name" $n) " " (canary "street" $n) " York YO1 7HH GB " (canary "email" $n) " " (canary "phone" $n)}}'){{end}};
+UNLOCK TABLES;
+{{template "tail"}}

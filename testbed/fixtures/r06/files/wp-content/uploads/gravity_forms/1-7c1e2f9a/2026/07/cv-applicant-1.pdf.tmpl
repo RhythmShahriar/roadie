@@ -1,0 +1,11 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+A CV as Gravity Forms stores an upload: Roadie can't rewrite it, so it
+must be listed as uploads.personal. The text is plain on purpose: the
+oracle reads it byte for byte. */ -}}
+%PDF-1.4
+1 0 obj << /Type /Catalog >> endobj
+BT /F1 12 Tf 72 720 Td (Curriculum vitae: {{canary "full_name" "g1" "wp_gf_entry_meta.meta_value"}}) Tj ET
+BT /F1 12 Tf 72 700 Td ({{canary "email" "g1" "wp_gf_entry_meta.meta_value"}} {{canary "phone" "g1" "wp_gf_entry_meta.meta_value"}}) Tj ET
+%%EOF

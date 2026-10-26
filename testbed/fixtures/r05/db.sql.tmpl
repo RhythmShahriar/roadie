@@ -1,0 +1,35 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r05: 40 subscribers, each with an active subscription (an HPOS order of
+type shop_subscription) holding a Stripe customer ID and the next payment
+due now, plus the scheduled renewal action for each. */ -}}
+{{template "head"}}
+{{- template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'blog_public','1','on'),(5,'woocommerce_custom_orders_table_enabled','yes','on'),(6,'woocommerce_stripe_settings','{{sql (include "stripe_live")}}','on'),(7,'wc_subscriptions_siteurl','https://shop.example._[wc_subscriptions_siteurl]_com','on'),(8,'woocommerce_subscriptions_is_active','1','on');
+UNLOCK TABLES;
+{{template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+{{template "users" (dict "p" "wp_" "n" 40 "tag" "s" "base" 1)}}UNLOCK TABLES;
+{{template "wp_usermeta" "wp_"}}
+LOCK TABLES `wp_usermeta` WRITE;
+{{template "usermeta" (dict "p" "wp_" "n" 40 "tag" "s" "base" 1 "meta" 0)}}INSERT INTO `wp_usermeta` VALUES {{range $i := seq 40}}{{if gt $i 1}},{{end}}({{add 1000 $i}},{{add $i 1}},'_stripe_customer_id','{{sql (canary "stripe_customer" (printf "s%d" $i) "wp_usermeta.meta_value")}}'){{end}};
+UNLOCK TABLES;
+{{template "wp_wc_orders" "wp_"}}
+LOCK TABLES `wp_wc_orders` WRITE;
+INSERT INTO `wp_wc_orders` VALUES {{range $i := seq 40}}{{$n := printf "s%d" $i}}{{if gt $i 1}},{{end}}({{add $i 5000}},'wc-active','GBP','shop_subscription',12.00000000,{{add $i 1}},'{{sql (canary "email" $n)}}','2026-04-01 09:00:00',{{add $i 4000}},'stripe','','{{sql (canary "ip" $n "wp_wc_orders.ip_address")}}','',''){{end}};
+UNLOCK TABLES;
+{{template "wp_wc_order_addresses" "wp_"}}
+LOCK TABLES `wp_wc_order_addresses` WRITE;
+INSERT INTO `wp_wc_order_addresses` VALUES {{range $i := seq 40}}{{$n := printf "s%d" $i}}{{if gt $i 1}},{{end}}({{$i}},{{add $i 5000}},'billing','{{sql (canary "first_name" $n)}}','{{sql (canary "last_name" $n)}}','{{sql (canary "street" $n)}}','Bristol','BS1 4DJ','GB','{{sql (canary "email" $n)}}','{{sql (canary "phone" $n)}}'){{end}};
+UNLOCK TABLES;
+{{template "wp_wc_orders_meta" "wp_"}}
+LOCK TABLES `wp_wc_orders_meta` WRITE;
+INSERT INTO `wp_wc_orders_meta` VALUES {{range $i := seq 40}}{{$m := mul $i 4}}{{if gt $i 1}},{{end}}({{$m}},{{add $i 5000}},'_stripe_customer_id','{{sql (canary "stripe_customer" (printf "s%d" $i))}}'),({{add $m 1}},{{add $i 5000}},'_stripe_source_id','src_testbed{{printf "%010d" $i}}'),({{add $m 2}},{{add $i 5000}},'_schedule_next_payment','2026-10-01 00:00:00'),({{add $m 3}},{{add $i 5000}},'_billing_period','month'){{end}};
+UNLOCK TABLES;
+{{template "wp_actionscheduler_actions" "wp_"}}
+LOCK TABLES `wp_actionscheduler_actions` WRITE;
+INSERT INTO `wp_actionscheduler_actions` VALUES {{range $i := seq 40}}{{if gt $i 1}},{{end}}({{$i}},'woocommerce_scheduled_subscription_payment','pending','2026-10-01 00:00:00','2026-10-01 00:00:00',10,'{"subscription_id":{{add $i 5000}}}','O:30:\"ActionScheduler_SimpleSchedule\":0:{}',0,0,'0000-00-00 00:00:00','0000-00-00 00:00:00',0,NULL){{end}};
+UNLOCK TABLES;
+{{template "tail"}}

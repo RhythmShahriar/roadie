@@ -1,0 +1,10 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  WooCommerce Subscriptions with stored live Stripe customer and source
+  IDs, a renewal due now, the obscured wc_subscriptions_siteurl and a
+  wp-config.php whose WP_SITEURL and WP_HOME defines still name
+  production, so Subscriptions would think the copy is live.
+stack: woocommerce
+canaries: true

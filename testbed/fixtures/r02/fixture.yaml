@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  WooCommerce with HPOS compatibility mode on: every order is in wp_posts
+  and wp_postmeta and again in the HPOS tables, so a copy must give both
+  sides the same fake or WooCommerce's sync writes real values back.
+stack: woocommerce
+canaries: true

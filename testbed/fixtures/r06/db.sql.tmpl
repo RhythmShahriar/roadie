@@ -1,0 +1,28 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r06: Gravity Forms. Form 1 ("Join the team") has fields 1 (name), 2
+(email), 3 (phone), 4 (file upload) and 5 (cover letter); 80 entries,
+each with meta per field and a note; the form notifies a real address. */ -}}
+{{template "head"}}
+{{- template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'blog_public','1','on'),(5,'rg_form_version','2.9.18','on');
+UNLOCK TABLES;
+{{template "wp_gf" "wp_"}}
+LOCK TABLES `wp_gf_form` WRITE;
+INSERT INTO `wp_gf_form` VALUES (1,'Join the team','2026-03-01 09:00:00',1,0);
+UNLOCK TABLES;
+LOCK TABLES `wp_gf_form_meta` WRITE;
+INSERT INTO `wp_gf_form_meta` VALUES (1,'{"title":"Join the team","fields":[{"type":"name","id":1,"label":"Your name"},{"type":"email","id":2,"label":"Email"},{"type":"phone","id":3,"label":"Phone"},{"type":"fileupload","id":4,"label":"CV"},{"type":"textarea","id":5,"label":"Cover letter"}]}',NULL,'{"5f1":{"id":"5f1","name":"Default Confirmation","type":"message","message":"Thanks!"}}','{{sql "{\"5f2\":{\"id\":\"5f2\",\"name\":\"Admin\",\"to\":\"" (json (canary "email" "hr" "wp_gf_form_meta.notifications")) "\",\"subject\":\"New application\"}}"}}');
+UNLOCK TABLES;
+LOCK TABLES `wp_gf_entry` WRITE;
+INSERT INTO `wp_gf_entry` VALUES {{range $e := seq 80}}{{if gt $e 1}},{{end}}({{$e}},1,'2026-07-02 10:00:00','{{sql (canary "ip" (printf "g%d" $e) "wp_gf_entry.ip")}}','https://shop.example.com/careers/','Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) Safari/605.1.15','active'){{end}};
+UNLOCK TABLES;
+LOCK TABLES `wp_gf_entry_meta` WRITE;
+INSERT INTO `wp_gf_entry_meta` VALUES {{range $e := seq 80}}{{$n := printf "g%d" $e}}{{$m := mul $e 5}}{{if gt $e 1}},{{end}}({{$m}},1,{{$e}},'1','{{sql (canary "full_name" $n "wp_gf_entry_meta.meta_value")}}'),({{add $m 1}},1,{{$e}},'2','{{sql (canary "email" $n "wp_gf_entry_meta.meta_value")}}'),({{add $m 2}},1,{{$e}},'3','{{sql (canary "phone" $n "wp_gf_entry_meta.meta_value")}}'),({{add $m 3}},1,{{$e}},'4','https://shop.example.com/wp-content/uploads/gravity_forms/1-7c1e2f9a/2026/07/cv-applicant-{{$e}}.pdf'),({{add $m 4}},1,{{$e}},'5','{{sql "Hello, I am " (canary "full_name" $n) " and I live at " (canary "street" $n "wp_gf_entry_meta.meta_value") ". Reach me on " (canary "phone" $n) "."}}'){{end}};
+UNLOCK TABLES;
+LOCK TABLES `wp_gf_entry_notes` WRITE;
+INSERT INTO `wp_gf_entry_notes` VALUES {{range $e := seq 80}}{{if gt $e 1}},{{end}}({{$e}},{{$e}},'Shop Owner',1,'2026-07-03 09:00:00','{{sql "Called back, prefers " (canary "email" (printf "note%d" $e) "wp_gf_entry_notes.value") " for the interview invite."}}','user'){{end}};
+UNLOCK TABLES;
+{{template "tail"}}

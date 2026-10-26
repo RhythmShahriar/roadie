@@ -1,0 +1,10 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  Gravity Forms: a job application form whose name, email and phone
+  fields are known only from the form's JSON, entries and entry notes
+  with personal data, a notification to a real address and an uploaded
+  CV under uploads/gravity_forms/ that Roadie can only list.
+stack: wordpress
+canaries: true

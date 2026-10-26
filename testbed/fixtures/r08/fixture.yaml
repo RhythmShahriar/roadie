@@ -1,0 +1,11 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  Serialized torture: session_tokens with IPs and user agents, serialized
+  strings inside serialized arrays, multibyte text around the values (so
+  byte lengths differ from character counts), protected properties with
+  NUL bytes in their names, references and two broken values, one with
+  an email inside (blanked and reported) and one without (left as it is).
+stack: wordpress
+canaries: true

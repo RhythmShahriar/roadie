@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  A legacy WooCommerce shop: orders as posts only (HPOS off), carts in
+  woocommerce_sessions as serialized customer arrays and saved Stripe
+  payment tokens with the card's last four digits and expiry.
+stack: woocommerce
+canaries: true
