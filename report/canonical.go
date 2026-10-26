@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"strconv"
 	"unicode/utf8"
@@ -21,11 +22,57 @@ import (
 // integer: a float anywhere is an error, as is a key that appears twice
 // in one object. Masking happens before this point.
 func Canonical(v any) ([]byte, error) {
+	// A whole float (3.0) marshals as 3, which the parse below can't tell
+	// from an integer, so the Go value is checked for floats first.
+	if err := noFloats(reflect.ValueOf(v), 0); err != nil {
+		return nil, fmt.Errorf("canonical JSON: %w", err)
+	}
 	b, err := marshal(v)
 	if err != nil {
 		return nil, fmt.Errorf("canonical JSON: %w", err)
 	}
 	return canonicalJSON(b)
+}
+
+// noFloats walks v as encoding/json would and refuses any float, even
+// one that holds a whole number: the schema has integers only (PRD 16.4).
+func noFloats(v reflect.Value, depth int) error {
+	if depth > maxDepth || !v.IsValid() {
+		return nil
+	}
+	switch v.Kind() {
+	case reflect.Float32, reflect.Float64:
+		return fmt.Errorf("a float (%s) where Roadie writes integers only", v.Type())
+	case reflect.Pointer, reflect.Interface:
+		if v.IsNil() {
+			return nil
+		}
+		return noFloats(v.Elem(), depth+1)
+	case reflect.Struct:
+		for i := range v.NumField() {
+			if v.Type().Field(i).IsExported() {
+				if err := noFloats(v.Field(i), depth+1); err != nil {
+					return err
+				}
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		if v.Type().Elem().Kind() == reflect.Uint8 {
+			return nil // bytes: json.RawMessage, checked when it is parsed
+		}
+		for i := range v.Len() {
+			if err := noFloats(v.Index(i), depth+1); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		for it := v.MapRange(); it.Next(); {
+			if err := noFloats(it.Value(), depth+1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // maxDepth bounds how deeply a report may nest; Roadie's own nest five

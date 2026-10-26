@@ -188,9 +188,13 @@ func (v *view) step(name, word, line, countLine string) {
 	v.box(word, line, countLine, verdictColor(word))
 }
 
-// demoStop shows why the demo stopped and exits with its code.
+// demoStop shows why the demo stopped and exits with its code. With
+// --json there is no screen, so kit prints the message on stderr.
 func demoStop(v *view, err error) error {
 	ce := asCoreError(err)
+	if v.w == io.Discard {
+		return &cli.ExitError{Code: ce.Exit, Err: ce}
+	}
 	v.box("STOPPED", "the demo couldn't run", "", sevColor(core.SeverityCritical))
 	v.para(ce.Msg)
 	return &cli.ExitError{Code: ce.Exit}

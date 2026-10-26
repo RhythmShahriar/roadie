@@ -41,9 +41,11 @@ type sample struct {
 }
 
 // redrawEvery and speedWindow are PRD 10.2's limits: ten redraws a
-// second, the ETA from a 5 s moving average.
+// second, the ETA from a 5 s moving average. sampleEvery is the moving
+// average's resolution.
 const (
 	redrawEvery = 100 * time.Millisecond
+	sampleEvery = 100 * time.Millisecond
 	speedWindow = 5 * time.Second
 	barWidth    = 32
 )
@@ -86,7 +88,14 @@ func (p *progress) Advance(n int64) {
 	defer p.mu.Unlock()
 	p.done += n
 	now := p.now()
-	p.samples = append(p.samples, sample{now, p.done})
+	// The engine may call Advance once a row, so samples closer together
+	// than sampleEvery share one slot: the window then holds about 50
+	// samples however fast the rows come.
+	if k := len(p.samples); k >= 2 && now.Sub(p.samples[k-2].at) < sampleEvery {
+		p.samples[k-1] = sample{now, p.done}
+	} else {
+		p.samples = append(p.samples, sample{now, p.done})
+	}
 	for len(p.samples) > 2 && now.Sub(p.samples[1].at) >= speedWindow {
 		p.samples = p.samples[1:]
 	}
@@ -169,7 +178,7 @@ func (p *progress) line() string {
 	fmt.Fprintf(&b, "%-11s ", phaseName(p.phase))
 	if p.total > 0 {
 		done := min(p.done, p.total)
-		filled := int(done * barWidth / p.total)
+		filled := int(float64(done) / float64(p.total) * barWidth) // no int64 overflow on huge sizes
 		b.WriteString(strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled))
 		fmt.Fprintf(&b, "  %s of %s", size(done), size(p.total))
 	} else {

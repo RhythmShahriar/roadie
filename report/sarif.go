@@ -217,14 +217,28 @@ func (r *report) sarifLocation(l core.Location) sarifLocation {
 	return loc
 }
 
-// fileURI writes a path as a relative URI reference with forward slashes.
+// fileURI writes a path as a URI with forward slashes: a relative path
+// stays a relative reference, which code scanning resolves against the
+// repository; an absolute one (/srv/x.sql, C:\x.sql, \\host\share) becomes
+// a file: URI, since "C:/x.sql" would read as a URI with the scheme "c".
 func fileURI(p string) string {
 	p = strings.ReplaceAll(p, "\\", "/")
 	parts := strings.Split(p, "/")
 	for i, s := range parts {
 		parts[i] = url.PathEscape(s)
 	}
-	return strings.Join(parts, "/")
+	u := strings.Join(parts, "/")
+	switch {
+	case strings.HasPrefix(p, "//"):
+		return "file:" + u
+	case strings.HasPrefix(p, "/"):
+		return "file://" + u
+	case len(p) >= 2 && p[1] == ':' && ('a' <= p[0]|0x20 && p[0]|0x20 <= 'z'):
+		return "file:///" + u
+	case strings.Contains(parts[0], ":"):
+		return "./" + u // a colon in the first segment would read as a scheme
+	}
+	return u
 }
 
 // sarifLevel maps a severity to SARIF's levels.

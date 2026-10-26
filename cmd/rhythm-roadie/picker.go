@@ -184,6 +184,19 @@ func withoutPassword(s string) (string, bool) {
 	return s[:i+3] + rest[:colon] + rest[at:], true
 }
 
+// inlinePassword is the password withoutPassword would drop, "" when
+// there is none.
+func inlinePassword(s string) string {
+	stripped, ok := withoutPassword(s)
+	if !ok {
+		return ""
+	}
+	// stripped is s with the password and its colon taken out.
+	i := strings.Index(s, "://") + 3
+	colon := i + strings.Index(s[i:], ":")
+	return s[colon+1 : colon+1+len(s)-len(stripped)-1]
+}
+
 // configPath is where config init and the picker write the settings.
 var configPath = filepath.Join(".roadie", "config.yaml")
 

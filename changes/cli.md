@@ -6,6 +6,8 @@ The CLI (`cmd/rhythm-roadie`), the reports (`report`), the GitHub Action (`actio
 
 `rhythm-roadie` and `rhythm roadie` are the same program. Help, version, update, Ctrl-C, the update prompt and completion come from kit's `cli.Main`.
 
+The background release check (`A new release of rhythm-roadie is available: <old> → <new>`, `run: rhythm update`) runs only when stderr is a terminal. It is off, with no request to the release API, for `--json`, `-q`/`--quiet`, `--offline`, `RHYTHM_OFFLINE`, when `CI` is set and when stderr is piped.
+
 | Command | What it does |
 |---|---|
 | `rhythm-roadie` | the picker on a terminal (stdin and stdout both terminals); otherwise the top help, exit 0 |
@@ -43,6 +45,8 @@ A flag wins over the config, the config over the default. The config fills `sour
 
 `--offline` and `RHYTHM_OFFLINE` (anything but empty or `0`) use the built-in or cached profiles and keep every update check off.
 
+Errors that quote a database address never show its password: `mysql://user:pw@host/db` is printed as `mysql://user@host/db` and any other copy of the password, raw or URL-decoded, as `•••` (copy, prepare, plan, verify and `config init --from`).
+
 Usage errors exit 2 with `rhythm-roadie <cmd>: <message>` and `  run 'rhythm-roadie help <cmd>' for usage`; an unknown flag adds `  did you mean: rhythm-roadie copy --from`. The full list of messages is in the lane notes (`review/2026-10b/roadie/changes-cli.md`, batch 1, item 2).
 
 ## Exit codes
@@ -71,11 +75,15 @@ Reference layouts: `cmd/rhythm-roadie/testdata/golden/screen/*.txt` (plain and c
 
 A wrapped check detail in the VERIFY block lines up under the first line of its detail.
 
+The ALSO block's rsync line for uploads passes a non-default SSH port as `-e 'ssh -p N'`. With SSH on both ends it runs rsync on production and pushes to staging: `ssh [-p N] user@prod 'rsync -a [-e '\''ssh -p M'\''] --exclude ... /prod/path/ user@staging:/staging/path/'`.
+
+`--basic-auth <user>` (copy and prepare) prints `  Basic auth for <user>: password <password> (shown once; <dir> holds only its hash)`. With `GITHUB_ACTIONS=true` it prints `::add-mask::<password>` first, writes the password to `.roadie/basic-auth/password` (0600, folder 0700, an older file replaced) and prints `  Basic auth for <user>: password in .roadie/basic-auth/password (0600; the job log masks it)`, or `  Basic auth for <user>: couldn't save the password (<reason>); run --basic-auth again`. Help: `--basic-auth <user>` ends `printed once (default off; on GitHub Actions it is masked and kept in .roadie/basic-auth/password)`.
+
 `-q` prints only the box's two lines; `-v` every table, rule and file edit; `--plain` no colour, boxes or glyphs (`[ok]`, `[FAIL]`); `--debug` timings and counts, never values. Progress on a terminal: `Streaming   ████░░…  1.9 GB of 2.4 GB · 31 MB/s · 0:14 left`.
 
 ## Picker
 
-`What should Roadie do?` with PRD 6.12's six lines. copy asks `Where is production?`, `Where should the copy go?` and `The copy's URL?`, runs plan, asks `Copy now? [y/N]`, copies, then (only when there is no config) `Save these answers to .roadie/config.yaml? [Y/n]` and prints `Wrote .roadie/config.yaml with source:, target: and url: set.` prepare and verify ask `Which staging site?`; config init asks `Which stack?`. Esc or Ctrl-C exits 130.
+`What should Roadie do?` with PRD 6.12's six lines. copy asks `Where is production?`, `Where should the copy go?` and `The copy's URL?`, runs plan, asks `Copy now? [y/N]`, copies, then (only when there is no config) `Save these answers to .roadie/config.yaml? [Y/n]` and prints `Wrote .roadie/config.yaml for <stack words> with source:, target: and url: set.` (the template of the stack the copy found; WordPress when none) and `Added .roadie/reports, .roadie/key and .roadie/backups to .git/info/exclude.` A DSN's password is never saved: `mysql://u:pw@h/db` is written as `mysql://u@h/db` with `Left the password out of source: in .roadie/config.yaml; set ROADIE_FROM_PASSWORD when you run Roadie.` (`target:` and `ROADIE_TO_PASSWORD` likewise). prepare and verify ask `Which staging site?`; config init asks `Which stack?`. Esc or Ctrl-C exits 130.
 
 ## JSON (`--json`, schema `rhythm-roadie/v1`)
 
@@ -83,13 +91,14 @@ Envelope: `schema`, `kind` (`plan`, `copy`, `prepare`, `verify`, `config`, `prof
 
 - `summary`: `critical`, `high`, `medium`, `low`, `info`, `tables`, `tables_pseudonymised`, `rows`, `values_pseudonymised`, `urls_rewritten`, `keys_found`, `keys_swapped`, `keys_blanked`, `side_effects_off`, `side_effects_total`, `uncovered_columns`.
 - `data` for copy, prepare, verify and plan: every field of PRD 16.2 in snake_case. `data.result` is `pass`, `fail` or `error`; `complete` is false for a sampled verify, a run that stopped or one that scanned nothing; `not_covered` is always present; a run that stops has `data.error: {code, message, exit}`. Example: `report/testdata/golden/envelope-copy-pass.json`.
+- Canonical JSON and signing refuse a float, even a whole one: `canonical JSON: a float (float64) where Roadie writes integers only` and `report: a float (float64) where Roadie writes integers only`. No report Roadie writes holds one.
 - `report check --json`: `kind: "report-check"`, `data: {result: valid|edited|unsigned|error, key_id, input_checked, error?}`.
 - `profiles --json`: `data: {profile_pack, profiles: [...]}`; `explain --json`: `data: {id, text}`.
 
 ## Reports
 
 - Every copy, prepare and verify saves `.roadie/reports/<UTC 2006-01-02T15-04-05>/report.json` (signed) and `report.html` (files 0600, folders 0700); `-2`, `-3` when two runs start in the same second; `<cache>/roadie/reports/<ts>/` when the project folder can't be written.
-- Markdown, HTML, SARIF 2.1.0 and JUnit as PRD 16.3 describes; each carries `Pseudonymised data is still personal data under the GDPR (Article 4(5), Recital 26).` and the Not covered sentence. SARIF rules link to `https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Verify-And-Reports#<id>`.
+- Markdown, HTML, SARIF 2.1.0 and JUnit as PRD 16.3 describes; each carries `Pseudonymised data is still personal data under the GDPR (Article 4(5), Recital 26).` and the Not covered sentence. SARIF rules link to `https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Verify-And-Reports#<id>`. SARIF `artifactLocation.uri` keeps a relative path relative (`./` in front when its first segment holds a colon) and writes an absolute one as a `file:` URI: `/srv/dumps/staging.sql` is `file:///srv/dumps/staging.sql`, `C:\dumps\staging.sql` is `file:///C:/dumps/staging.sql`, `\\nas\share\x.sql` is `file://nas/share/x.sql`.
 - `report <report.json>... -o <file>` prints `Wrote <path> (<n> report[s]).`; `--brand-name` and `--brand-logo` (PNG, SVG or JPEG under 512 KiB) on HTML.
 
 ## Signing and `report check`
@@ -97,13 +106,15 @@ Envelope: `schema`, `kind` (`plan`, `copy`, `prepare`, `verify`, `config`, `prof
 - Key: `ROADIE_SIGNING_KEY` (base64 of a 32-byte seed), else `--key <file>`, else `<config dir>/roadie/signing.key`, made on first use with `Created a signing key for Roadie reports: roadie:7Q3kXc2… (keep <path> private; set ROADIE_SIGNING_KEY in CI to sign with one identity).`
 - Key ID `roadie:` plus 16 characters; on screen 7 and `…`.
 - `report check <report.json> [--key <id|file>] [--input <dump>]`: `signed by roadie:7Q3kXc2… and unchanged since. It shows this Roadie run found these results; it doesn't prove the checks covered everything.` (exit 0); unsigned exit 3; edited, another key or another input exit 1. Exact messages: lane notes, batch 2, item 6.
+- `--key` takes a key ID (`roadie:...`), a report's `public_key` (a bare 32 bytes, base64 or raw, is always read as a public key, never as a seed) or a PEM Ed25519 key (`PUBLIC KEY`, or `PRIVATE KEY` for its public half). A `signing.key` file is not a public key: pin your own key by its key ID. Another value exits 2: `report check: --key isn't a public key: give a key ID (roadie:...), a report's public_key or a PEM Ed25519 key`. A report signed by another key exits 1: `report check: report.json is signed by <ID>, not by the key you pinned (<ID>).`
 
 ## config, profiles, explain, demo
 
-- `config init`: `Wrote .roadie/config.yaml for a WooCommerce site.` / `Set source:, target: and url: in it, then run rhythm-roadie plan.` / `Added .roadie/reports, .roadie/key and .roadie/backups to .git/info/exclude.`; `--from` lists columns that look personal as commented suggestions.
+- `config init`: `Wrote .roadie/config.yaml for a WooCommerce site.` / `Set source:, target: and url: in it, then run rhythm-roadie plan.` / `Added .roadie/reports, .roadie/key and .roadie/backups to .git/info/exclude.`; `--from` lists columns that look personal as commented suggestions; CR, LF, NEL, U+2028 and U+2029 in a table or column name become a space there, so a name can't end the comment.
+- `config check`: `<path> is valid.` and `Unset: ROADIE_X (line n); set it before a run that reads it.` for a `${ROADIE_*}` in a value, never for one in a trailing comment.
 - `config key show|rotate|forget` messages: lane notes, batch 1, item 5.
 - `profiles` lists the 24 profiles of PRD 6.10 with what each was checked against; `explain` has an offline text for every finding ID, live-key rule, error code and profile, plus `pseudonymised`.
-- `demo`: a 40-customer shop with fake people only, planned, copied, the copy verified (PASS) and the shop verified (FAIL), in a 0700 folder deleted at the end unless `--keep`. No network.
+- `demo`: a 40-customer shop with fake people only, planned, copied, the copy verified (PASS) and the shop verified (FAIL), in a 0700 folder deleted at the end unless `--keep`. No network. `demo --json` that can't run prints `rhythm-roadie: <reason>` once on stderr with its exit code and nothing on stdout.
 
 ## update and the router
 
@@ -166,9 +177,9 @@ Inputs:
 | `ssh-key` | | private key, written to `~/.ssh/roadie_action_key` (0600), `IdentityFile ~/.ssh/roadie_action_key` under `Host *` at the top of `~/.ssh/config`; removed and `~/.ssh` restored when the Action ends |
 | `known-hosts` | | required with `ssh-key`, appended to `~/.ssh/known_hosts`; host key checking is never turned off |
 
-Outputs: `exit-code` (0, 1, 2, 3 or 130), `verdict` (`pass`, `fail`, `error`), `findings` (count at or above `fail-on`; every finding with `none`), `report` (path of the signed `report.json`), `html`, `sarif-file`, `signature` (key ID, empty when unsigned), `version`.
+Outputs: `exit-code` (0, 1, 2, 3 or 130), `verdict` (`pass`, `fail`, `error`), `findings` (count at or above `fail-on`; `0` with `none`), `report` (path of the signed `report.json`), `html`, `sarif-file`, `signature` (key ID, empty when unsigned), `version`.
 
-Roadie runs as `rhythm-roadie <mode> ... --fail-on <level> --json -o $RUNNER_TEMP/roadie-report/report.json -o .../report.html [-o .../roadie.sarif] <args>`; the JSON on stdout stays out of the log, which shows stderr and the line `Roadie: <WORD>, <counts> (exit <n>)`.
+Roadie runs as `rhythm-roadie <mode> ... --fail-on <level> --json -o $RUNNER_TEMP/roadie-report/report.json -o .../report.html [-o .../roadie.sarif] <args>`; the JSON on stdout stays out of the log, which shows stderr and the line `Roadie: <WORD>, <counts> (exit <n>)`. The copy of stderr kept for the summary drops `::add-mask::` lines and shows the values they mask as `***`, as the job log does.
 
 Job summary by default (counts only, no hosts, tables, columns or values):
 
@@ -222,4 +233,4 @@ Example, a nightly refresh (README, "GitHub Action"):
 
 ## README and ROADMAP
 
-README sections: banner, the question and the positioning line, badges, the copy PASS screenshot (`docs/assets/copy.svg`, made from the colour golden by `go run ./scripts/screenshot -readme ...`; a test fails when it is out of date), The Rhythm set (rhythm, Tuner, Soundcheck, Echo, Roadie), Try it in a minute, Safety promises, Copy a site, Make an existing staging safe, Check a staging, What Roadie changes, What Roadie can't see, GitHub Action, Verify a download (the cosign command for `RhythmShahriar/roadie`), Docs (every wiki page of PRD 23), Contributing, Responsible use & disclaimer, License (MIT). ROADMAP lists PRD 5's "Not in v1" with one line each, plus keyless report signing (PRD 25).
+README sections: banner, the question and the positioning line, badges, the copy PASS screenshot (`docs/assets/copy.svg`, made from the colour golden by `go run ./scripts/screenshot -readme ...`; a test fails when it is out of date), The Rhythm set (rhythm, Tuner, Soundcheck, Echo, Roadie), Try it in a minute, Safety promises, Copy a site, Make an existing staging safe, Check a staging, What Roadie changes, What Roadie can't see, GitHub Action, Verify a download (the cosign command for `RhythmShahriar/roadie`), Docs (every wiki page of PRD 23), Contributing, Responsible use & disclaimer, License (`Roadie's own code is MIT. The rhythm-roadie binary also includes the rhythm kit, which is AGPL-3.0-only.`; the owner's PRD 24.1 decision may change this sentence). ROADMAP lists PRD 5's "Not in v1" with one line each, plus keyless report signing (PRD 25).

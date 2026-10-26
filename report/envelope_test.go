@@ -305,6 +305,15 @@ func TestCanonical(t *testing.T) {
 	if _, err := Canonical(map[string]float64{"x": 0.5}); err == nil {
 		t.Error("a float was accepted")
 	}
+	// A whole float marshals as an integer; it is refused all the same,
+	// in a struct, behind a pointer, in a list or in an interface.
+	type withFloat struct{ N *float64 }
+	three := 3.0
+	for _, v := range []any{3.0, float32(2), withFloat{&three}, []any{1, 2.0}, map[string]any{"a": map[string]any{"b": 4.0}}} {
+		if got, err := Canonical(v); err == nil {
+			t.Errorf("Canonical(%#v) = %s, want an error", v, got)
+		}
+	}
 	if _, err := Canonical(func() {}); err == nil {
 		t.Error("a func was accepted")
 	}
