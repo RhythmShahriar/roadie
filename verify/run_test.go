@@ -39,7 +39,10 @@ func TestMain(m *testing.M) {
 	} else if _, err := dotenv.Parse([]byte("A=1\n")); errors.Is(err, core.ErrNotBuilt) {
 		parsePairs = fakePairs
 	}
-	newURLFinder = fakeURLFinder
+	realURLFinder = newURLFinder
+	if realURLFinder([]string{"shop.com"}) == nil {
+		newURLFinder = fakeURLFinder
+	}
 	os.Exit(m.Run())
 }
 
@@ -95,6 +98,9 @@ func fakePairs(name string, b []byte) ([]core.Pair, error) {
 	}
 	return out, nil
 }
+
+// realURLFinder is the urlrw matcher, kept while a stand-in runs.
+var realURLFinder func([]string) func([]byte) []core.Span
 
 // fakeURLFinder finds "//host" for each production host.
 func fakeURLFinder(production []string) func([]byte) []core.Span {
@@ -685,5 +691,19 @@ func TestAllowListsReachDetectors(t *testing.T) {
 	res := runJob(t, Job{Source: source(batch(users, []string{"1", "info@shop.co.uk"})), Opts: Options{Allow: detect.Allow{Emails: []string{"*@shop.co.uk"}}}})
 	if len(notUncovered(res)) != 0 {
 		t.Errorf("allow list: %v", ids(res))
+	}
+}
+
+// The real URL matcher, once the values lane lands it.
+func TestRunRealURLs(t *testing.T) {
+	saved := newURLFinder
+	newURLFinder = realURLFinder
+	defer func() { newURLFinder = saved }()
+	if newURLFinder([]string{"shop.com"}) == nil {
+		t.Skip("needs the values lane")
+	}
+	res := runJob(t, Job{Production: []string{"shop.com"}, Source: source(options([]string{"1", "siteurl", "https://shop.com"}))})
+	if find(res, core.FindingURLProductionSiteURL) == nil {
+		t.Errorf("real urlrw: %v", ids(res))
 	}
 }
