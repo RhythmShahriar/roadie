@@ -16,6 +16,7 @@ import (
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
 	"github.com/RhythmShahriar/rhythm/kit/config"
+	"github.com/RhythmShahriar/rhythm/kit/sigverify"
 
 	"github.com/RhythmShahriar/roadie/profile"
 )
@@ -51,6 +52,7 @@ func entry(args []string, stdout, stderr io.Writer) int {
 }
 
 func tool() cli.Tool {
+	setupProfilePack()
 	return cli.Tool{
 		Name:    "rhythm-roadie",
 		Version: version,
@@ -72,6 +74,17 @@ func tool() cli.Tool {
 		// The release check runs before the command parses its flags, so
 		// it reads them directly.
 		Offline: func() bool { return skipReleaseCheck(os.Args[1:]) },
+	}
+}
+
+// setupProfilePack tells the profile package this binary's version (the
+// built-in profiles carry it) and the signature check rhythm-roadie
+// update runs over the pack's checksums.txt: kit sigverify, the same
+// trust path as the binary's own update. New does no network I/O.
+func setupProfilePack() {
+	profile.SetBinaryVersion(version)
+	if v, err := sigverify.New(sigverify.Options{}); err == nil {
+		profile.SetVerifier(v)
 	}
 }
 

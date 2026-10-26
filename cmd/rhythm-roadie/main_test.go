@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/RhythmShahriar/roadie/profile"
 )
 
 // The tests run the binary as a child process: the test binary itself,
@@ -122,5 +124,22 @@ func TestUpdateClear(t *testing.T) {
 	out, errOut, code := run(t, "update", "--clear")
 	if code != 0 || !strings.Contains(out, "Removed the cached profile pack") {
 		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, out, errOut)
+	}
+}
+
+// The built-in profiles carry a release binary's version; a dev build
+// keeps the profile package's own.
+func TestSetupProfilePack(t *testing.T) {
+	old := version
+	t.Cleanup(func() { version = old; profile.SetBinaryVersion(old) })
+	version = "v1.4.2"
+	setupProfilePack()
+	if got := profile.Version(); got != "1.4.2" {
+		t.Errorf("profile.Version() = %q, want 1.4.2", got)
+	}
+	version = ""
+	setupProfilePack()
+	if got := profile.Version(); got == "1.4.2" {
+		t.Error("a dev build kept the old version")
 	}
 }
