@@ -110,7 +110,8 @@ const keysHelp = `Keys and side effects:
       --noindex=off          don't add noindex, robots and the crawler block (default on)
       --basic-auth <user>    also write basic-auth snippets with a generated password,
                              printed once (default off; on GitHub Actions it is
-                             masked and kept in .roadie/basic-auth/password)
+                             masked and kept in .roadie/basic-auth/password). The
+                             user is 1 to 64 letters, digits or . _ - @
 `
 
 const safetyHelp = `Target safety:
