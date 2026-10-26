@@ -63,6 +63,10 @@ var _ core.Progress = (*progress)(nil)
 func (p *progress) Phase(name string, total int64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if name == p.phase && total == p.total {
+		// The engine and verify both announce verify: one line, one timing.
+		return
+	}
 	now := p.now()
 	p.endPhase(now)
 	p.phase, p.total, p.done, p.table, p.tableRows = name, total, 0, "", 0

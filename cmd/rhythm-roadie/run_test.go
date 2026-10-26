@@ -501,8 +501,10 @@ func TestProgressPlain(t *testing.T) {
 	p.Table("wp_users", 10)
 	p.Note("spooling the stream (encrypted)")
 	p.Phase("transform", 0)
+	p.Phase("verify", 0)
+	p.Phase("verify", 0) // the engine's and verify's own: one line
 	p.Done()
-	if got := b.String(); got != "Indexing 2.4 GB\nspooling the stream (encrypted)\nStreaming\n" {
+	if got := b.String(); got != "Indexing 2.4 GB\nspooling the stream (encrypted)\nStreaming\nVerifying\n" {
 		t.Errorf("plain progress %q", got)
 	}
 	var q bytes.Buffer
