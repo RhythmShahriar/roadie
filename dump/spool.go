@@ -50,6 +50,9 @@ func newSpool(dir string) (*Spool, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("dump: spool folder: %w", err)
 	}
+	if err := tightenSpoolDir(dir); err != nil {
+		return nil, fmt.Errorf("dump: spool folder: %w", err)
+	}
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
