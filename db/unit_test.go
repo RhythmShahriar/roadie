@@ -374,3 +374,46 @@ func TestClosedConn(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestQualifiedName(t *testing.T) {
+	for raw, want := range map[string]bool{
+		"`t`": false, "t": false, "`a.b`": false, `"x.y"`: false, "[a.b]": false,
+		"`prod`.`t`": true, "mysql.user": true, `public."P"`: true, "`a.b`.c": true, "`open": false,
+	} {
+		if got := qualifiedName(raw); got != want {
+			t.Errorf("%q: %v, want %v", raw, got, want)
+		}
+	}
+}
+
+// A MySQL sink builds its SQL from the bare table name and refuses a
+// name with a database in front; PostgreSQL keeps its schema names.
+func TestTableName(t *testing.T) {
+	my := &sink{c: &Conn{engine: core.MySQL}}
+	for _, c := range [][3]string{
+		{"`wp_users`", "wp_users", "`wp_users`"},
+		{"wp_x", "wp_x", "`wp_x`"},
+		{"`a``b`", "a`b", "`a``b`"},
+		{`"wp_y"`, "wp_y", "`wp_y`"},
+		{"", "", ""},
+	} {
+		if q, err := my.tableName(c[0], c[1], 7); err != nil || q != c[2] {
+			t.Errorf("%q: %q %v, want %q", c[0], q, err, c[2])
+		}
+	}
+	for _, raw := range []string{"`prod`.`wp_options`", "mysql.user", "`shop`.t"} {
+		_, err := my.tableName(raw, "x", 7)
+		var ce *core.Error
+		if !errors.As(err, &ce) || ce.Code != core.ErrDumpRefused || ce.Exit != 3 || ce.Line != 7 ||
+			!strings.HasPrefix(ce.Msg, "dump-refused: line 7 of the input names a table with its database") {
+			t.Errorf("%q: %v", raw, err)
+		}
+	}
+	if _, err := (&sink{c: &Conn{engine: core.MariaDB}}).tableName("a.b", "b", 0); err == nil || !strings.Contains(err.Error(), "dump-refused: the input names") {
+		t.Errorf("MariaDB: %v", err)
+	}
+	pg := &sink{c: &Conn{engine: core.Postgres}}
+	if q, err := pg.tableName(`public."Post"`, "Post", 1); err != nil || q != `public."Post"` {
+		t.Errorf("postgres: %q %v", q, err)
+	}
+}

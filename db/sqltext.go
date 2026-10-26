@@ -154,6 +154,24 @@ func readName(s string, i int) (raw, name string) {
 	}
 }
 
+// qualifiedName reports whether raw, a name as readName returns it, has
+// more than one part (db.t or schema.t).
+func qualifiedName(raw string) bool {
+	for i := 0; i < len(raw); i++ {
+		switch raw[i] {
+		case '"', '`', '[':
+			end := quotedEnd(raw, i)
+			if end < 0 {
+				return false
+			}
+			i = end - 1
+		case '.':
+			return true
+		}
+	}
+	return false
+}
+
 // quotedEnd returns the index after the quoted run starting at s[i], or
 // -1 when it never closes. A doubled quote stays inside; a backslash
 // escapes in a single-quoted string.

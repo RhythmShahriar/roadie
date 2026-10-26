@@ -208,6 +208,31 @@ func (s *sink) endUnit(ctx context.Context) error {
 	return nil
 }
 
+// tableName returns the name the sink puts in the SQL it builds (DROP
+// TABLE IF EXISTS, DELETE FROM, INSERT INTO) for raw, a name as
+// objectName read it. On MySQL and MariaDB that is the bare table name
+// quoted again, and a name with a database in front is refused: the
+// statement would act on that database, not the one --to names, and on
+// shared hosting staging and production often share one server. The
+// allowlist refuses such names first; this keeps the import safe for a
+// stream from anywhere else. PostgreSQL's schema-qualified names
+// (public.t) stay as written: a schema lives inside the --to database.
+func (s *sink) tableName(raw, name string, line int64) (string, error) {
+	if !s.isMySQL() || raw == "" {
+		return raw, nil
+	}
+	if qualifiedName(raw) {
+		where := "the input"
+		if line > 0 {
+			where = fmt.Sprintf("line %d of the input", line)
+		}
+		e := core.Errorf(core.ErrDumpRefused, 3, "dump-refused: %s names a table with its database, which would send the import to a database --to doesn't name. Export the dump again with mysqldump or mariadb-dump, which write table names without their database.", where)
+		e.Line = line
+		return "", e
+	}
+	return quoteIdent(s.c.engine, name), nil
+}
+
 // flushDrop runs a DROP TABLE that no CREATE TABLE followed.
 func (s *sink) flushDrop(ctx context.Context) error {
 	if s.drop == "" {
@@ -247,6 +272,10 @@ func (s *sink) pass(ctx context.Context, st *core.Statement) error {
 		q, name := objectName(st.Text, "table")
 		if name == "" || !s.wanted(name) {
 			return nil
+		}
+		q, err := s.tableName(q, name, st.Line)
+		if err != nil {
+			return err
 		}
 		if err := s.flushDrop(ctx); err != nil {
 			return err
@@ -305,6 +334,10 @@ func (s *sink) create(ctx context.Context, st *core.Statement) error {
 	q, name := objectName(st.Text, "table")
 	if name == "" {
 		return fmt.Errorf("a CREATE TABLE on line %d names no table", st.Line)
+	}
+	q, err := s.tableName(q, name, st.Line)
+	if err != nil {
+		return err
 	}
 	if !s.wanted(name) {
 		return nil
@@ -427,7 +460,11 @@ func (s *sink) rows(ctx context.Context, b *core.Batch) error {
 		}
 		q := ""
 		if b.First {
-			q, _ = objectName(b.Head, "into", "copy")
+			raw, name := objectName(b.Head, "into", "copy")
+			var err error
+			if q, err = s.tableName(raw, name, 0); err != nil {
+				return err
+			}
 		}
 		if q == "" {
 			q = quoteIdent(s.c.engine, tb.Name)
