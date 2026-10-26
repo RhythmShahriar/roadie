@@ -57,10 +57,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// write writes the dump to path, 0600 like every file Roadie writes, and
+// write writes the dump to path, 0600 like every file Roadie writes. It
 // removes a half-written file on failure.
 func write(path string, o demo.Options) (err error) {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) //nolint:gosec // the file the test workflow names
 	if err != nil {
 		return err
 	}
