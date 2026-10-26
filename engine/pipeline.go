@@ -328,7 +328,7 @@ type pipeline struct {
 	// dialect is the source dump's dialect once pass 1 has read it; ""
 	// for --one-pass, a database source and before pass 1.
 	dialect core.Dialect
-	parts      parts
+	parts   parts
 	// result is filled in place when set, so the orchestration's fields
 	// stay; nil starts a new one.
 	result *core.Result
