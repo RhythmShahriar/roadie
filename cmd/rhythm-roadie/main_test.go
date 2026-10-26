@@ -33,7 +33,8 @@ func run(t *testing.T, args ...string) (string, string, int) {
 	}
 	cmd := exec.Command(exe, args...) // #nosec G204 -- the test binary itself
 	cmd.Env = append(os.Environ(), "ROADIE_TEST_MAIN=1", "RHYTHM_OFFLINE=1", "RHYTHM_INVOKED_AS=", "CI=1",
-		"XDG_CONFIG_HOME="+t.TempDir(), "HOME="+t.TempDir(), "APPDATA="+t.TempDir())
+		"XDG_CONFIG_HOME="+t.TempDir(), "HOME="+t.TempDir(), "APPDATA="+t.TempDir(),
+		"RHYTHM_CONFIG_DIR="+t.TempDir(), "RHYTHM_CACHE_DIR="+t.TempDir())
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err = cmd.Run()
@@ -81,11 +82,19 @@ func TestUnknownCommand(t *testing.T) {
 	}
 }
 
-func TestStubsSayNotBuilt(t *testing.T) {
-	for _, c := range tool().Commands {
-		_, errOut, code := run(t, c.Name)
-		if code != 3 || !strings.Contains(errOut, "rhythm-roadie "+c.Name+": not built yet") {
-			t.Errorf("%s: exit %d: %q", c.Name, code, errOut)
-		}
+// No arguments without a terminal prints the top help and exits 0, the
+// same text as help (PRD 6.1).
+func TestNoArgumentsPrintsHelp(t *testing.T) {
+	out, errOut, code := run(t)
+	help, _, _ := run(t, "help")
+	if code != 0 || errOut != "" || out != help || !strings.HasPrefix(out, "♪ rhythm roadie  dev\n") {
+		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, out, errOut)
+	}
+}
+
+func TestUpdateClear(t *testing.T) {
+	out, errOut, code := run(t, "update", "--clear")
+	if code != 0 || !strings.Contains(out, "Removed the cached profile pack") {
+		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, out, errOut)
 	}
 }

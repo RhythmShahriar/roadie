@@ -1,0 +1,34 @@
+♪ rhythm roadie  dev
+Is my staging a safe copy of production? Make pseudonymised staging copies with
+live keys swapped and side effects off, then prove it with a signed report.
+
+Usage:
+  rhythm-roadie                                 pick what to do (on a terminal)
+  rhythm-roadie copy --from <source> --to <target> [flags]
+                                                copy production to staging: pseudonymise,
+                                                swap keys, turn side effects off, verify
+  rhythm-roadie prepare <staging> [flags]       make an existing staging copy safe in place
+  rhythm-roadie verify [staging] [flags]        look for real people, live keys and
+                                                production URLs; signed pass/fail report
+  rhythm-roadie plan --from <source> [--to <target>]
+  rhythm-roadie plan <staging>                  dry run: every change copy or prepare would make
+  rhythm-roadie config init [--stack s]         write .roadie/config.yaml to edit
+  rhythm-roadie config check | show             validate the config / print it with defaults filled in
+  rhythm-roadie config key show|rotate|forget   the key that keeps fake values the same across refreshes
+  rhythm-roadie report <report.json>... -o <file>
+                                                render saved reports as HTML, Markdown, SARIF or JUnit
+  rhythm-roadie report check <report.json>      check a report's signature
+  rhythm-roadie profiles [name] [--json]        list the stack profiles and what each rule changes
+  rhythm-roadie explain <id>                    a rule's or finding's full explanation, offline
+  rhythm-roadie update [--clear]                refresh the signed profile pack
+  rhythm-roadie demo [--keep]                   try the whole loop on a built-in shop
+  rhythm-roadie help [command] | version        this help, one command's, or the version
+
+Exit codes (as in Tuner, Soundcheck and Echo):
+  0    ok: done and verify found nothing at or above --fail-on
+  1    findings: verify found something at or above --fail-on, plan would stop,
+       or a report's signature doesn't match
+  2    usage error: a wrong command line or a bad .roadie/config.yaml
+  3    couldn't run: source or target unreachable, a dump that ends early, a
+       target refused as production, nothing to scan
+  130  interrupted
