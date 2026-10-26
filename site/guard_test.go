@@ -5,6 +5,8 @@ package site
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io/fs"
 	"os"
@@ -12,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -336,6 +339,113 @@ func TestLockStale(t *testing.T) {
 	}
 	_, err = Lock(target)
 	wantCode(t, err, core.ErrLock, 3, "")
+}
+
+// Runs that find the same stale lock at once must not remove each
+// other's new lock: exactly one of them gets it.
+func TestLockStaleRace(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("RHYTHM_CACHE_DIR", cache)
+	target := core.Endpoint{Kind: core.DSN, Driver: core.MySQL, Host: "db.example", Path: "race", Display: "mysql://db.example/race"}
+	pid := deadPID(t)
+	for round := 0; round < 20; round++ {
+		unlock, err := Lock(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		locks, _ := filepath.Glob(filepath.Join(cache, "roadie", "locks", "*.lock"))
+		if len(locks) != 1 {
+			t.Fatalf("lock files %v", locks)
+		}
+		if err := os.WriteFile(locks[0], []byte("pid="+strconv.Itoa(pid)+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		const runs = 8
+		var (
+			wg      sync.WaitGroup
+			mu      sync.Mutex
+			got     []func()
+			refused int
+		)
+		for i := 0; i < runs; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				u, err := LockNotify(target, func(string) {})
+				mu.Lock()
+				defer mu.Unlock()
+				if err == nil {
+					got = append(got, u)
+					return
+				}
+				var ce *core.Error
+				if !errors.As(err, &ce) || ce.Code != core.ErrLock {
+					t.Errorf("run: %v", err)
+				}
+				refused++
+			}()
+		}
+		wg.Wait()
+		if len(got) != 1 || refused != runs-1 {
+			t.Fatalf("round %d: %d runs got the lock, %d refused", round, len(got), refused)
+		}
+		got[0]()
+		unlock() // the first lock was replaced; its unlock leaves nothing behind
+		if left, _ := filepath.Glob(filepath.Join(cache, "roadie", "locks", "*")); len(left) != 0 {
+			t.Fatalf("left behind %v", left)
+		}
+	}
+}
+
+// A break file left by a run that died while clearing is itself stale.
+func TestLockStaleBreakFile(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("RHYTHM_CACHE_DIR", cache)
+	target := core.Endpoint{Kind: core.DSN, Driver: core.MySQL, Host: "db.example", Path: "brk", Display: "mysql://db.example/brk"}
+	unlock, err := Lock(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlock()
+	p := filepath.Join(cache, "roadie", "locks", hexSum(lockIdentity(target))+".lock")
+	if err := os.WriteFile(p, []byte("pid="+strconv.Itoa(deadPID(t))+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Minute)
+	if err := os.WriteFile(p+".break", nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(p+".break", old, old); err != nil {
+		t.Fatal(err)
+	}
+	u, err := LockNotify(target, func(string) {})
+	if err != nil {
+		t.Fatalf("old break file blocked the lock: %v", err)
+	}
+	u()
+	if _, err := os.Stat(p + ".break"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("break file left behind")
+	}
+	// A fresh break file is another run clearing right now: wait, then
+	// give up with a lock error rather than race it.
+	if err := os.WriteFile(p, []byte("pid="+strconv.Itoa(deadPID(t))+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p+".break", nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	defer func(w time.Duration) { breakWait = w }(breakWait)
+	breakWait = 100 * time.Millisecond
+	_, err = LockNotify(target, func(string) {})
+	wantCode(t, err, core.ErrLock, 3, "")
+	if !strings.HasPrefix(err.Error(), "lock: another Roadie run is clearing a stale lock in ") {
+		t.Fatalf("message %s", err)
+	}
+}
+
+func hexSum(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }
 
 func TestLockIdentity(t *testing.T) {
