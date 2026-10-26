@@ -65,6 +65,9 @@ func runVerify(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 		job.Progress = bar
 		r.Verify, err = dep.verify(ctx, job)
 		bar.Done()
+		if r.Verify != nil {
+			r.Input = r.Verify.Input
+		}
 	}
 	r.Duration = dep.now().Sub(started)
 	if err != nil {

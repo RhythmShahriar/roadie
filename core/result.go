@@ -77,6 +77,10 @@ type VerifyResult struct {
 	Uncovered   []Uncovered
 	Hidden      int64 // findings hidden by a baseline or an ignore entry
 	Soundcheck  *SoundcheckResult
+	// Input fingerprints what verify read, once it read it whole: the
+	// dump's SHA-256 or the database's tables. A report check --input
+	// ties the report to the file it checked.
+	Input *Fingerprint
 }
 
 // SoundcheckResult is the outcome of verify --soundcheck.

@@ -327,6 +327,11 @@ func (r *run) stream(ctx context.Context, src core.Source) (map[string]map[strin
 		}
 		b, err := src.Next(ctx)
 		if errors.Is(err, io.EOF) {
+			// Read whole: the fingerprint names what this verify checked
+			// (a dump's SHA-256, a database's tables).
+			if fp := src.Fingerprint(); fp.Kind != "" {
+				r.res.Input = &fp
+			}
 			break
 		}
 		if err != nil {

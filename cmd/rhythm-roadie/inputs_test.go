@@ -66,3 +66,34 @@ func TestSSHSourceExportedOnce(t *testing.T) {
 		t.Errorf("output not pseudonymised:\n%s", b)
 	}
 }
+
+// A verify report names the input it checked, so report check --input
+// ties it to that file (PRD 16.2, 18.11).
+func TestVerifyReportNamesItsInput(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	dump := "CREATE TABLE `wp_options` (`option_id` bigint NOT NULL, `option_name` varchar(191) NOT NULL, `option_value` longtext NOT NULL);\n" +
+		"INSERT INTO `wp_options` VALUES (1,'siteurl','https://staging.shop.test'),(2,'home','https://staging.shop.test');\n" +
+		"CREATE TABLE `wp_users` (`ID` bigint NOT NULL, `user_login` varchar(60) NOT NULL, `user_email` varchar(100) NOT NULL);\n" +
+		"INSERT INTO `wp_users` VALUES (1,'u1','u1@example.invalid');\n"
+	in := filepath.Join(dir, "staging.sql")
+	other := filepath.Join(dir, "other.sql")
+	for p, text := range map[string]string{in: dump, other: dump + "-- changed\n"} {
+		if err := os.WriteFile(p, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, stderr, code := runEnv(t, nil, "verify", in, "--json"); code != 0 {
+		t.Fatalf("verify exit %d: %s", code, stderr)
+	}
+	reports, _ := filepath.Glob(filepath.Join(dir, ".roadie", "reports", "*", "report.json"))
+	if len(reports) != 1 {
+		t.Fatalf("reports %v", reports)
+	}
+	if out, stderr, code := runEnv(t, nil, "report", "check", reports[0], "--input", in); code != 0 || !strings.Contains(out, "the sha256 matches") {
+		t.Errorf("check --input the checked dump: exit %d\n%s%s", code, out, stderr)
+	}
+	if _, stderr, code := runEnv(t, nil, "report", "check", reports[0], "--input", other); code == 0 || !strings.Contains(stderr, "another input") {
+		t.Errorf("check --input another dump: exit %d %s", code, stderr)
+	}
+}
