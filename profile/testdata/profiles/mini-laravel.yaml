@@ -1,0 +1,9 @@
+id: mini-laravel
+name: A small Laravel profile
+stack: laravel
+checked_against: "docs: https://laravel.com/docs/migrations"
+detect:
+  tables_any: [migrations]
+rules:
+  - {table: users, column: email, rule: email, explain: "the account email"}
+truncate: [sessions, "pulse_*"]

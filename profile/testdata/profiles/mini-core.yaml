@@ -1,0 +1,21 @@
+id: mini-core
+name: A small WordPress core for compiler tests
+stack: wordpress
+checked_against: "docs: https://developer.wordpress.org/reference/"
+detect:
+  tables_any: ["{prefix}options"]
+rules:
+  - {table: "{prefix}users", column: user_email, rule: email, explain: "the account email"}
+  - {table: "{prefix}users", column: user_pass, rule: password, explain: "the password hash"}
+  - {table: "{prefix}{site}comments", column: comment_content, rule: text, explain: "comment text"}
+  - {table: "{prefix}{site}comments", column: comment_author_email, rule: email, explain: "commenter email"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _billing_email}, column: meta_value, rule: email, explain: "order email"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _billing_city}, column: meta_value, rule: city, part: city, explain: "order city"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _billing_country}, column: meta_value, rule: blank, part: country, explain: "order country"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: "_billing_*"}, column: meta_value, rule: text, id: "postmeta.meta_value.billing-rest", explain: "other billing fields"}
+  - {table: "{prefix}{site}options", where: {option_name: "_transient_*"}, column: option_value, rule: delete-row, explain: "cached values"}
+  - {table: "{prefix}{site}options", where: {option_name: woocommerce_stripe_settings}, column: option_value, rule: "serialized:secret_key=swap-key", explain: "gateway key"}
+truncate: ["{prefix}{site}sessions"]
+drop: ["{prefix}old_log"]
+keep: ["{prefix}{site}stats"]
+row_fixes: [hpos-address-index]
