@@ -1,4 +1,7 @@
 <?php
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
 /**
  * Plugin Name: Roadie testbed armed side effects
  * Description: Scenario r13. The hooks a real shop runs from cron and
@@ -8,9 +11,6 @@
  *
  * @package RoadieTestbed
  */
-
-// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
-// SPDX-License-Identifier: MIT
 
 defined( 'ABSPATH' ) || exit;
 
