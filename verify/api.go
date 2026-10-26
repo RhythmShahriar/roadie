@@ -33,7 +33,10 @@ type Job struct {
 
 // Options are verify's flags and config.
 type Options struct {
-	FailOn      core.Severity
+	FailOn core.Severity
+	// Sample, when above 0, scans only the first Sample rows of each
+	// table. It limits scanning, not reading: the source has no row
+	// limit yet, so the rest of each table is still read and dropped.
 	Sample      int
 	Skip        []string
 	Allow       detect.Allow
