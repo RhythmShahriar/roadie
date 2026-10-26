@@ -136,16 +136,31 @@ func findingTitle(f core.Finding) string {
 }
 
 // locationsLine lists where a finding is: "wp_users.user_email 17,880 · wp_posts 390".
+// Locations that differ only by their row key (shown with -v) are one
+// place with their counts added; a finding found in one place only gets
+// its whole count there, since the report keeps a few row locations of
+// a finding, not all.
 func locationsLine(f core.Finding) string {
-	var parts []string
+	var places []string
+	counts := map[string]int64{}
 	for _, l := range f.Locations {
 		loc := l.Location
 		if !namedRow(loc.Row) {
 			loc.Row = "" // primary keys are for -v; option and meta names say where
 		}
 		s := loc.String()
-		if l.Count > 0 {
-			s += " " + num(l.Count)
+		if _, ok := counts[s]; !ok {
+			places = append(places, s)
+		}
+		counts[s] += l.Count
+	}
+	if len(places) == 1 && f.Count > counts[places[0]] {
+		counts[places[0]] = f.Count
+	}
+	parts := make([]string, 0, len(places))
+	for _, s := range places {
+		if counts[s] > 0 {
+			s += " " + num(counts[s])
 		}
 		parts = append(parts, s)
 	}

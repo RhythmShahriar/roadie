@@ -1013,3 +1013,16 @@ func TestMaskPath(t *testing.T) {
 		}
 	}
 }
+
+// A database target has no site: only its database-only step runs, so
+// a standalone verify of a DSN says so as a copy to it does.
+func TestRunDatabaseOnlySteps(t *testing.T) {
+	steps := []core.Step{fakeStep{id: core.FindingSideEffectNotApplicable}, fakeStep{id: core.FindingSideEffectCron}}
+	res := runJob(t, Job{Source: source(options([]string{"1", "blogname", "Shop"})), Steps: steps})
+	if len(res.SideEffects) != 1 || res.SideEffects[0].ID != core.FindingSideEffectNotApplicable {
+		t.Errorf("side effects %+v", res.SideEffects)
+	}
+	if find(res, core.FindingSideEffectCron) != nil {
+		t.Error("a site step ran without a site")
+	}
+}

@@ -283,6 +283,11 @@ func TestSummary(t *testing.T) {
 	if got := r.Summary(); got != want {
 		t.Fatalf("Summary = %+v\nwant %+v", got, want)
 	}
+	// A standalone verify counts what it read.
+	v := &core.Result{Kind: "verify", Verify: &core.VerifyResult{Coverage: core.Coverage{TablesScanned: 13, RowsScanned: 1536}}}
+	if got := v.Summary(); got.Tables != 13 || got.Rows != 1536 {
+		t.Errorf("verify summary %+v", got)
+	}
 }
 
 // The JSON field names are a public contract (PRD 16.2).

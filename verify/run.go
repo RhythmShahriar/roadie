@@ -150,6 +150,10 @@ func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 	r.noteUnparsed()
 	if st != nil {
 		r.siteChecks(ctx, st)
+	} else {
+		// A database target (a DSN) has no files: its one step says so
+		// (side-effect.not-applicable), as a copy to it does.
+		r.databaseSteps(ctx)
 	}
 	r.extraChecks(ctx)
 	if r.res.Coverage.RowsScanned == 0 {

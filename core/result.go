@@ -205,6 +205,12 @@ func (r *Result) Summary() Summary {
 			}
 		}
 	}
+	if len(r.Tables) == 0 && r.Verify != nil {
+		// A standalone verify lists no tables of its own: what it read is
+		// its coverage.
+		s.Tables = r.Verify.Coverage.TablesScanned
+		s.Rows = r.Verify.Coverage.RowsScanned
+	}
 	for _, c := range r.Changes {
 		switch c.Action {
 		case RewriteURL:

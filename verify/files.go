@@ -548,9 +548,24 @@ func (r *run) uploads(ctx context.Context, s core.Site) {
 	}
 }
 
-// steps runs each Step's check and records its side effect and findings.
-func (r *run) steps(ctx context.Context, s core.Site) {
+// databaseSteps runs the steps a target without a site has: only the
+// database-only step, whose check reads no files.
+func (r *run) databaseSteps(ctx context.Context) {
+	var steps []core.Step
 	for _, st := range r.j.Steps {
+		if st.ID() == core.FindingSideEffectNotApplicable {
+			steps = append(steps, st)
+		}
+	}
+	r.runSteps(ctx, nil, steps)
+}
+
+// steps runs each Step's check and records its side effect and findings.
+func (r *run) steps(ctx context.Context, s core.Site) { r.runSteps(ctx, s, r.j.Steps) }
+
+// runSteps runs the checks of steps on s.
+func (r *run) runSteps(ctx context.Context, s core.Site, steps []core.Step) {
+	for _, st := range steps {
 		if why := r.skipReason(st.ID()); why != "" {
 			r.skipCheck(st.ID(), why)
 			continue

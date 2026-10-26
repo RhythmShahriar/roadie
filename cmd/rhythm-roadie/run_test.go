@@ -636,3 +636,21 @@ func TestPlanURLLine(t *testing.T) {
 		t.Errorf("plan:\n%s", b.String())
 	}
 }
+
+// Locations that differ only by row key are one place with the
+// finding's count; named rows (an option) stay apart.
+func TestLocationsLineMerges(t *testing.T) {
+	loc := func(row string) core.LocationCount {
+		return core.LocationCount{Location: core.Location{Table: "wp_actionscheduler_actions", Column: "args", Row: row, Path: "json:email"}, Count: 1}
+	}
+	f := core.Finding{Count: 160, Locations: []core.LocationCount{loc("action_id=1"), loc("action_id=2"), loc("action_id=3")}}
+	if got := locationsLine(f); got != "wp_actionscheduler_actions.args → json:email 160" {
+		t.Errorf("merged: %q", got)
+	}
+	f = core.Finding{Count: 2, Locations: []core.LocationCount{
+		{Location: core.Location{Table: "wp_options", Column: "option_value", Row: "option_name=a"}, Count: 1},
+		{Location: core.Location{Table: "wp_options", Column: "option_value", Row: "option_name=b"}, Count: 1}}}
+	if got := locationsLine(f); strings.Count(got, " · ") != 1 {
+		t.Errorf("named rows: %q", got)
+	}
+}
