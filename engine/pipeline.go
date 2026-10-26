@@ -146,7 +146,6 @@ func spoolDir() (string, error) {
 // shared is what every worker of a run reads and none changes.
 type shared struct {
 	stack     core.Stack
-	prefix    string
 	cfg       *roadiecfg.Config
 	opts      Options
 	known     core.Known
@@ -484,8 +483,15 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 	}
 	sh := &shared{cfg: p.cfg, opts: p.opts, known: known, spans: textSpans(), kept: idx.kept,
 		adminID: idx.firstAdmin(), addr: idx.addr, onePass: p.opts.OnePass}
+	if p.opts.OnePass {
+		// The reader goroutine fills the address lengths and Known while
+		// the workers run: the workers get neither. Known can't be read
+		// before it is sealed, so the scrubber finds names only with the
+		// detectors; an address index keeps its own text rule.
+		sh.addr, sh.known = nil, emptyKnown{}
+	}
 	if final != nil {
-		sh.stack, sh.prefix = final.Stack(), final.Prefix()
+		sh.stack = final.Stack()
 	}
 	if len(plan.Pairs) > 0 {
 		m, err := newURLMap(plan.Pairs)
@@ -764,6 +770,17 @@ func tableReports(s *core.Schema, c *profile.Compiled, rows map[string]int64, ch
 // normToken is how kept values and tokens are compared: trimmed, lower
 // case.
 func normToken(b []byte) string { return strings.ToLower(strings.TrimSpace(string(b))) }
+
+// emptyKnown is a sealed Known with nothing in it: the scrubber's
+// Known in --one-pass, where the real one is still being filled.
+type emptyKnown struct{}
+
+func (emptyKnown) Add(core.FakeKind, []byte) {}
+func (emptyKnown) Seal()                     {}
+func (emptyKnown) Contains([]byte) (core.FakeKind, string, bool) {
+	return "", "", false
+}
+func (emptyKnown) Len() int { return 0 }
 
 // keptKnown is the run's Known for verify: a kept user's own values are
 // still in the copy on purpose, so they never count as survivors.

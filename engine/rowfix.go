@@ -87,9 +87,9 @@ func (t *transformer) addressIndex(rc rowCtx, col core.Column, orig []byte) ([]b
 		return nil, false
 	}
 	blog, idCol := "", ""
-	if b, ok := blogOf(rc.table, t.sh.prefix, "postmeta"); ok {
+	if b, ok := blogOf(rc.table, t.prefix, "postmeta"); ok {
 		blog, idCol = b, "post_id"
-	} else if b, ok := blogOf(rc.table, t.sh.prefix, "wc_orders_meta"); ok {
+	} else if b, ok := blogOf(rc.table, t.prefix, "wc_orders_meta"); ok {
 		blog, idCol = b, "order_id"
 	} else {
 		return nil, false

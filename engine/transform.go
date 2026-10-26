@@ -35,6 +35,11 @@ type transformer struct {
 	sh    *shared
 	faker core.Faker
 	c     *profile.Compiled
+	// prefix and stack come from the batch's rule set, not the run: with
+	// --one-pass the rules (so the prefix too) are only known as the
+	// dump goes by.
+	prefix string
+	stack  core.Stack
 }
 
 func newTransformer(sh *shared, f core.Faker) *transformer { return &transformer{sh: sh, faker: f} }
@@ -53,7 +58,7 @@ func (t *transformer) transform(ctx context.Context, b *core.Batch, c *profile.C
 	if b.Table == nil || c == nil {
 		return out, nil
 	}
-	t.c = c
+	t.c, t.prefix, t.stack = c, c.Prefix(), c.Stack()
 	tb := b.Table
 	pos := positions(b)
 	all := c.Rules(tb.Name)
@@ -70,7 +75,7 @@ func (t *transformer) transform(ctx context.Context, b *core.Batch, c *profile.C
 			}
 		}
 	}
-	prefix := t.sh.prefix
+	prefix := t.prefix
 	_, isOptions := blogOf(tb.Name, prefix, "options")
 	asFix := slices.Contains(c.RowFixes(), "action-scheduler-args")
 	if _, ok := blogOf(tb.Name, prefix, "actionscheduler_actions"); !ok {
@@ -391,7 +396,7 @@ func (t *transformer) apply(r core.Rule, orig []byte, col core.Column) ([]byte, 
 		if len(orig) == 0 {
 			return orig, false, false, nil
 		}
-		h, err := resetHash(t.sh.stack)
+		h, err := resetHash(t.stack)
 		if err != nil {
 			return nil, false, false, err
 		}

@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/RhythmShahriar/roadie/codec/urlrw"
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/detect"
+	"github.com/RhythmShahriar/roadie/internal/testutil"
 	"github.com/RhythmShahriar/roadie/pseudo"
 	"github.com/RhythmShahriar/roadie/roadiecfg"
 )
@@ -146,8 +148,17 @@ func TestActionSchedulerArgs(t *testing.T) {
 			{1, "h", small, nil}, {2, "h", exact, nil}, {3, "h", md5hex(long), long}, {4, "h", crossing, nil},
 		}}}
 	}
-	p, sink, _ := fixture(t, Copy, "wp_", tables, nil, Options{})
-	run(t, p)
+	for _, onePass := range []bool{false, true} {
+		t.Run(fmt.Sprintf("one-pass=%v", onePass), func(t *testing.T) {
+			p, sink, _ := fixture(t, Copy, "wp_", tables, nil, Options{OnePass: onePass})
+			run(t, p)
+			checkActionSchedulerArgs(t, sink, small, exact, long, crossing)
+		})
+	}
+}
+
+func checkActionSchedulerArgs(t *testing.T, sink *testutil.Sink, small, exact, long, crossing string) {
+	t.Helper()
 	get := func(row int) (string, string, bool) {
 		a, _ := valueOf(t, sink, "wp_actionscheduler_actions", row, "args")
 		e, notNull := valueOf(t, sink, "wp_actionscheduler_actions", row, "extended_args")
@@ -230,6 +241,20 @@ func TestHPOSCompatibility(t *testing.T) {
 		}
 		if v, _ := valueOf(t, sink, tb, row, "meta_value"); v != want {
 			t.Errorf("%s index %q, want %q", tb, v, want)
+		}
+	}
+	// --one-pass has no part lengths (the reader fills them while the
+	// workers run): the index keeps its own text rule, which still takes
+	// the email out; -race sees no shared map.
+	p, sink, _ = fixture(t, Copy, "wp_", tables, nil, Options{OnePass: true})
+	run(t, p)
+	for _, tb := range []string{"wp_postmeta", "wp_wc_orders_meta"} {
+		row := 0
+		if tb == "wp_postmeta" {
+			row = len(addrParts[true])
+		}
+		if v, _ := valueOf(t, sink, tb, row, "meta_value"); strings.Contains(v, billing[9]) {
+			t.Errorf("one pass: %s index kept the email: %q", tb, v)
 		}
 	}
 }
@@ -345,13 +370,18 @@ func TestSubscriptionsSiteURL(t *testing.T) {
 	tables := func() []tableData {
 		return []tableData{wpBase([]any{4, "wc_subscriptions_siteurl", clone}, []any{5, "other", "https://shop.com/x"})}
 	}
-	p, sink, _ := fixture(t, Copy, "wp_", tables, nil, Options{URL: "https://staging.shop.test"})
-	run(t, p)
-	if v, _ := valueOf(t, sink, "wp_options", 3, "option_value"); v != clone {
-		t.Errorf("wc_subscriptions_siteurl %q", v)
-	}
-	if v, _ := valueOf(t, sink, "wp_options", 4, "option_value"); v != "https://staging.shop.test/x" {
-		t.Errorf("other option %q", v)
+	// --one-pass knows the prefix only from the batch's rules; the clone
+	// URL must stay all the same.
+	for _, onePass := range []bool{false, true} {
+		p, sink, _ := fixture(t, Copy, "wp_", tables, nil, Options{URL: "https://staging.shop.test", OnePass: onePass})
+		p.cfg.Production = []string{"shop.com"}
+		run(t, p)
+		if v, _ := valueOf(t, sink, "wp_options", 3, "option_value"); v != clone {
+			t.Errorf("one pass %v: wc_subscriptions_siteurl %q", onePass, v)
+		}
+		if v, _ := valueOf(t, sink, "wp_options", 4, "option_value"); v != "https://staging.shop.test/x" {
+			t.Errorf("one pass %v: other option %q", onePass, v)
+		}
 	}
 }
 
