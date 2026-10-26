@@ -37,8 +37,9 @@ const DefaultEchoURL = client.DefaultURL
 // echoTimeout bounds each call to Echo.
 const echoTimeout = 10 * time.Second
 
-// maxEchoPages caps how many pages of messages are counted.
-const maxEchoPages = 200
+// maxEchoPages caps how many pages of messages are counted; tests
+// lower it.
+var maxEchoPages = 200
 
 // checkOptions refuses options that could reach the wrong host before
 // anything is read: a --site on a production host and an Echo URL that
@@ -49,7 +50,9 @@ func checkOptions(j Job) error {
 		if err != nil {
 			return err
 		}
-		if matchHost(productionHosts(j.Production), strings.ToLower(u.Hostname())) {
+		// normHost makes "shop.com." and "[::ffff:127.0.0.1]" compare
+		// equal to the production entries they name.
+		if matchHost(productionHosts(j.Production), normHost(u.Hostname())) {
 			return core.Errorf(core.ErrTargetIsProduction, 3,
 				"target-is-production: --site %s is %s, which production: lists. Roadie never fetches production. Point --site at the staging copy.",
 				u.Redacted(), u.Hostname())
@@ -422,6 +425,7 @@ func (r *run) echo(ctx context.Context) {
 		r.note[core.FindingSideEffectMail] = "counted only messages since verify started; the copy's start time wasn't known"
 	}
 	f := client.Filter{Since: since, Limit: 200}
+	more := false
 	for range maxEchoPages {
 		p, err := c.List(ctx, f)
 		if err != nil {
@@ -436,10 +440,18 @@ func (r *run) echo(ctx context.Context) {
 				sent++
 			}
 		}
-		if p.Next == "" {
+		more = p.Next != ""
+		if !more {
 			break
 		}
 		f.Before = p.Next
+	}
+	if more {
+		// Pages past the cap were never counted, so a zero count proves
+		// nothing; the check fails closed.
+		mail(fmt.Sprintf("verify --echo: couldn't count every message Echo let through (stopped after %d pages)", maxEchoPages),
+			"Check Echo's inbox for sent messages, clear it, then run verify again.")
+		return
 	}
 	if sent > 0 {
 		mail(fmt.Sprintf("Echo let %d messages through %s", sent, from),

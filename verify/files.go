@@ -290,7 +290,7 @@ func productionHosts(entries []string) []string {
 	return out
 }
 
-// hostOf returns the lower-case host of a URL, host:port or bare host.
+// hostOf returns the normalised host of a URL, host:port or bare host.
 func hostOf(v string) string {
 	v = strings.ToLower(strings.TrimSpace(v))
 	if v == "" {
@@ -301,16 +301,28 @@ func hostOf(v string) string {
 		if err != nil {
 			return ""
 		}
-		return strings.TrimSuffix(u.Hostname(), ".")
+		return normHost(u.Hostname())
 	}
 	// DB_HOST may be host:port or host:/path/to/socket.
 	if h, _, err := net.SplitHostPort(v); err == nil {
-		return h
+		return normHost(h)
 	}
 	if i := strings.IndexAny(v, ":/"); i >= 0 && !strings.Contains(v[:i], "[") {
 		v = v[:i]
 	}
-	return strings.Trim(strings.TrimSuffix(v, "."), "[]")
+	return normHost(v)
+}
+
+// normHost puts a host in the one form matchHost compares: lower case,
+// no brackets, no trailing dot (shop.com. is shop.com to DNS) and an IP
+// literal in its canonical form with any IPv4-in-IPv6 mapping removed
+// (::ffff:127.0.0.1 is 127.0.0.1).
+func normHost(h string) string {
+	h = strings.TrimRight(strings.Trim(strings.ToLower(strings.TrimSpace(h)), "[]"), ".")
+	if a, err := netip.ParseAddr(h); err == nil {
+		return a.Unmap().WithZone("").String()
+	}
+	return h
 }
 
 // matchHost reports whether host is one of hosts or under a *. glob.
