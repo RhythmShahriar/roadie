@@ -30,8 +30,10 @@ type Options struct {
 }
 
 // Open sniffs compression and dialect and returns the dump as a source.
+// The source's Fingerprint is the SHA-256 of the raw input once Next has
+// returned io.EOF. Close releases the decompressor; r stays the caller's.
 func Open(ctx context.Context, r io.Reader, o Options) (core.Source, error) {
-	return nil, core.ErrNotBuilt
+	return open(ctx, r, o)
 }
 
 // Sniff reads the head of a file and tells its dialect and compression.

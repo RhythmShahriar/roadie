@@ -38,22 +38,39 @@ func formatError(name, what string) *core.Error {
 // sniff is Sniff with the file name for messages; it also returns the
 // server version the head names, for Schema.Server.
 func sniff(name string, head []byte) (core.Dialect, string, string, error) {
-	comp := compress.Detect(head)
-	if what := archive(head); what != "" {
-		return "", comp, "", formatError(name, what)
+	comp, err := sniffRaw(name, head)
+	if err != nil {
+		return "", comp, "", err
 	}
 	plain := head
 	if comp != compress.None {
 		plain = compress.Head(head, comp, HeadSize)
-		if what := archive(plain); what != "" {
-			return "", comp, "", formatError(name, what)
-		}
+	}
+	d, server, err := sniffPlain(name, plain)
+	return d, comp, server, err
+}
+
+// sniffRaw reads the compression of a file as stored and refuses an
+// archive by its magic bytes.
+func sniffRaw(name string, head []byte) (string, error) {
+	comp := compress.Detect(head)
+	if what := archive(head); what != "" {
+		return comp, formatError(name, what)
+	}
+	return comp, nil
+}
+
+// sniffPlain checks the decompressed head: an archive inside the
+// compression (a .tar.gz), binary content, then the dialect.
+func sniffPlain(name string, plain []byte) (core.Dialect, string, error) {
+	if what := archive(plain); what != "" {
+		return "", "", formatError(name, what)
 	}
 	if binary(plain[:min(len(plain), binaryWindow)]) {
-		return "", comp, "", formatError(name, isBinary)
+		return "", "", formatError(name, isBinary)
 	}
 	d, server := dialectOf(plain)
-	return d, comp, server, nil
+	return d, server, nil
 }
 
 // CheckInput refuses a --from path that is a folder, such as pg_dump -Fd

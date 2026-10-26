@@ -47,3 +47,17 @@ func Binary(n int64) string {
 	}
 	return strconv.FormatInt(n, 10) + " bytes"
 }
+
+// Count formats n with thousands separators, "4,120", as PRD 17 writes
+// line numbers.
+func Count(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	neg := ""
+	if n < 0 {
+		neg, s = "-", s[1:]
+	}
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return neg + s
+}

@@ -34,3 +34,11 @@ func TestBinary(t *testing.T) {
 		}
 	}
 }
+
+func TestCount(t *testing.T) {
+	for n, want := range map[int64]string{0: "0", 999: "999", 1000: "1,000", 4120: "4,120", 1234567: "1,234,567", -4120: "-4,120"} {
+		if got := Count(n); got != want {
+			t.Errorf("Count(%d) = %q, want %q", n, got, want)
+		}
+	}
+}

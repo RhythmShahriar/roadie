@@ -4,9 +4,7 @@
 package dump
 
 import (
-	"context"
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -14,11 +12,7 @@ import (
 
 // The frozen stubs answer core.ErrNotBuilt until the lane builds them.
 func TestStubsNotBuilt(t *testing.T) {
-	_, err := Open(context.Background(), strings.NewReader(""), Options{})
-	if !errors.Is(err, core.ErrNotBuilt) {
-		t.Fatalf("call 1: %v, want core.ErrNotBuilt", err)
-	}
-	_, err = NewFileSink("x.sql", WriterOptions{})
+	_, err := NewFileSink("x.sql", WriterOptions{})
 	if !errors.Is(err, core.ErrNotBuilt) {
 		t.Fatalf("call 3: %v, want core.ErrNotBuilt", err)
 	}
