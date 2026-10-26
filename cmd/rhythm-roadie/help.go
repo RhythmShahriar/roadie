@@ -225,7 +225,8 @@ What to check:
                              (never a production host) to check noindex and basic auth
       --insecure-tls <host>  accept a self-signed certificate on this one staging host
       --echo[=<url>]         also ask Echo whether its seal is on and how many messages it
-                             let through since the copy (default http://127.0.0.1:8025)
+                             let through since the copy (default http://127.0.0.1:8025;
+                             RHYTHM_ECHO_TOKEN for an Echo beyond loopback)
       --sample <n>           rows checked per table (default 0: every row)
       --skip <checks>        leave these checks out: emails, phones, names, addresses, ips,
                              cards, keys, urls, side-effects, config, uploads

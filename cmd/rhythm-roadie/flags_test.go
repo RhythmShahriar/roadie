@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/engine"
@@ -712,5 +713,24 @@ func TestEditsBlockManual(t *testing.T) {
 	}
 	if strings.Contains(out, ": dropped") || strings.Contains(out, "manual:") {
 		t.Errorf("edits:\n%s", out)
+	}
+}
+
+// verify --echo sends RHYTHM_ECHO_TOKEN when it is set.
+func TestVerifyEchoToken(t *testing.T) {
+	p := mustParse(t, "verify", "staging.sql", "--echo")
+	env := func(k string) (string, bool) {
+		if k == "RHYTHM_ECHO_TOKEN" {
+			return "tok", true
+		}
+		return "", false
+	}
+	o, _, err := p.verifyOptions(nil, env, time.Now())
+	if err != nil || o.EchoToken != "tok" || !o.Echo {
+		t.Errorf("options %+v %v", o, err)
+	}
+	o, _, _ = p.verifyOptions(nil, func(string) (string, bool) { return "", false }, time.Now())
+	if o.EchoToken != "" {
+		t.Errorf("token without the variable: %q", o.EchoToken)
 	}
 }

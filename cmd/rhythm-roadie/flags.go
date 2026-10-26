@@ -853,6 +853,8 @@ func (p *parsed) verifyOptions(cfg *roadiecfg.Config, env envFunc, now time.Time
 	if o.EchoURL == "" {
 		o.EchoURL = defaultEchoURL
 	}
+	// Echo's own tools read its token from the same variable.
+	o.EchoToken, _ = env("RHYTHM_ECHO_TOKEN")
 	sev, err := p.failOnLevel(cfg, false)
 	if err != nil {
 		return o, nil, err
