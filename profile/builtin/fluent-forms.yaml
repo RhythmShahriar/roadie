@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 # SPDX-License-Identifier: MIT
 
-# Fluent Forms: submissions as JSON plus one row per field value.
+# Fluent Forms: submissions as JSON plus one row per field value. A field
+# is stored under its name attribute; the rules by name cover the names a
+# new form's fields get (names, email, phone, address_1). A renamed field
+# falls back to the free-text scrubber.
 id: fluent-forms
 name: Fluent Forms
 stack: wordpress
@@ -11,9 +14,31 @@ detect:
   files: [wp-content/plugins/fluentform/fluentform.php]
 rules:
   - {table: "{prefix}{site}fluentform_submissions", column: response, rule: text, explain: "every field of the submission as JSON"}
+  - {table: "{prefix}{site}fluentform_submissions", column: response, rule: "json:email=email", explain: "the email field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_submissions", column: response, rule: "json:names.first_name=first_name", explain: "the first name of the name field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_submissions", column: response, rule: "json:names.middle_name=first_name", explain: "the middle name of the name field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_submissions", column: response, rule: "json:names.last_name=last_name", explain: "the last name of the name field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_submissions", column: response, rule: "json:phone=phone", explain: "the phone field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_submissions", column: response, rule: "json:address_1.address_line_1=street", explain: "the street of the address field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_submissions", column: response, rule: "json:address_1.address_line_2=street", explain: "the second line of the address field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_submissions", column: response, rule: "json:address_1.city=city", part: city, explain: "the city of the address field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_submissions", column: response, rule: "json:address_1.zip=postcode", part: postcode, explain: "the postcode of the address field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_submissions", column: response, rule: "json:address_1.state=blank", part: state, explain: "the state of the address field as a new form names it; kept by default"}
+  - {table: "{prefix}{site}fluentform_submissions", column: response, rule: "json:address_1.country=blank", part: country, explain: "the country of the address field as a new form names it; kept by default"}
   - {table: "{prefix}{site}fluentform_submissions", column: source_url, rule: rewrite-url, explain: "the page the form was on"}
   - {table: "{prefix}{site}fluentform_submissions", column: ip, rule: ip, explain: "the IP address the submission came from"}
   - {table: "{prefix}{site}fluentform_submissions", column: city, rule: city, part: city, explain: "the city looked up from the IP address"}
+  - {table: "{prefix}{site}fluentform_entry_details", where: {field_name: email}, column: field_value, rule: email, explain: "the email field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_entry_details", where: {field_name: phone}, column: field_value, rule: phone, explain: "the phone field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_entry_details", where: {field_name: names, sub_field_name: first_name}, column: field_value, rule: first_name, explain: "the first name of the name field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_entry_details", where: {field_name: names, sub_field_name: middle_name}, column: field_value, rule: first_name, explain: "the middle name of the name field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_entry_details", where: {field_name: names, sub_field_name: last_name}, column: field_value, rule: last_name, explain: "the last name of the name field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_entry_details", where: {field_name: address_1, sub_field_name: address_line_1}, column: field_value, rule: street, explain: "the street of the address field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_entry_details", where: {field_name: address_1, sub_field_name: address_line_2}, column: field_value, rule: street, explain: "the second line of the address field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_entry_details", where: {field_name: address_1, sub_field_name: city}, column: field_value, rule: city, part: city, explain: "the city of the address field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_entry_details", where: {field_name: address_1, sub_field_name: zip}, column: field_value, rule: postcode, part: postcode, explain: "the postcode of the address field as a new form names it"}
+  - {table: "{prefix}{site}fluentform_entry_details", where: {field_name: address_1, sub_field_name: state}, column: field_value, rule: blank, part: state, explain: "the state of the address field as a new form names it; kept by default"}
+  - {table: "{prefix}{site}fluentform_entry_details", where: {field_name: address_1, sub_field_name: country}, column: field_value, rule: blank, part: country, explain: "the country of the address field as a new form names it; kept by default"}
   - {table: "{prefix}{site}fluentform_entry_details", column: field_value, rule: text, explain: "one field's value"}
   - {table: "{prefix}{site}fluentform_submission_meta", column: value, rule: text, explain: "notes and data attached to a submission"}
   - {table: "{prefix}{site}fluentform_logs", column: description, rule: text, explain: "log lines that quote submissions"}

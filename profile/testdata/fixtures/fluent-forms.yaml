@@ -6,6 +6,39 @@ rules:
   "fluent-forms.fluentform_submissions.response":
     positive: {table: wp_fluentform_submissions, row: {response: "Call Anna on +44 7700 900123"}}
     negative: {table: wp_12_fluentform_submissions, row: {response: "Call Anna on +44 7700 900123"}}
+  "fluent-forms.fluentform_submissions.response.json:email":
+    positive: {table: wp_fluentform_submissions, row: {response: '{"x":"anna.lee@example.com"}'}}
+    negative: {table: wp_12_fluentform_submissions, row: {response: '{"x":"anna.lee@example.com"}'}}
+  "fluent-forms.fluentform_submissions.response.json:names.first_name":
+    positive: {table: wp_2_fluentform_submissions, row: {response: '{"x":"Anna"}'}}
+    negative: {table: wp_12_fluentform_submissions, row: {response: '{"x":"Anna"}'}}
+  "fluent-forms.fluentform_submissions.response.json:names.middle_name":
+    positive: {table: wp_11_fluentform_submissions, row: {response: '{"x":"Jo"}'}}
+    negative: {table: wp_12_fluentform_submissions, row: {response: '{"x":"Jo"}'}}
+  "fluent-forms.fluentform_submissions.response.json:names.last_name":
+    positive: {table: wp_fluentform_submissions, row: {response: '{"x":"Lee"}'}}
+    negative: {table: wp_12_fluentform_submissions, row: {response: '{"x":"Lee"}'}}
+  "fluent-forms.fluentform_submissions.response.json:phone":
+    positive: {table: wp_2_fluentform_submissions, row: {response: '{"x":"+44 7700 900123"}'}}
+    negative: {table: wp_12_fluentform_submissions, row: {response: '{"x":"+44 7700 900123"}'}}
+  "fluent-forms.fluentform_submissions.response.json:address_1.address_line_1":
+    positive: {table: wp_11_fluentform_submissions, row: {response: '{"x":"1 High Street"}'}}
+    negative: {table: wp_12_fluentform_submissions, row: {response: '{"x":"1 High Street"}'}}
+  "fluent-forms.fluentform_submissions.response.json:address_1.address_line_2":
+    positive: {table: wp_fluentform_submissions, row: {response: '{"x":"Flat 2"}'}}
+    negative: {table: wp_12_fluentform_submissions, row: {response: '{"x":"Flat 2"}'}}
+  "fluent-forms.fluentform_submissions.response.json:address_1.city":
+    positive: {table: wp_2_fluentform_submissions, row: {response: '{"x":"Leeds"}'}}
+    negative: {table: wp_12_fluentform_submissions, row: {response: '{"x":"Leeds"}'}}
+  "fluent-forms.fluentform_submissions.response.json:address_1.zip":
+    positive: {table: wp_11_fluentform_submissions, row: {response: '{"x":"LS1 4AP"}'}}
+    negative: {table: wp_12_fluentform_submissions, row: {response: '{"x":"LS1 4AP"}'}}
+  "fluent-forms.fluentform_submissions.response.json:address_1.state":
+    positive: {table: wp_fluentform_submissions, row: {response: '{"x":"x"}'}}
+    negative: {table: wp_12_fluentform_submissions, row: {response: '{"x":"x"}'}}
+  "fluent-forms.fluentform_submissions.response.json:address_1.country":
+    positive: {table: wp_2_fluentform_submissions, row: {response: '{"x":"GB"}'}}
+    negative: {table: wp_12_fluentform_submissions, row: {response: '{"x":"GB"}'}}
   "fluent-forms.fluentform_submissions.source_url":
     positive: {table: wp_2_fluentform_submissions, row: {source_url: "x"}}
     negative: {table: wp_12_fluentform_submissions, row: {source_url: "x"}}
@@ -18,6 +51,39 @@ rules:
   "fluent-forms.fluentform_entry_details.field_value":
     positive: {table: wp_2_fluentform_entry_details, row: {field_value: "Call Anna on +44 7700 900123"}}
     negative: {table: wp_12_fluentform_entry_details, row: {field_value: "Call Anna on +44 7700 900123"}}
+  "fluent-forms.fluentform_entry_details.field_value.email":
+    positive: {table: wp_fluentform_entry_details, row: {field_value: "anna.lee@example.com", field_name: "email"}}
+    negative: {table: wp_fluentform_entry_details, row: {field_value: "anna.lee@example.com", field_name: "emails"}}
+  "fluent-forms.fluentform_entry_details.field_value.phone":
+    positive: {table: wp_2_fluentform_entry_details, row: {field_value: "+44 7700 900123", field_name: "phone"}}
+    negative: {table: wp_2_fluentform_entry_details, row: {field_value: "+44 7700 900123", field_name: "phones"}}
+  "fluent-forms.fluentform_entry_details.field_value.names.first_name":
+    positive: {table: wp_11_fluentform_entry_details, row: {field_value: "Anna", field_name: "names", sub_field_name: "first_name"}}
+    negative: {table: wp_11_fluentform_entry_details, row: {field_value: "Anna", field_name: "names", sub_field_name: "first"}}
+  "fluent-forms.fluentform_entry_details.field_value.names.middle_name":
+    positive: {table: wp_fluentform_entry_details, row: {field_value: "Jo", field_name: "names", sub_field_name: "middle_name"}}
+    negative: {table: wp_fluentform_entry_details, row: {field_value: "Jo", field_name: "names", sub_field_name: "middle"}}
+  "fluent-forms.fluentform_entry_details.field_value.names.last_name":
+    positive: {table: wp_2_fluentform_entry_details, row: {field_value: "Lee", field_name: "names", sub_field_name: "last_name"}}
+    negative: {table: wp_2_fluentform_entry_details, row: {field_value: "Lee", field_name: "names", sub_field_name: "last"}}
+  "fluent-forms.fluentform_entry_details.field_value.address_1.address_line_1":
+    positive: {table: wp_11_fluentform_entry_details, row: {field_value: "1 High Street", field_name: "address_1", sub_field_name: "address_line_1"}}
+    negative: {table: wp_11_fluentform_entry_details, row: {field_value: "1 High Street", field_name: "address_1", sub_field_name: "line_1"}}
+  "fluent-forms.fluentform_entry_details.field_value.address_1.address_line_2":
+    positive: {table: wp_fluentform_entry_details, row: {field_value: "Flat 2", field_name: "address_1", sub_field_name: "address_line_2"}}
+    negative: {table: wp_fluentform_entry_details, row: {field_value: "Flat 2", field_name: "address_1", sub_field_name: "line_2"}}
+  "fluent-forms.fluentform_entry_details.field_value.address_1.city":
+    positive: {table: wp_2_fluentform_entry_details, row: {field_value: "Leeds", field_name: "address_1", sub_field_name: "city"}}
+    negative: {table: wp_2_fluentform_entry_details, row: {field_value: "Leeds", field_name: "address_1", sub_field_name: "town"}}
+  "fluent-forms.fluentform_entry_details.field_value.address_1.zip":
+    positive: {table: wp_11_fluentform_entry_details, row: {field_value: "LS1 4AP", field_name: "address_1", sub_field_name: "zip"}}
+    negative: {table: wp_11_fluentform_entry_details, row: {field_value: "LS1 4AP", field_name: "address_1", sub_field_name: "postcode"}}
+  "fluent-forms.fluentform_entry_details.field_value.address_1.state":
+    positive: {table: wp_fluentform_entry_details, row: {field_value: "x", field_name: "address_1", sub_field_name: "state"}}
+    negative: {table: wp_fluentform_entry_details, row: {field_value: "x", field_name: "address_1", sub_field_name: "region"}}
+  "fluent-forms.fluentform_entry_details.field_value.address_1.country":
+    positive: {table: wp_2_fluentform_entry_details, row: {field_value: "GB", field_name: "address_1", sub_field_name: "country"}}
+    negative: {table: wp_2_fluentform_entry_details, row: {field_value: "GB", field_name: "address_1", sub_field_name: "land"}}
   "fluent-forms.fluentform_submission_meta.value":
     positive: {table: wp_11_fluentform_submission_meta, row: {value: "Call Anna on +44 7700 900123"}}
     negative: {table: wp_12_fluentform_submission_meta, row: {value: "Call Anna on +44 7700 900123"}}

@@ -18,6 +18,8 @@ rules:
   - {table: "{prefix}{site}postmeta", where: {meta_key: _from}, column: meta_value, rule: text, explain: "the sender as name and email"}
   - {table: "{prefix}{site}postmeta", where: {meta_key: _from_email}, column: meta_value, rule: email, explain: "the sender's email"}
   - {table: "{prefix}{site}postmeta", where: {meta_key: _from_name}, column: meta_value, rule: full_name, explain: "the sender's name"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _field_your-email}, column: meta_value, rule: email, explain: "the email field of Contact Form 7's default form (your-email)"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _field_your-name}, column: meta_value, rule: full_name, explain: "the name field of Contact Form 7's default form (your-name)"}
   - {table: "{prefix}{site}postmeta", where: {meta_key: "_field_*"}, column: meta_value, rule: text, explain: "one form field of the message"}
   - {table: "{prefix}{site}postmeta", where: {meta_key: _meta}, column: meta_value, rule: "serialized:remote_ip=ip", explain: "the sender's IP address in the request details"}
   - {id: postmeta.meta_value._meta.user_agent, table: "{prefix}{site}postmeta", where: {meta_key: _meta}, column: meta_value, rule: "serialized:user_agent=user_agent", explain: "the sender's browser in the request details"}

@@ -24,6 +24,12 @@ rules:
   "contact-form-7-flamingo.postmeta.meta_value._from_name":
     positive: {table: wp_postmeta, row: {meta_value: "Anna Lee", meta_key: "_from_name"}}
     negative: {table: wp_postmeta, row: {meta_value: "Anna Lee", meta_key: "x_from_name"}}
+  "contact-form-7-flamingo.postmeta.meta_value._field_your-email":
+    positive: {table: wp_2_postmeta, row: {meta_value: "anna.lee@example.com", meta_key: "_field_your-email"}}
+    negative: {table: wp_2_postmeta, row: {meta_value: "anna.lee@example.com", meta_key: "_field_your-email-2"}}
+  "contact-form-7-flamingo.postmeta.meta_value._field_your-name":
+    positive: {table: wp_postmeta, row: {meta_value: "Anna Lee", meta_key: "_field_your-name"}}
+    negative: {table: wp_postmeta, row: {meta_value: "Anna Lee", meta_key: "_field_your-names"}}
   "contact-form-7-flamingo.postmeta.meta_value._field_*":
     positive: {table: wp_2_postmeta, row: {meta_value: "Call Anna on +44 7700 900123", meta_key: "_field_3"}}
     negative: {table: wp_2_postmeta, row: {meta_value: "Call Anna on +44 7700 900123", meta_key: "x_field_3"}}
