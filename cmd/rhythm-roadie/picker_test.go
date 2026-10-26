@@ -204,7 +204,7 @@ func TestPickerSaveDropsPasswords(t *testing.T) {
 		"Wrote .roadie/config.yaml for a Laravel app with source:, target: and url: set.",
 		"Left the password out of source: in .roadie/config.yaml; set ROADIE_FROM_PASSWORD when you run Roadie.",
 		"Left the password out of target: in .roadie/config.yaml; set ROADIE_TO_PASSWORD when you run Roadie.",
-		"Added .roadie/reports, .roadie/key and .roadie/backups to .git/info/exclude.",
+		"Added .roadie/reports, .roadie/key, .roadie/backups and .roadie/basic-auth to .git/info/exclude.",
 	} {
 		if !strings.Contains(stderr.String(), line) {
 			t.Errorf("missing %q in\n%s", line, stderr.String())

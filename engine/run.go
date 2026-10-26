@@ -181,9 +181,13 @@ func (r *runner) run(ctx context.Context) error {
 			return err
 		}
 	}
-	dir, err := workDir()
-	if err != nil {
-		return err
+	dir := r.j.ProjectDir
+	if dir == "" {
+		wd, err := workDir()
+		if err != nil {
+			return err
+		}
+		dir = wd
 	}
 	key, _, stable, err := runKey(dir, cfg, r.opts.KeepKey, lookupEnv)
 	if err != nil {
@@ -192,6 +196,7 @@ func (r *runner) run(ctx context.Context) error {
 	r.res.Consistency = core.ConsistencyInfo{Mode: "per-run"}
 	if stable {
 		r.res.Consistency = core.ConsistencyInfo{Mode: "stable", KeyFingerprint: key.Fingerprint()}
+		excludeGit(dir)
 	}
 
 	ko := r.killOptions()
@@ -1021,6 +1026,7 @@ func (r *runner) basicAuth(dir string) error {
 		}
 	}
 	r.res.BasicAuthPassword = pw
+	excludeGit(dir)
 	return nil
 }
 

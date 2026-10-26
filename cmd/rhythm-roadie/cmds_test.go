@@ -196,7 +196,7 @@ func TestConfigInit(t *testing.T) {
 			}
 			file, _ := os.ReadFile(filepath.Join(".roadie", "config.yaml"))
 			b.WriteString("$ rhythm-roadie config init --stack " + stack + "\n" + out + "--- .roadie/config.yaml\n" + string(file) + "\n")
-			if len(excluded) != 1 || !slices.Equal(excluded[0], []string{".roadie/reports/", ".roadie/key", ".roadie/backups/"}) {
+			if len(excluded) != 1 || !slices.Equal(excluded[0], []string{".roadie/reports/", ".roadie/key", ".roadie/backups/", ".roadie/basic-auth/"}) {
 				t.Errorf("%s: excluded %q", stack, excluded)
 			}
 			// A second init refuses to overwrite; --force replaces.
@@ -209,7 +209,7 @@ func TestConfigInit(t *testing.T) {
 		})
 	}
 	testutil.Golden(t, "config-init.txt", b.Bytes())
-	if !strings.Contains(b.String(), "Wrote .roadie/config.yaml for a WooCommerce site.\nSet source:, target: and url: in it, then run rhythm-roadie plan.\nAdded .roadie/reports, .roadie/key and .roadie/backups to .git/info/exclude.\n") {
+	if !strings.Contains(b.String(), "Wrote .roadie/config.yaml for a WooCommerce site.\nSet source:, target: and url: in it, then run rhythm-roadie plan.\nAdded .roadie/reports, .roadie/key, .roadie/backups and .roadie/basic-auth to .git/info/exclude.\n") {
 		t.Error("config init lost the PRD 16.1 lines")
 	}
 	// Outside a git work tree there is nothing to exclude and no line.

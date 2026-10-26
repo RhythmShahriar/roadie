@@ -228,7 +228,9 @@ func useRunFakes(t *testing.T) *runFakes {
 			return pseudo.Key{1, 2, 3}, roadiecfg.KeyFromNew, false, nil
 		}
 		workDir = func() (string, error) { return f.dir, nil }
-		swap(func() { runKey, workDir = old1, old2 })
+		old3 := excludeGit
+		excludeGit = func(string) {}
+		swap(func() { runKey, workDir, excludeGit = old1, old2, old3 })
 	}
 	{
 		old := wpConfigPairs
@@ -808,6 +810,36 @@ func TestRunBasicAuth(t *testing.T) {
 	fi, err := os.Stat(p)
 	if err != nil || fi.Mode().Perm() != 0o600 || res.BasicAuthPassword != "pw-team" {
 		t.Errorf("basic auth %v %v %q", fi, err, res.BasicAuthPassword)
+	}
+}
+
+// The key and the basic-auth files go to Job.ProjectDir, the config's
+// project, not the folder the run started in; both are kept out of git.
+func TestRunProjectDir(t *testing.T) {
+	f := useRunFakes(t)
+	project := t.TempDir()
+	var keyDirs, excluded []string
+	old1, old2 := runKey, excludeGit
+	runKey = func(dir string, _ *roadiecfg.Config, _ bool, _ func(string) (string, bool)) (pseudo.Key, string, bool, error) {
+		keyDirs = append(keyDirs, dir)
+		return pseudo.Key{1, 2, 3}, roadiecfg.KeyFromNew, true, nil
+	}
+	excludeGit = func(dir string) { excluded = append(excluded, dir) }
+	t.Cleanup(func() { runKey, excludeGit = old1, old2 })
+	j := f.job(Copy)
+	j.Opts.BasicAuth = "team"
+	j.ProjectDir = project
+	if _, err := Run(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(keyDirs, []string{project}) || !slices.Equal(excluded, []string{project, project}) {
+		t.Errorf("key in %q, excluded %q; want %s", keyDirs, excluded, project)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".roadie", "basic-auth", ".htpasswd")); err != nil {
+		t.Error(err)
+	}
+	if _, err := os.Stat(filepath.Join(f.dir, ".roadie", "basic-auth")); err == nil {
+		t.Error("basic-auth files in the working folder")
 	}
 }
 

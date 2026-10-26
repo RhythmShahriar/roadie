@@ -75,4 +75,9 @@ type Job struct {
 	Confirm  func(question, expect string) (bool, error) // nil: no terminal
 	Progress core.Progress
 	Clock    core.Clock
+	// ProjectDir is the folder whose .roadie/ holds the consistency key
+	// and the basic-auth files: the config's project
+	// (roadiecfg.ProjectDir), so a run from a subfolder uses the same
+	// key. "" is the working folder.
+	ProjectDir string
 }

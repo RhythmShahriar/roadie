@@ -18,10 +18,11 @@ import (
 
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/engine"
+	"github.com/RhythmShahriar/roadie/roadiecfg"
 )
 
 // gitExcludes are the paths config init keeps out of git (PRD 6.8).
-var gitExcludes = []string{".roadie/reports/", ".roadie/key", ".roadie/backups/"}
+var gitExcludes = roadiecfg.GitExcludes()
 
 // stackWords say what config init wrote the file for (PRD 16.1).
 var stackWords = map[string]string{
@@ -107,7 +108,7 @@ func excludeReports(stdout, stderr io.Writer) {
 	if err != nil {
 		fmt.Fprintf(stderr, "%s config: couldn't update .git/info/exclude: %v\n", prog(), err)
 	} else if changed {
-		fmt.Fprintln(stdout, "Added .roadie/reports, .roadie/key and .roadie/backups to .git/info/exclude.")
+		fmt.Fprintln(stdout, "Added .roadie/reports, .roadie/key, .roadie/backups and .roadie/basic-auth to .git/info/exclude.")
 	}
 }
 
@@ -294,7 +295,7 @@ func configShow(p *parsed, stdout, _ io.Writer) error {
 // projectDir is the folder .roadie/ lives in: the config's, else here.
 func (p *parsed) projectDir() string {
 	if path, err := p.configFile(); err == nil {
-		return filepath.Dir(filepath.Dir(path))
+		return roadiecfg.ProjectDir(path)
 	}
 	return "."
 }

@@ -1,7 +1,7 @@
 $ rhythm-roadie config init --stack wordpress
 Wrote .roadie/config.yaml for a WordPress site.
 Set source:, target: and url: in it, then run rhythm-roadie plan.
-Added .roadie/reports, .roadie/key and .roadie/backups to .git/info/exclude.
+Added .roadie/reports, .roadie/key, .roadie/backups and .roadie/basic-auth to .git/info/exclude.
 --- .roadie/config.yaml
 # Roadie settings.
 
@@ -16,7 +16,7 @@ columns: []
 $ rhythm-roadie config init --stack woocommerce
 Wrote .roadie/config.yaml for a WooCommerce site.
 Set source:, target: and url: in it, then run rhythm-roadie plan.
-Added .roadie/reports, .roadie/key and .roadie/backups to .git/info/exclude.
+Added .roadie/reports, .roadie/key, .roadie/backups and .roadie/basic-auth to .git/info/exclude.
 --- .roadie/config.yaml
 # Roadie settings.
 
@@ -31,7 +31,7 @@ columns: []
 $ rhythm-roadie config init --stack laravel
 Wrote .roadie/config.yaml for a Laravel app.
 Set source:, target: and url: in it, then run rhythm-roadie plan.
-Added .roadie/reports, .roadie/key and .roadie/backups to .git/info/exclude.
+Added .roadie/reports, .roadie/key, .roadie/backups and .roadie/basic-auth to .git/info/exclude.
 --- .roadie/config.yaml
 # Roadie settings.
 
@@ -46,7 +46,7 @@ columns: []
 $ rhythm-roadie config init --stack sql
 Wrote .roadie/config.yaml for your own SQL schema.
 Set source:, target: and url: in it, then run rhythm-roadie plan.
-Added .roadie/reports, .roadie/key and .roadie/backups to .git/info/exclude.
+Added .roadie/reports, .roadie/key, .roadie/backups and .roadie/basic-auth to .git/info/exclude.
 --- .roadie/config.yaml
 # Roadie settings.
 

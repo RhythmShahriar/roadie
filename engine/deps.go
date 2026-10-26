@@ -73,7 +73,11 @@ var (
 	newStreamSink  = dump.NewStreamSink
 	loadProfiles   = profile.Load
 	runKey         = roadiecfg.RunKey
-	wpConfigPairs  = func(b []byte) ([]core.Pair, error) {
+	// excludeGit keeps .roadie/key, the reports and the basic-auth files
+	// out of the git work tree dir is in, if any; best effort, as the
+	// files are written 0600 either way.
+	excludeGit    = func(dir string) { _, _ = roadiecfg.ExcludeFromGit(dir, roadiecfg.GitExcludes()) }
+	wpConfigPairs = func(b []byte) ([]core.Pair, error) {
 		f, err := wpconfig.Parse(b)
 		if err != nil {
 			return nil, err

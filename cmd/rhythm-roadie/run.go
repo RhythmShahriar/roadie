@@ -52,6 +52,11 @@ func runEngine(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if cfgPath != "" {
+		// The key and the basic-auth files live next to the config, not
+		// in the folder the run started from.
+		job.ProjectDir = roadiecfg.ProjectDir(cfgPath)
+	}
 	lr := newLineReader(dep.stdin)
 	if mode == engine.Copy && job.Opts.URL == "" {
 		const need = "copy needs --url, the staging site's URL (or url: in .roadie/config.yaml)"
@@ -200,7 +205,7 @@ func newOutputs(p *parsed, stdout, stderr io.Writer, cfg *roadiecfg.Config, cfgP
 	o.sign, o.keyFile = p.signing(cfg)
 	if cfgPath != "" {
 		// .roadie/config.yaml's folder's parent holds .roadie/reports too.
-		o.dir = filepath.Dir(filepath.Dir(cfgPath))
+		o.dir = roadiecfg.ProjectDir(cfgPath)
 	}
 	return o
 }

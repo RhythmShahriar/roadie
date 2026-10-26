@@ -83,7 +83,7 @@ The ALSO block's rsync line for uploads passes a non-default SSH port as `-e 'ss
 
 ## Picker
 
-`What should Roadie do?` with PRD 6.12's six lines. copy asks `Where is production?`, `Where should the copy go?` and `The copy's URL?`, runs plan, asks `Copy now? [y/N]`, copies, then (only when there is no config) `Save these answers to .roadie/config.yaml? [Y/n]` and prints `Wrote .roadie/config.yaml for <stack words> with source:, target: and url: set.` (the template of the stack the copy found; WordPress when none) and `Added .roadie/reports, .roadie/key and .roadie/backups to .git/info/exclude.` A DSN's password is never saved: `mysql://u:pw@h/db` is written as `mysql://u@h/db` with `Left the password out of source: in .roadie/config.yaml; set ROADIE_FROM_PASSWORD when you run Roadie.` (`target:` and `ROADIE_TO_PASSWORD` likewise). prepare and verify ask `Which staging site?`; config init asks `Which stack?`. Esc or Ctrl-C exits 130.
+`What should Roadie do?` with PRD 6.12's six lines. copy asks `Where is production?`, `Where should the copy go?` and `The copy's URL?`, runs plan, asks `Copy now? [y/N]`, copies, then (only when there is no config) `Save these answers to .roadie/config.yaml? [Y/n]` and prints `Wrote .roadie/config.yaml for <stack words> with source:, target: and url: set.` (the template of the stack the copy found; WordPress when none) and `Added .roadie/reports, .roadie/key, .roadie/backups and .roadie/basic-auth to .git/info/exclude.` A DSN's password is never saved: `mysql://u:pw@h/db` is written as `mysql://u@h/db` with `Left the password out of source: in .roadie/config.yaml; set ROADIE_FROM_PASSWORD when you run Roadie.` (`target:` and `ROADIE_TO_PASSWORD` likewise). prepare and verify ask `Which staging site?`; config init asks `Which stack?`. Esc or Ctrl-C exits 130.
 
 ## JSON (`--json`, schema `rhythm-roadie/v1`)
 
@@ -110,7 +110,7 @@ Envelope: `schema`, `kind` (`plan`, `copy`, `prepare`, `verify`, `config`, `prof
 
 ## config, profiles, explain, demo
 
-- `config init`: `Wrote .roadie/config.yaml for a WooCommerce site.` / `Set source:, target: and url: in it, then run rhythm-roadie plan.` / `Added .roadie/reports, .roadie/key and .roadie/backups to .git/info/exclude.`; `--from` lists columns that look personal as commented suggestions; CR, LF, NEL, U+2028 and U+2029 in a table or column name become a space there, so a name can't end the comment.
+- `config init`: `Wrote .roadie/config.yaml for a WooCommerce site.` / `Set source:, target: and url: in it, then run rhythm-roadie plan.` / `Added .roadie/reports, .roadie/key, .roadie/backups and .roadie/basic-auth to .git/info/exclude.`; `--from` lists columns that look personal as commented suggestions; CR, LF, NEL, U+2028 and U+2029 in a table or column name become a space there, so a name can't end the comment.
 - `config check`: `<path> is valid.` and `Unset: ROADIE_X (line n); set it before a run that reads it.` for a `${ROADIE_*}` in a value, never for one in a trailing comment.
 - `config key show|rotate|forget` messages: lane notes, batch 1, item 5.
 - `profiles` lists the 24 profiles of PRD 6.10 with what each was checked against; `explain` has an offline text for every finding ID, live-key rule, error code and profile, plus `pseudonymised`.
