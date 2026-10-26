@@ -577,3 +577,20 @@ func TestGuardFailsClosedOnUnreadableConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A siteurl with escape sequences or bidi overrides reaches the message
+// without them.
+func TestPrintableURL(t *testing.T) {
+	esc := string(rune(0x1b))
+	for in, want := range map[string]string{
+		"https://shop.com\n":                                "https://shop.com",
+		"https://sh" + esc + "]0;pwned\a" + "op.com":        "https://sh]0;pwnedop.com",
+		"https://" + string(rune(0x202e)) + "moc.pohs":      "https://moc.pohs",
+		"https://shop.com/" + string([]byte{0xff}) + "path": "https://shop.com/path",
+		"https://staging.shop.test":                         "https://staging.shop.test",
+	} {
+		if got := printableURL(in); got != want {
+			t.Errorf("printableURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/RhythmShahriar/roadie/codec/urlrw"
 	"github.com/RhythmShahriar/roadie/core"
@@ -253,7 +255,7 @@ func readReason(err error) string {
 func readSiteURL(ctx context.Context, s core.Site) string {
 	out, err := s.WP(ctx, "option", "get", "siteurl")
 	if err == nil {
-		return strings.TrimSpace(string(out))
+		return printableURL(string(out))
 	}
 	if !errors.Is(err, core.ErrNoWPCLI) {
 		return ""
@@ -263,9 +265,22 @@ func readSiteURL(ctx context.Context, s core.Site) string {
 		return ""
 	}
 	if v := opts["siteurl"]; len(v) > 0 {
-		return string(v)
+		return printableURL(string(v))
 	}
-	return string(opts["home"])
+	return printableURL(string(opts["home"]))
+}
+
+// printableURL drops control and format characters (escape sequences,
+// bidi overrides) from a URL read from the target's own data: the
+// target-holds-production message quotes it, and a crafted siteurl
+// must not drive the terminal or a CI log that shows it.
+func printableURL(s string) string {
+	return strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == utf8.RuneError {
+			return -1
+		}
+		return r
+	}, s))
 }
 
 // productionHosts turns production: entries into host globs.
