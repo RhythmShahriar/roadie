@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -827,8 +828,13 @@ func TestRunBasicAuth(t *testing.T) {
 	}
 	p := filepath.Join(f.dir, ".roadie", "basic-auth", ".htpasswd")
 	fi, err := os.Stat(p)
-	if err != nil || fi.Mode().Perm() != 0o600 || res.BasicAuthPassword != "pw-team" {
-		t.Errorf("basic auth %v %v %q", fi, err, res.BasicAuthPassword)
+	if err != nil || res.BasicAuthPassword != "pw-team" {
+		t.Fatalf("basic auth %v %v %q", fi, err, res.BasicAuthPassword)
+	}
+	// Windows reports 0666 for any writable file, so only Unix modes are
+	// checked.
+	if runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
+		t.Errorf(".htpasswd mode %v, want 0600", fi.Mode().Perm())
 	}
 }
 
