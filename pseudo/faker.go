@@ -126,7 +126,7 @@ func (f *faker) Fake(kind core.FakeKind, original []byte, o core.FakeOpts) ([]by
 	}
 	// The kind the hash is keyed on: a login or nicename that is an email
 	// address is keyed as that email, so a login equal to the email gets
-	// the fake email, and a nicename equal to the login gets its fake.
+	// the fake email while a nicename equal to the login gets its fake.
 	hk := kind
 	switch kind {
 	case core.KNicename:

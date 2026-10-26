@@ -8,7 +8,7 @@
 //
 // A fake is F(kind, HMAC-SHA256(key, kind || 0x00 || Normalise(kind,
 // original))): the same person gets the same fake in every table and
-// encoding of one run, and in every run that uses the same key. Without
+// encoding of one run and in every run that uses the same key. Without
 // the key a fake can't be linked back to its original; with the key a
 // guess can be checked, which is why the copy is pseudonymised and not
 // anonymised.
@@ -72,7 +72,7 @@ func NewFaker(k Key, o Options) (core.Faker, error) {
 
 // NewKnown returns an empty known-value set keyed by k.
 //
-// It keeps 8-byte keyed hashes, never the values, and finds a value again
+// It keeps 8-byte keyed hashes, never the values. It finds a value again
 // in its raw (any case), md5 hex and sha256 hex forms. Names also store
 // their words and word pairs, for the free-text scrubber.
 func NewKnown(k Key) core.Known {

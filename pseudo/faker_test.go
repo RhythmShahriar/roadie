@@ -514,7 +514,7 @@ func TestClonesInParallel(t *testing.T) {
 	}
 }
 
-// Every generated email, phone and IP is in a reserved range, and a
+// Every generated email, phone and IP is in a reserved range; a
 // million distinct emails give a million distinct fakes.
 func TestMillionFakes(t *testing.T) {
 	n := scaled(1_000_000)

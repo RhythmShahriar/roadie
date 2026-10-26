@@ -254,10 +254,10 @@ func (t *table) find(h uint64) (byte, bool) {
 }
 
 // Contains reports whether token is a known value, or a word or word
-// pair of a known name, and in which encoding. The token is normalised
-// as Add normalises: case-folded text (which covers emails and names),
-// phone digits and canonical IPs are tried; a 32 or 64 character hex
-// token is also looked up as md5 or sha256 hex in any case.
+// pair of a known name. It also says in which encoding. The token is
+// normalised as Add normalises: case-folded text (which covers emails
+// and names), phone digits and canonical IPs are tried; a 32 or 64
+// character hex token is also looked up as md5 or sha256 hex in any case.
 //
 // Before Seal it answers false; in a test binary it panics instead, so a
 // caller that forgot Seal fails loudly.
@@ -346,8 +346,8 @@ func (kn *known) kindOf(k byte) core.FakeKind {
 	return kn.kinds[i]
 }
 
-// Len returns the number of distinct values added after Seal, and the
-// number of Add calls kept before it.
+// Len returns the number of distinct values once sealed. Before Seal it
+// returns the number of Add calls kept so far.
 func (kn *known) Len() int {
 	kn.mu.Lock()
 	defer kn.mu.Unlock()
