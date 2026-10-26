@@ -181,15 +181,18 @@ func TestCheck(t *testing.T) {
 		{"wordpress bare", core.StackWordPress, nil, "1", "on"},
 		{"wordpress no options", core.StackWordPress, nil, "", "on"},
 		{"mu-plugin without noindex", core.StackWordPress, map[string]string{killswitch.MuPluginPath: muNoNoindex}, "1", "on"},
-		{"robots allows", core.StackWordPress, map[string]string{"robots.txt": ownRobots, killswitch.MuPluginPath: mu}, "0", "on"},
+		{"robots allows", core.StackWordPress, map[string]string{"robots.txt": ownRobots}, "1", "on"},
+		{"robots allows googlebot", core.StackWordPress, map[string]string{"robots.txt": "User-agent: *\nDisallow: /\n\nUser-agent: Googlebot\nAllow: /\n"}, "1", "on"},
 		{"foreign mu-plugin", core.StackWordPress, map[string]string{killswitch.MuPluginPath: "<?php // 'wp_robots'"}, "1", "on"},
 		{"laravel no robots", core.StackLaravel, nil, "", "on"},
 		{"laravel default robots", core.StackLaravel, map[string]string{"public/robots.txt": "User-agent: *\nDisallow:\n"}, "", "on"},
 
 		{"mu-plugin noindex", core.StackWordPress, map[string]string{killswitch.MuPluginPath: mu}, "1", "off"},
+		{"mu-plugin and open robots", core.StackWordPress, map[string]string{killswitch.MuPluginPath: mu, "robots.txt": ownRobots}, "1", "off"},
 		{"mu-plugin and robots", core.StackWordPress, map[string]string{killswitch.MuPluginPath: mu, "robots.txt": blocking}, "1", "off"},
 		{"blocking robots only", core.StackWordPress, map[string]string{"robots.txt": "User-agent: *\nDisallow: /\n"}, "1", "off"},
 		{"blog_public 0", core.StackWordPress, nil, "0", "off"},
+		{"blog_public 0 and open robots", core.StackWordPress, map[string]string{"robots.txt": ownRobots}, "0", "off"},
 		{"laravel blocking", core.StackLaravel, map[string]string{"public/robots.txt": blocking}, "", "off"},
 		{"sql", core.StackSQL, nil, "", "not-present"},
 	}
@@ -252,6 +255,31 @@ func TestApplyErrors(t *testing.T) {
 	}
 }
 
+// TestApplyExistsFails: when Roadie can't tell whether a backup is
+// there, it writes neither the backup nor robots.txt.
+func TestApplyExistsFails(t *testing.T) {
+	st := step(t, killswitch.Options{Noindex: true})
+	s := &existsFailSite{Site: site(core.StackWordPress, map[string]string{"robots.txt": ownRobots}, "1")}
+	err := st.Apply(context.Background(), s)
+	var ce *core.Error
+	if !errors.As(err, &ce) || ce.Code != core.ErrKillSwitch {
+		t.Fatalf("exists error: %v", err)
+	}
+	if b, _ := s.ReadFile(context.Background(), "robots.txt"); string(b) != ownRobots {
+		t.Fatalf("robots.txt changed: %q", b)
+	}
+	if ok, _ := s.Site.Exists(context.Background(), "robots.txt"+RobotsBackupSuffix); ok {
+		t.Fatal("backup written")
+	}
+}
+
+// existsFailSite can't tell whether a file is there.
+type existsFailSite struct{ *testutil.Site }
+
+func (f *existsFailSite) Exists(context.Context, string) (bool, error) {
+	return false, errors.New("ssh: connection reset")
+}
+
 // failSite refuses every write with a permission error.
 type failSite struct{ *testutil.Site }
 
@@ -264,8 +292,11 @@ func TestBlocks(t *testing.T) {
 		killswitch.RobotsTxt(),
 		"User-agent: *\nDisallow: /\n",
 		"user-agent: *  # all\r\ndisallow: /\r\n",
-		"User-agent: GPTBot\nUser-agent: *\nDisallow: /\n\nUser-agent: Googlebot\nAllow: /\n",
-		"User-agent: Googlebot\nDisallow:\n\nUser-agent: *\nDisallow: /\nAllow:\n",
+		"User-agent: GPTBot\nUser-agent: *\nDisallow: /\n\nUser-agent: Googlebot\nDisallow: /\n",
+		"User-agent: *\nDisallow: /\nAllow:\n",
+		"\ufeffUser-agent: *\nDisallow: /\n",
+		"User-agent: *\nDisallow: /\nSitemap: https://example.test/sitemap.xml\n",
+		"User-agent: *\nDisallow: /\n\nUser-agent: *\nDisallow: /\n",
 	}
 	no := []string{
 		"",
@@ -274,6 +305,12 @@ func TestBlocks(t *testing.T) {
 		"User-agent: Googlebot\nDisallow: /\n",
 		"User-agent: *\nDisallow: /\nAllow: /shop/\n",
 		"User-agent: *\nAllow: /\n\nUser-agent: *\nDisallow: /\n",
+		"User-agent: *\nDisallow: /\n\nUser-agent: *\nAllow: /shop/\n",
+		// Googlebot obeys its own group only, which lets it in.
+		"User-agent: GPTBot\nUser-agent: *\nDisallow: /\n\nUser-agent: Googlebot\nAllow: /\n",
+		"User-agent: Googlebot\nDisallow:\n\nUser-agent: *\nDisallow: /\n",
+		"User-agent: *\nDisallow: /\n\nUser-agent: Bingbot\n",
+		"User-agent: *\nDisallow: /\n\nUser-agent: Bingbot\nCrawl-delay: 5\n",
 		"Disallow: /\n",
 		"# User-agent: *\n# Disallow: /\n",
 	}
@@ -301,6 +338,10 @@ func FuzzBlocks(f *testing.F) {
 		// Only a Disallow rule can block.
 		if got && !strings.Contains(strings.ToLower(string(b)), "disallow") {
 			t.Fatalf("blocks without a Disallow rule: %q", b)
+		}
+		// A group that lets Googlebot in always opens the file.
+		if Blocks(append(append([]byte{}, b...), "\nUser-agent: Googlebot\nAllow: /\n"...)) {
+			t.Fatalf("blocks with an open Googlebot group: %q", b)
 		}
 	})
 }
@@ -402,14 +443,14 @@ func TestBasicAuthProxyWarning(t *testing.T) {
 }
 
 func TestBasicAuthBadUser(t *testing.T) {
-	for _, u := range []string{"", "a:b", "a b", "a\nb", `a"b`, "{x}", strings.Repeat("u", 65), "ü"} {
+	for _, u := range []string{"", "a:b", "a b", "a\nb", `a"b`, "{x}", strings.Repeat("u", 65), "ü", "a+b", "a/b", "a!b", "a(b)", "a%b"} {
 		_, _, err := BasicAuth(u)
 		var ue cli.UsageError
 		if !errors.As(err, &ue) {
 			t.Errorf("BasicAuth(%q): %v, want a usage error", u, err)
 		}
 	}
-	for _, u := range []string{"staging", "qa.team", "first-last_2", "me@agency.example"} {
+	for _, u := range []string{"staging", "qa.team", "first-last_2", "me@agency.example", strings.Repeat("u", 64)} {
 		if _, _, err := BasicAuth(u); err != nil {
 			t.Errorf("BasicAuth(%q): %v", u, err)
 		}

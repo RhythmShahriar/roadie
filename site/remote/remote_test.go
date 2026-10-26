@@ -106,7 +106,7 @@ func TestExactCommands(t *testing.T) {
 		{Cat, []string{"/srv/it's/.env"}, `cat -- '/srv/it'\''s/.env'`},
 		{Find, []string{"/srv/up", "2"}, `find '/srv/up' -maxdepth 2 -printf '%y %s %P\n'`},
 		{MySQLDump, []string{"shop"}, "mysqldump --defaults-extra-file=/dev/stdin --single-transaction --skip-triggers --no-tablespaces --hex-blob 'shop'"},
-		{Backup, []string{"2026-10-26T14-02-03"}, "umask 077 && mkdir -p ~/.roadie-backups && { ~/bin/wp --path='/var/www/shop' db export - --skip-plugins --skip-themes --single-transaction || echo 'roadie: wp db export failed' >&2; } | gzip > ~/.roadie-backups/2026-10-26T14-02-03.sql.gz"},
+		{Backup, []string{"2026-10-26T14-02-03"}, "set -C && umask 077 && mkdir -p ~/.roadie-backups && { ~/bin/wp --path='/var/www/shop' db export - --skip-plugins --skip-themes --single-transaction || echo 'roadie: wp db export failed' >&2; } | gzip > ~/.roadie-backups/2026-10-26T14-02-03.sql.gz"},
 		{EvalFile, nil, "~/bin/wp --path='/var/www/shop' eval-file -"},
 		{Stat, []string{"/srv/shop/wp-config.php"}, "ls -lnLd -- '/srv/shop/wp-config.php'"},
 		{WriteKeep, []string{"/s/.x.t", "1001", "33", "/s/.x.t", "33", "/s/.x.t", "0644", "/s/.x.t", "/s/.x.t", "/s/x"},
@@ -209,11 +209,20 @@ func TestArgvAndQuotedPath(t *testing.T) {
 	if err := r3.Run(context.Background(), nil, nil, CoreVersion); err != nil {
 		t.Fatal(err)
 	}
+	// An IPv6 host reaches ssh without its brackets.
+	r4 := &Runner{User: "deploy", Host: "[2001:db8::1]", Port: 22}
+	if err := r4.Run(context.Background(), nil, nil, CoreVersion); err != nil {
+		t.Fatal(err)
+	}
+	if got := r4.Dest(); got != "deploy@[2001:db8::1]" {
+		t.Errorf("Dest %q keeps the brackets for messages", got)
+	}
 	calls := s.Calls()
 	want := [][]string{
 		{"-p", "2222", "-o", "BatchMode=yes", "--", "deploy@shop.example", "cat -- '/srv/$(id)/wp-config.php'"},
 		{"--", "shop.example", "wp core version --skip-plugins --skip-themes"},
 		{"-o", "BatchMode=yes", "--", "shop.example", "wp core version --skip-plugins --skip-themes"},
+		{"-p", "22", "--", "deploy@2001:db8::1", "wp core version --skip-plugins --skip-themes"},
 	}
 	if len(calls) != len(want) {
 		t.Fatalf("calls %q", calls)

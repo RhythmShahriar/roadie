@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -228,7 +229,16 @@ func localBackup(ctx context.Context, dir string, dialect core.Dialect, src func
 	if err := os.Chmod(dir, 0o700); err != nil { // #nosec G302 -- a folder needs x; 0700 keeps it private
 		return "", fmt.Errorf("backup: %w", err)
 	}
-	p := filepath.Join(dir, backupStamp()+".sql.gz")
+	p, err := reserveBackup(dir, backupStamp())
+	if err != nil {
+		return "", err
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			_ = os.Remove(p) // the empty reservation, never a finished backup
+		}
+	}()
 	s, err := src(ctx)
 	if err != nil {
 		return "", err
@@ -241,7 +251,31 @@ func localBackup(ctx context.Context, dir string, dialect core.Dialect, src func
 	if err := copyAll(ctx, s, sink); err != nil {
 		return "", err
 	}
+	ok = true
 	return p, nil
+}
+
+// reserveBackup creates an empty <ts>.sql.gz (0600) with O_EXCL, so two
+// backups started in the same second (two targets backed up from one
+// folder) never share a file and one never replaces the other. A taken
+// name gets -2, -3 and so on. The file sink renames its finished file
+// over the reservation.
+func reserveBackup(dir, ts string) (string, error) {
+	for n := 1; n <= 100; n++ {
+		name := ts + ".sql.gz"
+		if n > 1 {
+			name = fmt.Sprintf("%s-%d.sql.gz", ts, n)
+		}
+		p := filepath.Join(dir, name)
+		f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- a name Roadie built in the backup folder
+		if err == nil {
+			return p, f.Close()
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return "", fmt.Errorf("backup: %w", err)
+		}
+	}
+	return "", fmt.Errorf("backup: %s already holds 100 backups named %s; remove old ones and run again", dir, ts)
 }
 
 // shellWord writes s for a printed command line: bare when it is safe,

@@ -61,7 +61,7 @@ func LockNotify(target core.Endpoint, note func(string)) (unlock func(), err err
 	}
 	token := hex.EncodeToString(rnd[:])
 	body := fmt.Sprintf("pid=%d\nstarted=%s\ntarget=%s\ntoken=%s\n", os.Getpid(), time.Now().Format(time.RFC3339), oneLine(target.Display), token)
-	for try := 0; try < 2; try++ {
+	for try := 0; try < 3; try++ {
 		f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- a name Roadie built in its cache
 		if err == nil {
 			_, werr := f.WriteString(body)
@@ -78,14 +78,17 @@ func LockNotify(target core.Endpoint, note func(string)) (unlock func(), err err
 		if !errors.Is(err, fs.ErrExist) {
 			return nil, fmt.Errorf("lock: %w", err)
 		}
-		held, info := readLock(p)
+		held, info, removed, err := removeStale(p)
+		if err != nil {
+			return nil, err
+		}
 		if held {
 			return nil, core.Errorf(core.ErrLock, 3,
 				"lock: another Roadie run is copying to %s (pid %d, started %s). Wait for it, or remove %s if it crashed.",
 				lockTarget(info, target), info.pid, info.startedText(), p)
 		}
-		if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("lock: %w", err)
+		if !removed {
+			continue // gone already: another run cleared it first
 		}
 		if info.pid > 0 {
 			note(fmt.Sprintf("note: removed a stale lock on %s from pid %d (started %s), which is no longer running.",
@@ -95,6 +98,52 @@ func LockNotify(target core.Endpoint, note func(string)) (unlock func(), err err
 		}
 	}
 	return nil, core.Errorf(core.ErrLock, 3, "lock: another Roadie run took the lock on %s at the same moment. Run again.", target.Display)
+}
+
+// breakWait bounds how long LockNotify waits for another run that is
+// clearing the same stale lock; tests shorten it.
+var breakWait = 2 * time.Second
+
+// removeStale removes the lock at p when its run is gone. Two runs that
+// both find the same stale lock would otherwise race: the slower one
+// could remove the lock the faster one just made. So the check and the
+// removal happen while holding p+".break", made with O_EXCL; a run that
+// creates a lock never needs it, since O_EXCL fails while p exists.
+func removeStale(p string) (held bool, info lockInfo, removed bool, err error) {
+	brk := p + ".break"
+	deadline := time.Now().Add(breakWait)
+	for {
+		f, err := os.OpenFile(brk, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- a name Roadie built in its cache
+		if err == nil {
+			_ = f.Close()
+			break
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return false, info, false, fmt.Errorf("lock: %w", err)
+		}
+		// A run that died while clearing leaves the break file behind.
+		if fi, serr := os.Stat(brk); serr == nil && time.Since(fi.ModTime()) > lockFresh {
+			_ = os.Remove(brk)
+			continue
+		}
+		if time.Now().After(deadline) {
+			return false, info, false, core.Errorf(core.ErrLock, 3, "lock: another Roadie run is clearing a stale lock in %s. Run again.", filepath.Dir(p))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	defer func() { _ = os.Remove(brk) }()
+	held, info = readLock(p)
+	if held {
+		return true, info, false, nil
+	}
+	switch err := os.Remove(p); {
+	case err == nil:
+		return false, info, true, nil
+	case errors.Is(err, fs.ErrNotExist):
+		return false, info, false, nil
+	default:
+		return false, info, false, fmt.Errorf("lock: %w", err)
+	}
 }
 
 // lockInfo is what a lock file says.

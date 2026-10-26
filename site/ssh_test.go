@@ -5,6 +5,7 @@ package site
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"io"
@@ -300,7 +301,7 @@ func TestSSHBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := sh.Calls()[n:]
-	want := "umask 077 && mkdir -p ~/.roadie-backups && { wp --path='/srv/shop' db export - --skip-plugins --skip-themes --single-transaction || echo 'roadie: wp db export failed' >&2; } | gzip > ~/.roadie-backups/2026-10-26T08-02-03.sql.gz"
+	want := "set -C && umask 077 && mkdir -p ~/.roadie-backups && { wp --path='/srv/shop' db export - --skip-plugins --skip-themes --single-transaction || echo 'roadie: wp db export failed' >&2; } | gzip > ~/.roadie-backups/2026-10-26T08-02-03.sql.gz"
 	if len(calls) != 1 || remoteCmd(calls[0]) != want {
 		t.Fatalf("backup calls %v", calls)
 	}
@@ -314,7 +315,98 @@ func TestSSHBackup(t *testing.T) {
 	if _, _, err := s.Backup(context.Background()); err == nil {
 		t.Fatal("a failed export passed as a backup")
 	}
+	// set -C refused to overwrite a backup made in the same second.
+	sh.Reply(nil, "sh: 1: cannot create /home/deploy/.roadie-backups/2026-10-26T08-02-03.sql.gz: File exists\n", 2)
+	_, _, err = s.Backup(context.Background())
+	if err == nil || err.Error() != "backup: ~/.roadie-backups/2026-10-26T08-02-03.sql.gz already exists on deploy@shop.example: another backup started there in the same second. Run again" {
+		t.Fatalf("same-second backup: %v", err)
+	}
+	// Any other failure is not read as a taken name.
+	sh.Reply(nil, "gzip: stdout: No space left on device\n", 1)
+	if _, _, err = s.Backup(context.Background()); err == nil || strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("disk full read as a taken name: %v", err)
+	}
 	assertAllowed(t, sh)
+}
+
+func TestBackupExistsRE(t *testing.T) {
+	for _, tt := range []struct {
+		stderr string
+		want   bool
+	}{
+		{"sh: 1: cannot create /home/u/.roadie-backups/x.sql.gz: File exists", true},     // dash
+		{"sh: can't create /home/u/.roadie-backups/x.sql.gz: File exists", true},         // busybox
+		{"bash: /home/u/.roadie-backups/x.sql.gz: cannot overwrite existing file", true}, // bash
+		{"zsh:1: file exists: /home/u/.roadie-backups/x.sql.gz", true},                   // zsh
+		{"mkdir: cannot create directory '/home/u/.roadie-backups': File exists", false}, // a file in the folder's place
+		{"Error: Error establishing a database connection.", false},
+		{"gzip: stdout: No space left on device", false},
+	} {
+		if got := backupExistsRE.MatchString(tt.stderr); got != tt.want {
+			t.Errorf("%q: %v, want %v", tt.stderr, got, tt.want)
+		}
+	}
+}
+
+// The backup command run twice in one second by real shells: the
+// second refuses to overwrite the first backup.
+func TestBackupNoClobberUnderSh(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no POSIX sh")
+	}
+	bin := t.TempDir()
+	wp := "#!/bin/sh\nprintf -- '-- dump %s\\n' \"$ROADIE_TEST_RUN\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "wp"), []byte(wp), 0o700); err != nil { // #nosec G306 -- a test script that must run
+		t.Fatal(err)
+	}
+	cmd, err := (&remote.Runner{Host: "h", Root: "/srv/shop"}).Command(remote.Backup, "2026-10-26T08-02-03")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ran := 0
+	for _, name := range []string{"sh", "bash", "zsh"} {
+		shell, err := exec.LookPath(name)
+		if err != nil {
+			continue
+		}
+		ran++
+		home := t.TempDir()
+		run := func(n string) (string, error) {
+			c := exec.Command(shell, "-c", cmd) // #nosec G204 -- the allowlisted backup command with a fake wp
+			c.Env = append(os.Environ(), "HOME="+home, "ROADIE_TEST_RUN="+n, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			out, err := c.CombinedOutput()
+			return string(out), err
+		}
+		if out, err := run("first"); err != nil {
+			t.Fatalf("%s: first backup: %v: %s", name, err, out)
+		}
+		out, err := run("second")
+		if err == nil {
+			t.Fatalf("%s: second backup in the same second overwrote the first", name)
+		}
+		if !backupExistsRE.MatchString(out) {
+			t.Errorf("%s: stderr %q not read as a taken name", name, out)
+		}
+		f, err := os.Open(filepath.Join(home, ".roadie-backups", "2026-10-26T08-02-03.sql.gz"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		zr, err := gzip.NewReader(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(zr)
+		_ = f.Close()
+		if string(b) != "-- dump first\n" {
+			t.Fatalf("%s: backup holds %q", name, b)
+		}
+		if fi, _ := os.Stat(f.Name()); fi.Mode().Perm() != 0o600 {
+			t.Fatalf("%s: backup mode %v", name, fi.Mode().Perm())
+		}
+	}
+	if ran == 0 {
+		t.Skip("no POSIX sh")
+	}
 }
 
 // createTable is a CREATE TABLE batch as the dump writer gets it.

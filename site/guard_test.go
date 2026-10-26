@@ -5,6 +5,8 @@ package site
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io/fs"
 	"os"
@@ -12,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -162,8 +165,42 @@ func TestGuardPasses(t *testing.T) {
 		t.Fatal(err)
 	}
 	empty := testutil.FakeSite(nil)
+	empty.StackName = ""
 	if err := Guard(ctx, GuardInput{From: dumpEP(), To: empty.EP, ToSite: empty, Mode: "copy"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestGuardFailsClosedWithoutEnv(t *testing.T) {
+	ctx := context.Background()
+	// WordPress with wp-config.php one folder up: Roadie can't read it.
+	wp := testutil.FakeSite(map[string][]byte{"wp-includes/version.php": []byte("<?php\n")})
+	wantCode(t, Guard(ctx, GuardInput{From: dumpEP(), To: wp.EP, ToSite: wp, SiteURL: "https://staging.shop.test", Mode: "copy"}),
+		core.ErrTargetSaysProduction, 3,
+		"target-says-production: /srv/staging has no wp-config.php in the site folder Roadie can read, so it counts as production. If it's staging, move wp-config.php into the site folder and set WP_ENVIRONMENT_TYPE to staging there, or pass --target-is-staging staging.shop.test.")
+	if err := Guard(ctx, GuardInput{From: dumpEP(), To: wp.EP, ToSite: wp, SiteURL: "https://staging.shop.test", TargetIsStaging: "staging.shop.test", Mode: "copy"}); err != nil {
+		t.Fatalf("override: %v", err)
+	}
+	laravel := func(env string) *testutil.Site {
+		s := testutil.FakeSite(map[string][]byte{".env": []byte("APP_URL=https://staging.shop.test\n" + env)})
+		s.StackName = core.StackLaravel
+		return s
+	}
+	tests := []struct{ env, msg string }{
+		{"", "has APP_ENV unset in .env, which Laravel reads as production"},
+		{"APP_ENV=${DEPLOY_ENV}\n", "sets APP_ENV in .env from another variable, which Roadie can't resolve, so it counts as production"},
+		{"APP_ENV=production\n", "has APP_ENV=production in .env"},
+	}
+	for _, tt := range tests {
+		s := laravel(tt.env)
+		wantCode(t, Guard(ctx, GuardInput{From: dumpEP(), To: s.EP, ToSite: s, Mode: "copy"}), core.ErrTargetSaysProduction, 3,
+			"target-says-production: /srv/staging "+tt.msg+". If it's staging, set APP_ENV=staging there, or pass --target-is-staging staging.shop.test.")
+	}
+	for _, env := range []string{"APP_ENV=staging\n", "APP_ENV='${X}'\n", "APP_ENV=local\n"} {
+		s := laravel(env)
+		if err := Guard(ctx, GuardInput{From: dumpEP(), To: s.EP, ToSite: s, Mode: "copy"}); err != nil {
+			t.Fatalf("%q: %v", env, err)
+		}
 	}
 }
 
@@ -183,6 +220,20 @@ func TestGuardOverride(t *testing.T) {
 	in := base("staging.shop.test")
 	in.Production = []string{"staging.shop.test"}
 	wantCode(t, Guard(ctx, in), core.ErrTargetIsProduction, 3, "")
+	// On prepare the copy's siteurl is production's: naming it, or any
+	// host production: lists, is refused.
+	ps := stagingSite("production", "https://shop.com")
+	prep := GuardInput{From: dumpEP(), To: ps.EP, ToSite: ps, Mode: "prepare", Production: []string{"shop.com"}, URL: "https://staging.shop.test"}
+	for _, bad := range []string{"shop.com", "SHOP.com"} {
+		prep.TargetIsStaging = bad
+		wantCode(t, Guard(ctx, prep), core.ErrTargetSaysProduction, 3, "")
+	}
+	prep.TargetIsStaging = "staging.shop.test"
+	if err := Guard(ctx, prep); err != nil {
+		t.Fatalf("prepare with the staging host: %v", err)
+	}
+	prep.Production = []string{"*.shop.test"}
+	wantCode(t, Guard(ctx, prep), core.ErrTargetIsProduction, 3, "")
 	// Never for target-is-source either.
 	s := stagingSite("", "https://staging.shop.test")
 	s.Identity = core.DBIdentity{Engine: core.MySQL, Host: "127.0.0.1", Port: 3306, Name: "staging"}
@@ -336,6 +387,113 @@ func TestLockStale(t *testing.T) {
 	}
 	_, err = Lock(target)
 	wantCode(t, err, core.ErrLock, 3, "")
+}
+
+// Runs that find the same stale lock at once must not remove each
+// other's new lock: exactly one of them gets it.
+func TestLockStaleRace(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("RHYTHM_CACHE_DIR", cache)
+	target := core.Endpoint{Kind: core.DSN, Driver: core.MySQL, Host: "db.example", Path: "race", Display: "mysql://db.example/race"}
+	pid := deadPID(t)
+	for round := 0; round < 20; round++ {
+		unlock, err := Lock(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		locks, _ := filepath.Glob(filepath.Join(cache, "roadie", "locks", "*.lock"))
+		if len(locks) != 1 {
+			t.Fatalf("lock files %v", locks)
+		}
+		if err := os.WriteFile(locks[0], []byte("pid="+strconv.Itoa(pid)+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		const runs = 8
+		var (
+			wg      sync.WaitGroup
+			mu      sync.Mutex
+			got     []func()
+			refused int
+		)
+		for i := 0; i < runs; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				u, err := LockNotify(target, func(string) {})
+				mu.Lock()
+				defer mu.Unlock()
+				if err == nil {
+					got = append(got, u)
+					return
+				}
+				var ce *core.Error
+				if !errors.As(err, &ce) || ce.Code != core.ErrLock {
+					t.Errorf("run: %v", err)
+				}
+				refused++
+			}()
+		}
+		wg.Wait()
+		if len(got) != 1 || refused != runs-1 {
+			t.Fatalf("round %d: %d runs got the lock, %d refused", round, len(got), refused)
+		}
+		got[0]()
+		unlock() // the first lock was replaced; its unlock leaves nothing behind
+		if left, _ := filepath.Glob(filepath.Join(cache, "roadie", "locks", "*")); len(left) != 0 {
+			t.Fatalf("left behind %v", left)
+		}
+	}
+}
+
+// A break file left by a run that died while clearing is itself stale.
+func TestLockStaleBreakFile(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("RHYTHM_CACHE_DIR", cache)
+	target := core.Endpoint{Kind: core.DSN, Driver: core.MySQL, Host: "db.example", Path: "brk", Display: "mysql://db.example/brk"}
+	unlock, err := Lock(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlock()
+	p := filepath.Join(cache, "roadie", "locks", hexSum(lockIdentity(target))+".lock")
+	if err := os.WriteFile(p, []byte("pid="+strconv.Itoa(deadPID(t))+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Minute)
+	if err := os.WriteFile(p+".break", nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(p+".break", old, old); err != nil {
+		t.Fatal(err)
+	}
+	u, err := LockNotify(target, func(string) {})
+	if err != nil {
+		t.Fatalf("old break file blocked the lock: %v", err)
+	}
+	u()
+	if _, err := os.Stat(p + ".break"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("break file left behind")
+	}
+	// A fresh break file is another run clearing right now: wait, then
+	// give up with a lock error rather than race it.
+	if err := os.WriteFile(p, []byte("pid="+strconv.Itoa(deadPID(t))+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p+".break", nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	defer func(w time.Duration) { breakWait = w }(breakWait)
+	breakWait = 100 * time.Millisecond
+	_, err = LockNotify(target, func(string) {})
+	wantCode(t, err, core.ErrLock, 3, "")
+	if !strings.HasPrefix(err.Error(), "lock: another Roadie run is clearing a stale lock in ") {
+		t.Fatalf("message %s", err)
+	}
+}
+
+func hexSum(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }
 
 func TestLockIdentity(t *testing.T) {

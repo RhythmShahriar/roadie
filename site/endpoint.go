@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -84,8 +85,10 @@ func notAnEndpoint(s string) error {
 	return cli.Usagef("endpoint: %s is not a dump file, site folder, ssh://, @alias or DSN", redact(s))
 }
 
-// redact hides a password in a URL-shaped value before it is printed.
+// redact hides a password in a URL-shaped value before it is printed:
+// the user-info password and every passwordParams query value.
 func redact(s string) string {
+	s = maskQueryPasswords(s)
 	u, err := url.Parse(s)
 	if err != nil || u.User == nil {
 		if strings.Contains(s, "://") && strings.Contains(s, "@") {
@@ -101,6 +104,41 @@ func redact(s string) string {
 		return s
 	}
 	return withMaskedPassword(u)
+}
+
+// maskQueryPasswords replaces the value of every passwordParams query
+// parameter with "•••". It works on the raw text so that it still holds
+// when url.Parse fails. Each key is decoded and lowercased first, so a key
+// parseDSN would read as a password (pass%77ord, PASSWORD) is masked too.
+func maskQueryPasswords(s string) string {
+	before, query, ok := strings.Cut(s, "?")
+	if !ok {
+		return s
+	}
+	query, frag, hasFrag := strings.Cut(query, "#")
+	pairs := strings.Split(query, "&")
+	for i, pair := range pairs {
+		key, _, has := strings.Cut(pair, "=")
+		if !has {
+			continue
+		}
+		name, err := url.QueryUnescape(key)
+		if err != nil {
+			name = key
+		}
+		name = strings.ToLower(name)
+		for _, k := range passwordParams {
+			if name == k {
+				pairs[i] = key + "=" + masked
+				break
+			}
+		}
+	}
+	out := before + "?" + strings.Join(pairs, "&")
+	if hasFrag {
+		out += "#" + frag
+	}
+	return out
 }
 
 // withMaskedPassword prints u with its password, if any, as "•••".
@@ -148,8 +186,18 @@ func parseDSN(s, scheme string) (core.Endpoint, error) {
 		}
 	}
 	q := u.Query()
-	for _, k := range passwordParams {
-		if q.Has(k) {
+	// Keys match in any case (PASSWORD, Password), as maskQueryPasswords
+	// does, so no spelling of a password key stays in DSN or Display.
+	keys := make([]string, 0, len(q))
+	for k := range q {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, p := range passwordParams {
+		for _, k := range keys {
+			if strings.ToLower(k) != p {
+				continue
+			}
 			if e.Password == "" {
 				e.Password = q.Get(k)
 			}

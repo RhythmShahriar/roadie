@@ -44,6 +44,19 @@ path: web
   ssh: deploy@-oProxyCommand=x/srv
 @nopath:
   ssh: deploy@shop.example
+@home:
+  ssh: deploy@shop.example~/www
+@homeurl:
+  ssh: deploy@shop.example/~/www
+@homekey:
+  ssh: deploy@shop.example
+  path: ~/www
+@relative:
+  ssh: deploy@shop.example
+  path: www
+@control:
+  ssh: deploy@shop.example
+  path: "/srv/a\x01b"
 `)
 	writeFile(t, filepath.Join(root, "wp-cli.local.yml"), `
 @staging:
@@ -75,11 +88,16 @@ path: web
 		}
 	}
 	for alias, msg := range map[string]string{
-		"@both":    "alias group",
-		"@docker":  "Roadie runs only ssh aliases",
-		"@evil":    "can't start with '-'",
-		"@nopath":  "names no site folder",
-		"@missing": "is in no wp-cli.yml",
+		"@both":     "alias group",
+		"@docker":   "Roadie runs only ssh aliases",
+		"@evil":     "can't start with '-'",
+		"@nopath":   "names no site folder",
+		"@home":     `not "~/www"; Roadie doesn't expand '~'`,
+		"@homeurl":  `not "/~/www"; Roadie doesn't expand '~'`,
+		"@homekey":  `not "~/www"; Roadie doesn't expand '~'`,
+		"@relative": `such as /home/deploy/www, not "www"`,
+		"@control":  "holds a control character",
+		"@missing":  "is in no wp-cli.yml",
 	} {
 		_, err := ResolveAlias(deep, alias)
 		if err == nil || !strings.Contains(err.Error(), msg) {
@@ -89,4 +107,35 @@ path: web
 	if _, err := ResolveAlias(t.TempDir(), "@prod"); !errors.Is(err, ErrNoAlias) {
 		t.Errorf("no wp-cli.yml: %v", err)
 	}
+}
+
+// FuzzAliasSSH feeds WP-CLI ssh values and path keys to the alias
+// parser: it never panics and an accepted endpoint has a checked host and
+// user and an absolute site folder with no '~' and no control character.
+func FuzzAliasSSH(f *testing.F) {
+	for _, s := range [][2]string{
+		{"deploy@shop.example/var/www/shop", ""},
+		{"web@staging.example:2222/srv/staging", "/srv/override"},
+		{"deploy@shop.example~/www", ""},
+		{"ssh:deploy@[::1]:22/srv", ""},
+		{"deploy@-oProxyCommand=x/srv", ""},
+		{"deploy@shop.example", "~/www"},
+	} {
+		f.Add(s[0], s[1])
+	}
+	f.Fuzz(func(t *testing.T, sshVal, pathVal string) {
+		e, err := aliasSSH("x", sshVal, pathVal)
+		if err != nil {
+			return
+		}
+		if CheckHost(e.Host) != nil || CheckUser(e.User) != nil {
+			t.Fatalf("%q %q: accepted host %q user %q", sshVal, pathVal, e.Host, e.User)
+		}
+		if !strings.HasPrefix(e.Path, "/") || strings.HasPrefix(e.Path, "/~") {
+			t.Fatalf("%q %q: accepted folder %q", sshVal, pathVal, e.Path)
+		}
+		if strings.ContainsFunc(e.Path, func(r rune) bool { return r < ' ' || r == 0x7f }) {
+			t.Fatalf("%q %q: control character in %q", sshVal, pathVal, e.Path)
+		}
+	})
 }

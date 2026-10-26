@@ -534,3 +534,69 @@ func TestGatewayShaped(t *testing.T) {
 		t.Error("a value that isn't serialized PHP is not a gateway")
 	}
 }
+
+func TestConfigKeepMuPlugin(t *testing.T) {
+	ctx := context.Background()
+	plan := func(o Options, id string) string {
+		s := fixtureSite(prodFiles(), prodDB())
+		var lines []string
+		for _, st := range Steps(core.StackWordPress, o) {
+			if st.ID() != id {
+				continue
+			}
+			edits, err := st.Plan(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, e := range edits {
+				lines = append(lines, e.What)
+			}
+		}
+		return strings.Join(lines, "\n")
+	}
+	// Without keep every hook is there and the plan names it.
+	o := fixtureOptions()
+	o.Cfg = &roadiecfg.Config{}
+	o.Cfg.SideEffects.Echo.Install = true
+	full := string(MuPlugin(o))
+	for _, h := range []string{hookAsyncRunner, hookDuplicateSite, hookPreMail, hookJetpack} {
+		if !strings.Contains(full, "'"+h+"'") {
+			t.Errorf("no %s without keep", h)
+		}
+	}
+	if got := plan(o, core.FindingSideEffectMail); strings.Contains(got, "left on") {
+		t.Errorf("mail plan without keep: %s", got)
+	}
+	// With keep the mu-plugin adds no hook for it. The plans say so.
+	o.Cfg.SideEffects.Mail, o.Cfg.SideEffects.Subscriptions, o.Cfg.SideEffects.ActionScheduler = "keep", "keep", "keep"
+	kept := string(MuPlugin(o))
+	for _, h := range []string{hookAsyncRunner, hookBatches, hookRunQueue, hookDuplicateSite, hookPreMail} {
+		if strings.Contains(kept, "'"+h+"'") {
+			t.Errorf("kept setting still has %s", h)
+		}
+	}
+	if !strings.Contains(kept, "'"+hookJetpack+"'") {
+		t.Error("Jetpack hook dropped")
+	}
+	if got, want := plan(o, core.FindingSideEffectMail), "left on (side_effects.mail: keep)"; got != want {
+		t.Errorf("mail plan %q, want %q", got, want)
+	}
+	want := "Roadie mu-plugin: Jetpack offline"
+	if o.Noindex {
+		want += ", noindex"
+	}
+	if got := plan(o, core.FindingSideEffectActionScheduler); got != want {
+		t.Errorf("mu-plugin plan %q, want %q", got, want)
+	}
+	s := fixtureSite(prodFiles(), prodDB())
+	for _, st := range Steps(core.StackWordPress, o) {
+		if st.ID() == core.FindingSideEffectMail {
+			if err := st.Apply(ctx, s); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if len(s.Writes()) != 0 {
+		t.Fatalf("mail: keep still wrote %v", s.Writes())
+	}
+}
