@@ -90,6 +90,10 @@ func (c *Conn) newSink(ctx context.Context, o SinkOptions) (core.Sink, error) {
 
 func (s *sink) State() core.TargetState { return s.state }
 
+// ExpectTables sets SinkOptions.Total after the sink is open: the engine
+// knows the copy's table count only once pass 1 has read the schema.
+func (s *sink) ExpectTables(n int) { s.st.total = n }
+
 func (s *sink) Write(ctx context.Context, b *core.Batch) error {
 	if s.err != nil {
 		return s.err

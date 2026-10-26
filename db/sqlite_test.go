@@ -610,3 +610,22 @@ func TestSinkDelimiterNeverRuns(t *testing.T) {
 		t.Fatalf("views %d %v", n, err)
 	}
 }
+
+// ExpectTables sets the total an open sink names in import-mixed, for an
+// engine that knows the count only after the sink is open.
+func TestSinkExpectTables(t *testing.T) {
+	ctx := context.Background()
+	sk, err := openT(t, emptySQLite(t), ReadWrite).Sink(ctx, SinkOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sk.Abort(ctx) })
+	tc, ok := sk.(interface{ ExpectTables(int) })
+	if !ok {
+		t.Fatal("the sink has no ExpectTables")
+	}
+	tc.ExpectTables(61)
+	if got := progress(sk.(*sink).st); got != "after 0 of 61 tables" {
+		t.Errorf("progress %q", got)
+	}
+}

@@ -164,6 +164,14 @@ func (s *connSink) Abort(ctx context.Context) error {
 	return errors.Join(s.Sink.Abort(ctx), s.conn.Close())
 }
 
+// ExpectTables passes the copy's table count to the database import,
+// for its import-mixed message.
+func (s *connSink) ExpectTables(n int) {
+	if tc, ok := s.Sink.(TableCounter); ok {
+		tc.ExpectTables(n)
+	}
+}
+
 // dbSource opens a read-only export of the database e names.
 func dbSource(ctx context.Context, e core.Endpoint, tables []string) (core.Source, error) {
 	c, err := openDB(ctx, e, db.ReadOnly)
