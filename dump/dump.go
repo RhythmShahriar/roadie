@@ -59,14 +59,16 @@ func open(ctx context.Context, r io.Reader, o Options) (core.Source, error) {
 	case "":
 		dialect = core.MySQL
 	}
+	ends := newEndCheck(ph)
 	src := mysql.NewSource(plain, mysql.SourceOptions{
-		Name:     name,
-		MaxValue: o.MaxValue,
-		Schema:   o.Schema,
-		Dialect:  dialect,
-		Server:   server,
-		Progress: o.Progress,
-		Offset:   cr.RawBytes,
+		Name:      name,
+		NoTrailer: ends.trailer == "",
+		MaxValue:  o.MaxValue,
+		Schema:    o.Schema,
+		Dialect:   dialect,
+		Server:    server,
+		Progress:  o.Progress,
+		Offset:    cr.RawBytes,
 	})
 	f := allow.NewFilter(allow.Options{
 		Name:         name,
@@ -74,7 +76,7 @@ func open(ctx context.Context, r io.Reader, o Options) (core.Source, error) {
 		KeepRoutines: o.KeepRoutines,
 		Database:     databaseOf(ph),
 	})
-	return &source{name: name, cr: cr, my: src, allow: f, progress: o.Progress}, nil
+	return &source{name: name, cr: cr, my: src, allow: f, ends: ends, progress: o.Progress}, nil
 }
 
 // source is a dump as a core.Source: the dialect reader plus the raw
@@ -84,6 +86,7 @@ type source struct {
 	cr       *compress.Reader
 	my       *mysql.Source
 	allow    *allow.Filter
+	ends     *endCheck
 	progress core.Progress
 	fp       core.Fingerprint
 	err      error
@@ -98,6 +101,7 @@ func (s *source) Next(ctx context.Context) (*core.Batch, error) {
 	for {
 		b, err := s.my.Next(ctx)
 		if err == nil {
+			s.ends.see(b)
 			// Every statement that isn't row data passes the allowlist
 			// before it leaves the source; a dropped one is skipped.
 			out, err := s.allow.Add(b, s.my.Lexer().Mode())
@@ -124,6 +128,13 @@ func (s *source) end(err error) error {
 		if err := s.cr.Drain(); err != nil {
 			s.err = err
 			return err
+		}
+		// A dump that ended between statements but not where its tool
+		// ends one was cut short: the error comes from the last Next, so
+		// no sink has committed anything.
+		if !s.ends.whole() {
+			s.err = s.ends.truncatedError(s.name, s.my.Table(), s.cr.RawBytes())
+			return s.err
 		}
 		if err := s.allow.Finish(); err != nil {
 			s.err = err

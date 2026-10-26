@@ -20,6 +20,9 @@ type SourceOptions struct {
 	Dialect  core.Dialect  // MySQL or MariaDB, for Schema().Dialect
 	Server   string        // server version from the dump head
 	Progress core.Progress // gets Table on each new table; may be nil
+	// NoTrailer is set for a dump whose tool writes no end line
+	// (phpMyAdmin, Adminer), so a cut dump isn't said to miss one.
+	NoTrailer bool
 	// Offset, when set, gives the input offset for messages and
 	// Batch.Offset (the raw offset of a compressed file). Without it the
 	// lexer's offset is used.
@@ -332,8 +335,12 @@ func (s *Source) fail(err error) error {
 		if s.table != "" {
 			where = "ends inside table " + s.table
 		}
-		e := core.Errorf(core.ErrDumpTruncated, 3, `dump-truncated: %s %s at %s, with no "Dump completed" line. Export it again; the target is untouched.`,
-			s.o.Name, where, size.GB(s.offset()))
+		what := `with no "Dump completed" line`
+		if s.o.NoTrailer {
+			what = "in the middle of a statement"
+		}
+		e := core.Errorf(core.ErrDumpTruncated, 3, `dump-truncated: %s %s at %s, %s. Export it again; the target is untouched.`,
+			s.o.Name, where, size.GB(s.offset()), what)
 		e.Line = te.Line
 		err = e
 	case errors.As(err, &le):
