@@ -1128,10 +1128,16 @@ func production(cfg *roadiecfg.Config, found []string) []string {
 // verifyOptions are verify's settings from the config and the flags.
 // SiteURL stays empty: verify fetches the staging site only for
 // verify --site (PRD 15.1), never because a copy named its URL.
+// EchoSince is the copy's start, so an Echo check counts the mail since
+// the copy began; a standalone verify has no run of its own to start from.
 func (r *runner) verifyOptions() verify.Options {
-	return verify.Options{FailOn: r.opts.FailOn, Skip: slices.Clone(r.cfg.Verify.Skip),
+	o := verify.Options{FailOn: r.opts.FailOn, Skip: slices.Clone(r.cfg.Verify.Skip),
 		Allow:   detect.Allow{Emails: slices.Clone(r.cfg.Verify.AllowEmails), Phones: slices.Clone(r.cfg.Verify.AllowPhones)},
 		EchoURL: r.cfg.SideEffects.Echo.URL, Jobs: r.opts.Jobs, Clock: r.j.Clock}
+	if r.res != nil {
+		o.EchoSince = r.res.Started
+	}
+	return o
 }
 
 // verify scans what was written in exact mode, read back from the target

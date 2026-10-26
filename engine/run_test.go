@@ -340,6 +340,9 @@ func TestRunCopyToDumpFile(t *testing.T) {
 	if res.Verify == nil || res.Verify.Mode != "exact" || res.Verify.Soundcheck == nil {
 		t.Errorf("verify %+v", res.Verify)
 	}
+	if !v.Opts.EchoSince.Equal(res.Started) {
+		t.Errorf("EchoSince %v, want the copy's start %v", v.Opts.EchoSince, res.Started)
+	}
 	if len(res.NotCovered) != 1 || res.NotCovered[0] != NotCovered {
 		t.Errorf("not covered %q", res.NotCovered)
 	}
