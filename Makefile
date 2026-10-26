@@ -23,7 +23,42 @@ FUZZ_TARGETS := \
 	site:FuzzEndpoint \
 	detect:FuzzEmail \
 	detect:FuzzPhone \
-	report:FuzzCanonical
+	report:FuzzCanonical \
+	db:FuzzMask \
+	db:FuzzObjectName \
+	detect:FuzzSurvivors \
+	dump/allow:FuzzSetGlobal \
+	dump:FuzzSniff \
+	dump/mysql:FuzzSafeExpr \
+	dump/mysql:FuzzSQLMode \
+	dump/pgsql:FuzzCopyField \
+	dump/pgsql:FuzzSQLString \
+	dump/pgsql:FuzzStatements \
+	engine:FuzzSerializedStrings \
+	keys:FuzzSettings \
+	keys:FuzzTokenSkip \
+	profile:FuzzChecksumOf \
+	profile:FuzzExtract \
+	profile:FuzzFieldTypes \
+	profile:FuzzParse \
+	roadiecfg:FuzzLoad \
+	roadiecfg:FuzzParseRule \
+	roadiecfg:FuzzStripPassword \
+	scripts/screenshot:FuzzRender \
+	site/exposure:FuzzBlocks \
+	site:FuzzParseFind \
+	site:FuzzParseLs \
+	site:FuzzSplitWPHost \
+	site/remote:FuzzAliasSSH \
+	testbed/bench:FuzzSplitRows \
+	testbed/gen:FuzzParseSize \
+	testbed/oracle:FuzzReadDump \
+	testbed/oracle:FuzzScanFile \
+	testbed/sinkhole:FuzzParseQuery \
+	verify:FuzzLooksSerialized \
+	verify:FuzzMetaNoindex \
+	verify:FuzzPHPArrayValue \
+	verify:FuzzRobots
 
 # How long each target runs: 5 s for the CI smoke, FUZZTIME for make fuzz.
 FUZZTIME ?= 5m
