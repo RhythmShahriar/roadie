@@ -4,12 +4,22 @@
 // Package db connects to live MySQL, MariaDB, PostgreSQL and SQLite
 // databases, as read-only sources and as sinks that replace tables.
 //
-// The exported names in this file are the frozen cross-lane API; the io
-// lane replaces the bodies, which return core.ErrNotBuilt until then.
+// MySQL and MariaDB go through go-sql-driver/mysql with LOCAL INFILE,
+// multi-statements and client-side interpolation off; PostgreSQL through
+// pgx; SQLite through the pure-Go modernc.org/sqlite. A ReadOnly
+// connection reads inside one read-only transaction (a consistent
+// snapshot) and refuses every write with core.ErrReadOnly. The password
+// comes from core.Endpoint.Password only, never from the environment or
+// a password file.
+//
+// The exported names in this file are the frozen cross-lane API.
+// Errors from a sink are *core.Error with codes import and import-mixed.
 package db
 
 import (
 	"context"
+	"database/sql"
+	"io"
 
 	"github.com/RhythmShahriar/roadie/core"
 )
@@ -24,41 +34,63 @@ const (
 	ReadWrite
 )
 
-// Conn is one database connection.
-type Conn struct{} // its fields are unexported and added by the owning lane
+// Conn is one database connection. It holds a single session: a Source
+// or a Sink uses it until it ends, so call Identity and Schema before
+// starting one (both are cached after the first call).
+type Conn struct {
+	ep      core.Endpoint
+	mode    Mode
+	engine  core.Dialect // MariaDB when a mysql:// server says so
+	server  string       // "8.4.3", "11.4.8", "16.4", "3.50.4"
+	dbName  string
+	user    string
+	db      *sql.DB
+	conn    *sql.Conn
+	inTx    bool // the read-only transaction is open
+	schema  *core.Schema
+	busy    bool      // a Source or Sink holds the session
+	active  io.Closer // that Source or Sink, closed by Close
+	closed  bool
+	collate map[string]bool // collations asked about, for a sink: known or not
+}
 
 // SinkOptions configures Conn.Sink.
 type SinkOptions struct {
 	Tables       []string // tables the import replaces; nil = all in the stream
 	FixCollation bool
+	// Total is the number of tables the stream holds, for the
+	// import-mixed message ("after 37 of 61 tables"); 0 = unknown, then
+	// the message gives the count replaced only.
+	Total int
 }
 
 // Open connects to the database e names.
 func Open(ctx context.Context, e core.Endpoint, m Mode) (*Conn, error) {
-	return nil, core.ErrNotBuilt
+	return open(ctx, e, m)
 }
 
 // Identity names the server and database, for the target guards.
 func (c *Conn) Identity(ctx context.Context) (core.DBIdentity, error) {
-	return core.DBIdentity{}, core.ErrNotBuilt
+	return c.identity(ctx)
 }
 
 // Schema reads every table's columns and keys.
 func (c *Conn) Schema(ctx context.Context) (*core.Schema, error) {
-	return nil, core.ErrNotBuilt
+	return c.readSchema(ctx)
 }
 
 // Source streams the named tables (nil = all) as batches.
 func (c *Conn) Source(ctx context.Context, tables []string) (core.Source, error) {
-	return nil, core.ErrNotBuilt
+	return c.newSource(ctx, tables)
 }
 
 // Sink imports batches, one table at a time.
 func (c *Conn) Sink(ctx context.Context, o SinkOptions) (core.Sink, error) {
-	return nil, core.ErrNotBuilt
+	return c.newSink(ctx, o)
 }
 
-// Close ends the connection.
+// Close ends the connection. A read-only transaction is rolled back. A
+// second call does nothing.
 func (c *Conn) Close() error {
-	return core.ErrNotBuilt
+	return c.close()
 }
