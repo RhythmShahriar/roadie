@@ -160,7 +160,11 @@ func refusal(st core.Statement, o Options, d Decision) *core.Error {
 	if !strings.HasPrefix(label, "a ") && !strings.HasPrefix(label, "an ") {
 		label = article(label) + " " + label + " statement"
 	}
-	msg := fmt.Sprintf("dump-refused: %s line %s holds %s, which %s.", name, size.Count(st.Line), label, danger)
+	where := name + " line " + size.Count(st.Line)
+	if st.Line == 0 {
+		where = name // a statement Roadie built, such as a source table's DDL
+	}
+	msg := fmt.Sprintf("dump-refused: %s holds %s, which %s.", where, label, danger)
 	if advice != "" {
 		msg += " " + advice
 	}

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/dump/allow"
 )
 
 // pageRows is the number of rows one keyset query reads.
@@ -323,8 +324,31 @@ func (s *source) ddl(ctx context.Context, name string) error {
 	default:
 		return nil
 	}
+	if err := checkDDL(d, name, create); err != nil {
+		return err
+	}
 	s.pass(core.StmtDropTable, "DROP TABLE IF EXISTS "+quoteIdent(d, name)+";\n")
 	s.pass(core.StmtCreateTable, create+";\n")
+	return nil
+}
+
+// checkDDL runs a MySQL or MariaDB table's CREATE TABLE through the dump
+// allowlist before it is recreated on the target or written to a file. A
+// production table with ENGINE=FEDERATED and a CONNECTION URL, a DATA
+// DIRECTORY or a MERGE UNION naming another database would otherwise be
+// copied as is, its connection password with it.
+func checkDDL(d core.Dialect, name, create string) error {
+	if d != core.MySQL && d != core.MariaDB {
+		return nil
+	}
+	st := core.Statement{Kind: core.StmtCreateTable, Text: []byte(create + ";")}
+	dec, err := allow.Check(st, allow.Options{Name: "table " + name + " on the source database", Dialect: d})
+	if err != nil {
+		return err
+	}
+	if dec.Verdict != allow.Keep {
+		return core.Errorf(core.ErrDumpRefused, 3, "dump-refused: table %s on the source database has a CREATE TABLE Roadie doesn't copy (%s).", name, dec.Kind)
+	}
 	return nil
 }
 

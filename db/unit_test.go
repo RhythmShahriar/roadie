@@ -417,3 +417,38 @@ func TestTableName(t *testing.T) {
 		t.Errorf("postgres: %q %v", q, err)
 	}
 }
+
+// A source table's CREATE TABLE passes the dump allowlist before it is
+// recreated or written: the DDL SHOW CREATE TABLE prints for an ordinary
+// table is kept and one that reaches another server or the file system
+// is refused without quoting it.
+func TestCheckDDL(t *testing.T) {
+	for _, create := range []string{
+		"CREATE TABLE `wp_users` (\n  `ID` bigint unsigned NOT NULL AUTO_INCREMENT,\n  `user_email` varchar(100) NOT NULL DEFAULT '',\n  PRIMARY KEY (`ID`)\n) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci",
+		"CREATE TABLE `m` (\n  `a` int DEFAULT NULL\n) ENGINE=MRG_MyISAM DEFAULT CHARSET=latin1 UNION=(`t1`,`t2`)",
+	} {
+		if err := checkDDL(core.MySQL, "t", create); err != nil {
+			t.Errorf("%q: %v", create, err)
+		}
+	}
+	pw := "s3cr" + "et-pw"
+	for _, c := range []struct{ create, want string }{
+		{"CREATE TABLE `f` (\n  `a` int\n) ENGINE=FEDERATED DEFAULT CHARSET=utf8mb4 CONNECTION='mysql://app:" + pw + "@prod.internal:3306/shop/f'", "holds a table with ENGINE=FEDERATED"},
+		{"CREATE TABLE `d` (\n  `a` int\n) ENGINE=InnoDB DATA DIRECTORY='/var/lib/other/'", "holds a CREATE TABLE ... DATA DIRECTORY statement"},
+		{"CREATE TABLE `m` (\n  `a` int\n) ENGINE=MRG_MyISAM UNION=(`other`.`t1`)", "holds a CREATE TABLE ... UNION statement"},
+	} {
+		err := checkDDL(core.MariaDB, "t", c.create)
+		var ce *core.Error
+		if !errors.As(err, &ce) || ce.Code != core.ErrDumpRefused ||
+			!strings.HasPrefix(ce.Msg, "dump-refused: table t on the source database "+c.want) {
+			t.Errorf("%q: %v", c.create, err)
+			continue
+		}
+		if strings.Contains(ce.Msg, pw) || strings.Contains(ce.Msg, "/var/lib") {
+			t.Errorf("message quotes the DDL: %s", ce.Msg)
+		}
+	}
+	if err := checkDDL(core.SQLite, "t", "CREATE TABLE t (a)"); err != nil {
+		t.Error(err)
+	}
+}
