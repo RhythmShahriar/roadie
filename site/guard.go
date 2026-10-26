@@ -272,8 +272,8 @@ func readSiteURL(ctx context.Context, s core.Site) string {
 
 // printableURL drops control and format characters (escape sequences,
 // bidi overrides) from a URL read from the target's own data: the
-// target-holds-production message quotes it, and a crafted siteurl
-// must not drive the terminal or a CI log that shows it.
+// target-holds-production message quotes it. A crafted siteurl must
+// not drive the terminal or a CI log that shows it.
 func printableURL(s string) string {
 	return strings.TrimSpace(strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == utf8.RuneError {
