@@ -48,7 +48,12 @@ func (d survivorsDetector) Scan(v []byte, _ core.ScanContext, emit func(core.Hit
 	if d.k == nil || len(v) < minToken {
 		return
 	}
+	if wholeFake(bytes.TrimSpace(v)) {
+		return
+	}
 	s := &survivorScan{k: d.k}
+	s.ws = len(v) - len(bytes.TrimLeftFunc(v, unicode.IsSpace))
+	s.we = len(bytes.TrimRightFunc(v, unicode.IsSpace))
 	for _, singles := range []bool{false, true} {
 		s.singles = singles
 		s.pass(v, func(a, b int) (int, int) { return a, b }, "raw", 0)
@@ -81,6 +86,9 @@ func offsetMapper(offs []int) mapper {
 type survivorScan struct {
 	k    core.Known
 	hits []core.Hit // sorted by Start, never overlapping
+	// ws and we are where the leaf starts and ends without its white
+	// space: a city counts only as the whole leaf.
+	ws, we int
 	// singles is the second round: only single words are looked up. The
 	// known set holds a full name and each of its words, so every
 	// encoding gets the chance to report "Jane Doe" whole before any
@@ -108,7 +116,12 @@ func (s *survivorScan) check(token []byte, start, end int, at mapper, enc string
 		return false
 	}
 	kind, how, ok := s.k.Contains(token)
-	if !ok || pseudo.IsFake(kind, token) {
+	if !ok || roadieFake(kind, token) {
+		return false
+	}
+	if kind == core.KCity && how == "raw" && (ls != s.ws || le != s.we) {
+		// A town named in a note or a page ("Made in Dublin") points at
+		// no one; the customer's city column left as it was still does.
 		return false
 	}
 	switch {
@@ -126,6 +139,46 @@ func (s *survivorScan) check(token []byte, start, end int, at mapper, enc string
 	i, _ := slices.BinarySearchFunc(s.hits, ls, func(h core.Hit, t int) int { return h.Start - t })
 	s.hits = slices.Insert(s.hits, i, h)
 	return true
+}
+
+// roadieFake reports whether token is a Roadie fake of kind or of any
+// kind the faker draws from its lists. The lists hold common names, and
+// Known can hold the same word as another kind: a real customer living
+// in Austin makes Known call Austin a city while the copy holds Austin
+// as a fake first name. PRD 15.2 leaves values that are also Roadie
+// fakes out, whatever kind they came as.
+func roadieFake(kind core.FakeKind, token []byte) bool {
+	if pseudo.IsFake(kind, token) {
+		return true
+	}
+	for _, k := range listKinds {
+		if k != kind && pseudo.IsFake(k, token) {
+			return true
+		}
+	}
+	return false
+}
+
+// listKinds are the kinds whose fakes come from the faker's word lists.
+var listKinds = []core.FakeKind{core.KFirstName, core.KLastName, core.KFullName, core.KCity, core.KStreet, core.KCompany}
+
+// wholeKinds are the fakes of several words: a leaf that is one of them
+// whole is Roadie's own value, so a word in it ("Wren" of a fake "328
+// Wren Street") is not a real customer's name that survived.
+var wholeKinds = []core.FakeKind{core.KStreet, core.KFullName, core.KCompany, core.KCity}
+
+// wholeFake reports whether the whole leaf is a Roadie fake of one of
+// wholeKinds.
+func wholeFake(leaf []byte) bool {
+	if len(leaf) == 0 || len(leaf) > maxWholeValue || bytes.IndexByte(leaf, ' ') < 0 {
+		return false
+	}
+	for _, k := range wholeKinds {
+		if pseudo.IsFake(k, leaf) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasLetter(b []byte) bool { return bytes.IndexFunc(b, unicode.IsLetter) >= 0 }

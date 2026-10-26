@@ -234,3 +234,73 @@ func FuzzSurvivors(f *testing.F) {
 		}
 	})
 }
+
+// A known city is a survivor as the whole leaf only: a town named in a
+// note points at no one.
+func TestSurvivorsCityOnlyWhole(t *testing.T) {
+	k := newKnown(t)
+	k.Add(core.KCity, []byte("Kilmacthomas"))
+	k.Seal()
+	d := Survivors(k)
+	for leaf, want := range map[string]int{
+		"Kilmacthomas":                    1,
+		"  Kilmacthomas\n":                1,
+		"kilmacthomas":                    1,
+		"Made in Kilmacthomas":            0,
+		"12 Main Street, Kilmacthomas":    0,
+		"Kilmacthomasville is a new town": 0,
+	} {
+		if hits := scanAll(d, leaf, core.ScanContext{}); len(hits) != want {
+			t.Errorf("%q: %d hits %v, want %d", leaf, len(hits), hits, want)
+		}
+	}
+}
+
+// A word of a whole Roadie fake (a fake street named after a real
+// customer's first name) is not a survivor; the same word in other text
+// is.
+func TestSurvivorsWordOfAFake(t *testing.T) {
+	f, err := pseudo.NewFaker(pseudo.Key{}, pseudo.Options{})
+	if errors.Is(err, core.ErrNotBuilt) {
+		t.Skip("needs the values lane")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	var street []byte
+	for i := 0; street == nil || !strings.Contains(string(street), " "); i++ {
+		if street, err = f.Fake(core.KStreet, fmt.Appendf(nil, "%d Real Road", i), core.FakeOpts{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	word := strings.Fields(string(street))[1]
+	k := newKnown(t)
+	k.Add(core.KFirstName, []byte(word))
+	k.Seal()
+	d := Survivors(k)
+	if hits := scanAll(d, string(street), core.ScanContext{}); len(hits) != 0 && pseudo.IsFake(core.KStreet, street) {
+		t.Errorf("fake street %q: hits %v", street, hits)
+	}
+	if hits := scanAll(d, "Ask "+word+" Okonkwo-Baptiste about it", core.ScanContext{}); len(hits) != 1 && !pseudo.IsFake(core.KFirstName, []byte(word)) {
+		t.Errorf("%q in a note: %d hits, want 1", word, len(hits))
+	}
+}
+
+// A fake first name that Known holds as another customer's city is a
+// Roadie fake all the same; a real word no list has is still reported.
+func TestSurvivorsFakeOfAnotherKind(t *testing.T) {
+	if !pseudo.IsFake(core.KFirstName, []byte("Austin")) {
+		t.Skip("needs the values lane's name lists")
+	}
+	k := newKnown(t)
+	k.Add(core.KCity, []byte("Austin"))
+	k.Add(core.KCity, []byte("Kilmacthomas"))
+	k.Seal()
+	d := Survivors(k)
+	if hits := scanAll(d, "Austin", core.ScanContext{}); len(hits) != 0 {
+		t.Errorf("a fake first name equal to a known city: %v", hits)
+	}
+	if hits := scanAll(d, "Kilmacthomas", core.ScanContext{}); len(hits) != 1 {
+		t.Errorf("a real city: %d hits, want 1", len(hits))
+	}
+}
