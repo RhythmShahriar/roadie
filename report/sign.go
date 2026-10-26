@@ -18,6 +18,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 
@@ -237,6 +238,9 @@ func (s *Signer) Sign(e *core.Envelope) error {
 // envelope with data.signature removed. data is the envelope's data
 // object as parsed, with the signature already gone.
 func signedBytes(e *core.Envelope) ([]byte, map[string]any, error) {
+	if err := noFloats(reflect.ValueOf(e), 0); err != nil {
+		return nil, nil, fmt.Errorf("report: %w", err)
+	}
 	b, err := marshal(e)
 	if err != nil {
 		return nil, nil, fmt.Errorf("report: %w", err)
