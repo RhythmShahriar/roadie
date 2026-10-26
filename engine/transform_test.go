@@ -117,6 +117,35 @@ func TestTransformActions(t *testing.T) {
 	}
 }
 
+// A rule that replaces the whole value wins over a path rule of another
+// where clause on the same row (the path rule's exact where sorts first);
+// on a row only the path rule matches, the path rule still runs.
+func TestWholeRuleBeatsPathRule(t *testing.T) {
+	useFakes(t)
+	cfg := roadiecfg.Default()
+	cfg.Stack = "sql"
+	cfg.Columns = []roadiecfg.ColumnRule{
+		{Table: "t", Column: "j", Where: map[string]string{"kind": "row"}, Rule: "json:billing.email=email"},
+		{Table: "t", Column: "j", Where: map[string]string{"kind": "r*"}, Rule: "blank"},
+		{Table: "t", Column: "j", Where: map[string]string{"kind": "path"}, Rule: "json:billing.email=email"},
+	}
+	tables := func() []tableData {
+		tb := table("t", "id:int(11)", "kind", "j")
+		tb.PrimaryKey = []string{"id"}
+		js := `{"billing":{"email":"anna.lee@example.com"},"note":"x"}`
+		return []tableData{{tb, rows{{1, "row", js}, {2, "path", js}}}}
+	}
+	p, sink, _ := fixture(t, Copy, "", tables, cfg, Options{})
+	run(t, p)
+	if got, _ := valueOf(t, sink, "t", 0, "j"); got != "" {
+		t.Errorf("the blank rule lost to the path rule: %q", got)
+	}
+	email, _ := hashFaker{key: string(make([]byte, 32))}.Fake(core.KEmail, []byte("anna.lee@example.com"), core.FakeOpts{})
+	if got, _ := valueOf(t, sink, "t", 1, "j"); !strings.Contains(got, string(email)) || strings.Contains(got, "anna.lee") {
+		t.Errorf("the path rule alone: %q", got)
+	}
+}
+
 // wpBase is the options table every WordPress fixture needs.
 func wpBase(extra ...[]any) tableData {
 	rs := rows{{1, "siteurl", "https://shop.com"}, {2, "home", "https://shop.com"}, {3, "woocommerce_version", "9.8.0"}}
