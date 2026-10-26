@@ -127,7 +127,13 @@ func TestRefused(t *testing.T) {
 		{"SET PERSIST local_infile=1;", "holds a SET GLOBAL local_infile statement"},
 		{"SET sql_log_off=1;", "holds a SET sql_log_off statement, which isn't a session setting dump tools write."},
 		{"SET @x = (SELECT user_pass FROM wp_users LIMIT 1);", "holds a SET statement that reads a query"},
-		{"SET NAMES utf8mb4, @x = (select 1);", "holds a SET NAMES statement that reads a query"},
+		{"SET NAMES (select 1);", "holds a SET NAMES statement that reads a query"},
+		{"SET NAMES utf8mb4, @x = (select 1);", "holds a SET statement that reads a query"},
+		{"SET NAMES utf8mb4, @@GLOBAL.general_log_file='/var/www/html/x.php', @@GLOBAL.general_log=1;", "holds a SET GLOBAL general_log_file statement"},
+		{"/*!40101 SET NAMES utf8mb4, GLOBAL general_log=1 */;", "holds a SET GLOBAL general_log statement"},
+		{"SET CHARACTER SET utf8, GLOBAL general_log=1;", "holds a SET GLOBAL general_log statement"},
+		{"SET CHARSET latin1, @@global.general_log=1;", "holds a SET GLOBAL general_log statement"},
+		{"SET NAMES utf8mb4, sql_log_off=1;", "holds a SET sql_log_off statement"},
 		{"INSERT INTO wp_users SELECT * FROM other.wp_users;", "holds an INSERT statement that isn't a list of rows, which would change rows outside the dump's INSERTs"},
 		{"UPDATE wp_users SET user_email = 'x';", "holds an UPDATE statement that isn't a list of rows"},
 		{"DELETE FROM wp_users;", "holds a DELETE statement"},
@@ -239,6 +245,9 @@ func TestKept(t *testing.T) {
 		"DO SETVAL(`s`, 1001, 0);",
 		"CREATE INDEX i ON t (a);",
 		"CREATE UNIQUE INDEX i ON t (a);",
+		"SET NAMES utf8mb4, character_set_client = utf8mb4;",
+		"/*!40101 SET NAMES utf8mb4, @x = 1 */;",
+		"SET CHARACTER SET utf8mb4, collation_connection = utf8mb4_unicode_ci;",
 	} {
 		d, err := check(text, Options{Name: "prod.sql"})
 		if err != nil || d.Verdict != Keep || d.Text != nil {

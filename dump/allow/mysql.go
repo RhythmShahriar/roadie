@@ -528,12 +528,19 @@ func clauses(t toks) []toks {
 // user variables they save them in. A replication setting is dropped;
 // any other setting, a GLOBAL one or a value that runs a query is refused.
 func mysqlSet(t toks) Decision {
+	cs := clauses(t[1:])
 	switch {
 	case t.w(1) == "names", t.is(1, "character", "set"), t.w(1) == "charset":
-		if plainValue(t[2:]) {
-			return keep()
+		// SET NAMES x is one clause of a SET; the ones after it are
+		// assignments like any other ("SET NAMES x, GLOBAL y = 1").
+		words := 1
+		if t.w(1) == "character" {
+			words = 2
 		}
-		return refuse("a SET NAMES statement that reads a query", whyQuery)
+		if !plainValue(cs[0][words:]) {
+			return refuse("a SET NAMES statement that reads a query", whyQuery)
+		}
+		cs = cs[1:]
 	case t.w(1) == "password":
 		return drop("SET PASSWORD", reasonPrivileges)
 	case t.w(1) == "role", t.is(1, "default", "role"):
@@ -542,7 +549,7 @@ func mysqlSet(t toks) Decision {
 		return refuse("a SET STATEMENT ... FOR statement", whyUnknown)
 	}
 	out := keep()
-	for _, a := range clauses(t[1:]) {
+	for _, a := range cs {
 		d := mysqlAssign(a)
 		switch d.Verdict {
 		case Refuse:

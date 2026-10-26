@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -37,6 +38,9 @@ var (
 		"system id",
 		"source /etc/passwd",
 		"CREATE TABLE t (a int) ENGINE=FEDERATED",
+		"SET NAMES utf8mb4, @@GLOBAL.general_log = 1",
+		"SET NAMES utf8mb4, GLOBAL general_log = 1",
+		"SET CHARACTER SET utf8, @@global.general_log_file = 'x'",
 	}
 	pgBad = []string{
 		"COPY t FROM PROGRAM 'id'",
@@ -160,4 +164,36 @@ func allKept(t *testing.T, text string, o Options) bool {
 			t.Fatalf("%q read as rows", text)
 		}
 	}
+}
+
+// FuzzSetGlobal: a SET that holds a GLOBAL or PERSIST assignment in any
+// clause is never kept, whichever clause it is and whatever the others
+// are (SET NAMES first included).
+func FuzzSetGlobal(f *testing.F) {
+	f.Add([]byte{0, 3}, uint8(1), uint8(0), []byte{})
+	f.Add([]byte{1, 4}, uint8(0), uint8(1), []byte{5, 0})
+	f.Add([]byte{2}, uint8(2), uint8(2), []byte{2, 1, 7, 0})
+	plain := []string{"NAMES utf8mb4", "CHARACTER SET utf8", "CHARSET latin1", "NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
+		"@x = 1", "character_set_client = utf8mb4", "SESSION sql_mode = ''", "@@SESSION.time_zone = '+00:00'"}
+	globals := []string{"GLOBAL general_log = 1", "@@GLOBAL.general_log = 1", "@@global.general_log_file = 'x'",
+		"PERSIST local_infile = 1", "@@persist_only.local_infile = 1", "global sql_mode = ''"}
+	f.Fuzz(func(t *testing.T, picks []byte, at, which uint8, ops []byte) {
+		var cs []string
+		for i, p := range picks {
+			if i == 4 {
+				break
+			}
+			cs = append(cs, plain[int(p)%len(plain)])
+		}
+		pos := int(at) % (len(cs) + 1)
+		cs = append(cs[:pos:pos], append([]string{globals[int(which)%len(globals)]}, cs[pos:]...)...)
+		text := wrap("SET "+strings.Join(cs, ", "), ops, false) + ";"
+		o := Options{Name: "x.sql", Database: "shop"}
+		if d, _ := Check(core.Statement{Kind: core.StmtSet, Text: []byte(text), Line: 1}, o); d.Verdict == Keep {
+			t.Fatalf("kept %q", text)
+		}
+		if allKept(t, text, o) {
+			t.Fatalf("every statement of %q kept after the lexer", text)
+		}
+	})
 }
