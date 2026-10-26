@@ -287,3 +287,33 @@ func FuzzScrub(f *testing.F) {
 		}
 	})
 }
+
+// An address written with an encoded at sign (a URL's %40, HTML's
+// &#64;) gets the fake its plain form gets, written back in the same
+// form; a plain one stays plain and the scrub stays idempotent.
+func TestScrubEncodedEmail(t *testing.T) {
+	f := mustFaker(t, testKey(8), Options{})
+	email := testutil.Canaries(33)[core.KEmail][0]
+	local, domain, _ := strings.Cut(email, "@")
+	plain := fake(t, f, core.KEmail, email, core.FakeOpts{})
+	for _, form := range []string{"%40", "&#64;", "&#x40;"} {
+		enc := local + form + domain
+		text := "https://shop.example/checkout/?contact=" + enc + "&ref=crm"
+		sp := needleSpanner{map[string]core.FakeKind{enc: core.KEmail}}
+		got, n := Scrub([]byte(text), sp, nil, f)
+		want := "https://shop.example/checkout/?contact=" + strings.Replace(plain, "@", form, 1) + "&ref=crm"
+		if string(got) != want || n != 1 {
+			t.Errorf("%s: %s (%d), want %s", form, got, n, want)
+		}
+		if again, n2 := Scrub(got, needleSpanner{map[string]core.FakeKind{strings.Replace(plain, "@", form, 1): core.KEmail}}, nil, f); n2 != 0 || !bytes.Equal(again, got) {
+			t.Errorf("%s: not idempotent: %s", form, again)
+		}
+	}
+	if got, _ := Scrub([]byte("to "+email), nil, nil, f); string(got) != "to "+plain {
+		t.Errorf("plain: %s", got)
+	}
+	// A percent sign that isn't an at sign is no address.
+	if got, n := Scrub([]byte("save 40%40 off"), needleSpanner{}, nil, f); n != 0 || string(got) != "save 40%40 off" {
+		t.Errorf("not an address: %s", got)
+	}
+}

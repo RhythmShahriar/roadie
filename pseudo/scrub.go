@@ -28,7 +28,6 @@ type scrubber struct {
 }
 
 func scrub(text []byte, sp core.Spanner, known core.Known, f core.Faker) ([]byte, int) {
-	s := &scrubber{text: text, known: known, f: f}
 	// Scrub looks for addresses itself as well: a Spanner that reads
 	// only ASCII would stop at the first accented letter and leave the
 	// rest of the address behind.
@@ -36,16 +35,29 @@ func scrub(text []byte, sp core.Spanner, known core.Known, f core.Faker) ([]byte
 	if sp != nil {
 		found = append(found, sp.Spans(text)...)
 	}
+	return scrubFound(text, found, known, f)
+}
+
+// scrubFound is Scrub over the spans already found.
+func scrubFound(text []byte, found []core.Span, known core.Known, f core.Faker) ([]byte, int) {
+	s := &scrubber{text: text, known: known, f: f}
 	spans := cleanSpans(text, found)
 	pos := 0
 	for _, sp := range spans {
 		s.names(pos, sp.Start)
 		pos = sp.End
-		v := text[sp.Start:sp.End]
+		v, at := text[sp.Start:sp.End], ""
+		if sp.Kind == core.KEmail {
+			v, at = decodeAt(v)
+		}
 		if IsFake(sp.Kind, v) {
 			continue // already a Roadie fake: keeps Scrub idempotent
 		}
-		s.replace(sp.Start, sp.End, s.fake(sp.Kind, v))
+		fake := s.fake(sp.Kind, v)
+		if at != "" {
+			fake = bytes.Replace(fake, []byte("@"), []byte(at), 1)
+		}
+		s.replace(sp.Start, sp.End, fake)
 	}
 	s.names(pos, len(text))
 	if s.out == nil {
@@ -285,4 +297,26 @@ func emailSpans(text []byte) []core.Span {
 		off = end
 	}
 	return out
+}
+
+// atForms are the ways an address's at sign is written in URLs and HTML
+// (detect finds all of them).
+var atForms = []string{"%40", "&#64;", "&#x40;", "&#X40;"}
+
+// decodeAt returns an address with an encoded at sign written plainly,
+// and the form it was in ("" for a plain one), so the address gets the
+// fake its plain form gets and the fake goes back in the same form:
+// contact=jane%40mail.com in a URL becomes contact=<fake>%40<domain>.
+func decodeAt(v []byte) ([]byte, string) {
+	if bytes.IndexByte(v, '@') >= 0 {
+		return v, ""
+	}
+	for _, f := range atForms {
+		if i := bytes.Index(v, []byte(f)); i >= 0 {
+			out := make([]byte, 0, len(v))
+			out = append(append(append(out, v[:i]...), '@'), v[i+len(f):]...)
+			return out, f
+		}
+	}
+	return v, ""
 }
