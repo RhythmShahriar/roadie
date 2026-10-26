@@ -33,6 +33,7 @@ type remoteSink struct {
 
 	mu       sync.Mutex
 	tables   int // CREATE TABLE statements written
+	drops    int // DROP TABLE statements written
 	expected int
 	state    core.TargetState
 	ended    bool
@@ -51,9 +52,13 @@ func (s *remoteSink) Write(ctx context.Context, b *core.Batch) error {
 		_ = s.pw.CloseWithError(err)
 		return s.fail(err)
 	}
-	if b.Pass != nil && b.Pass.Kind == core.StmtCreateTable {
+	if b.Pass != nil && (b.Pass.Kind == core.StmtCreateTable || b.Pass.Kind == core.StmtDropTable) {
 		s.mu.Lock()
-		s.tables++
+		if b.Pass.Kind == core.StmtCreateTable {
+			s.tables++
+		} else {
+			s.drops++
+		}
 		s.state = core.Mixed
 		s.mu.Unlock()
 	}
@@ -127,25 +132,29 @@ var (
 // its error number is.
 func (s *remoteSink) mapErr(err error) error {
 	s.mu.Lock()
-	k, n := s.tables, s.expected
+	k, n, drops := s.tables, s.expected, s.drops
 	s.mu.Unlock()
 	var re *remote.RunError
 	isRun := errors.As(err, &re)
 	if isRun {
 		if m := collationRE.FindSubmatch(re.Stderr); m != nil {
 			coll := string(m[1]) + string(m[2])
-			if k <= 1 {
+			// The failing CREATE is the k-th statement, so the target is
+			// untouched only when it is the first and no DROP TABLE went
+			// ahead of it: a dump that drops each table before creating
+			// it has already removed one.
+			if k <= 1 && drops == 0 {
 				s.setState(core.Untouched)
 				return &core.Error{Code: core.ErrImport, Exit: 3, State: core.Untouched, Msg: fmt.Sprintf(
 					"import: the database on %s doesn't know collation %s. Run again with --fix-collation. The target is untouched.", s.dest, coll)}
 			}
 			s.setState(core.Mixed)
 			return &core.Error{Code: core.ErrImport, Exit: 3, State: core.Mixed, Msg: fmt.Sprintf(
-				"import: the database on %s doesn't know collation %s, after %s. The target is in a mixed state: some tables are pseudonymised, the rest still hold the earlier copy. Run again with --fix-collation.", s.dest, coll, tableCount(k-1, n))}
+				"import: the database on %s doesn't know collation %s, after %s. The target is in a mixed state: some tables are pseudonymised, the rest still hold the earlier copy. Run again with --fix-collation.", s.dest, coll, tableCount(max(k-1, 0), n))}
 		}
 	}
 	var ce *core.Error
-	if k == 0 {
+	if k == 0 && drops == 0 {
 		s.setState(core.Untouched)
 		if errors.As(err, &ce) {
 			return &core.Error{Code: ce.Code, Exit: ce.Exit, Msg: ce.Msg, State: core.Untouched}

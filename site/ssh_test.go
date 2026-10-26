@@ -268,6 +268,11 @@ func createTable(seq uint64, name string) *core.Batch {
 	return &core.Batch{Seq: seq, Pass: &core.Statement{Kind: core.StmtCreateTable, Text: []byte("CREATE TABLE `" + name + "` (id int);\n")}}
 }
 
+// dropTable is a DROP TABLE IF EXISTS batch as the dump writer gets it.
+func dropTable(seq uint64, name string) *core.Batch {
+	return &core.Batch{Seq: seq, Pass: &core.Statement{Kind: core.StmtDropTable, Text: []byte("DROP TABLE IF EXISTS `" + name + "`;\n")}}
+}
+
 func TestSSHSinkImport(t *testing.T) {
 	ctx := context.Background()
 	useFakeStreamSink(t)
@@ -283,6 +288,9 @@ func TestSSHSinkImport(t *testing.T) {
 		{"ok", "", 0, 2, "", core.Replaced, ""},
 		{"collation", "ERROR 1273 (HY000) at line 25: Unknown collation: 'utf8mb4_0900_ai_ci'\n", 1, 1, core.ErrImport, core.Untouched,
 			"import: the database on deploy@shop.example:/srv/shop doesn't know collation utf8mb4_0900_ai_ci. Run again with --fix-collation. The target is untouched."},
+		{"collation after a drop", "ERROR 1273 (HY000) at line 25: Unknown collation: 'utf8mb4_0900_ai_ci'\n", 1, 1, core.ErrImport, core.Mixed,
+			"import: the database on deploy@shop.example:/srv/shop doesn't know collation utf8mb4_0900_ai_ci, after 0 of 61 tables. The target is in a mixed state: some tables are pseudonymised, the rest still hold the earlier copy. Run again with --fix-collation."},
+		{"lost after a drop", "Connection to shop.example closed by remote host.\n", 255, 0, core.ErrImportMixed, core.Mixed, ""},
 		{"collation later", "ERROR 1273 (HY000) at line 99: Unknown collation: 'utf8mb4_0900_ai_ci'\n", 1, 3, core.ErrImport, core.Mixed, ""},
 		{"broken after tables", "ERROR 1062 (23000) at line 52: Duplicate entry 'alice@example.org' for key 'x'\n", 1, 2, core.ErrImportMixed, core.Mixed,
 			"import: wp db import on deploy@shop.example:/srv/shop failed (MySQL ERROR 1062) after 2 of 61 tables. The target is in a mixed state: some tables are pseudonymised, the rest still hold the earlier copy. Run the same command again."},
@@ -301,9 +309,20 @@ func TestSSHSinkImport(t *testing.T) {
 				t.Fatal(err)
 			}
 			sk.(TableCounter).ExpectTables(61)
+			// A case named "... drop" writes DROP TABLE IF EXISTS before
+			// each CREATE, as most dumps do.
+			drops := strings.HasSuffix(tt.name, "drop")
 			var werr error
 			for i := 0; i < tt.tables && werr == nil; i++ {
-				werr = sk.Write(ctx, createTable(uint64(i+1), "wp_t"+string(rune('a'+i))))
+				if drops {
+					werr = sk.Write(ctx, dropTable(uint64(2*i+1), "wp_t"+string(rune('a'+i))))
+				}
+				if werr == nil {
+					werr = sk.Write(ctx, createTable(uint64(2*i+2), "wp_t"+string(rune('a'+i))))
+				}
+			}
+			if drops && tt.tables == 0 && werr == nil {
+				werr = sk.Write(ctx, dropTable(1, "wp_ta"))
 			}
 			if werr == nil {
 				werr = sk.Commit(ctx)
