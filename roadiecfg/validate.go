@@ -6,8 +6,10 @@ package roadiecfg
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/netip"
 	"net/url"
+	"os"
 	"path"
 	"regexp"
 	"slices"
@@ -105,7 +107,7 @@ func (l *loader) validateTop(c *Config) error {
 		if k.v == "" || l.unset[k.key] != "" {
 			continue
 		}
-		if _, err := site.ParseEndpoint(k.v); err != nil && !errors.Is(err, core.ErrNotBuilt) {
+		if _, err := site.ParseEndpoint(k.v); err != nil && !errors.Is(err, core.ErrNotBuilt) && !missingFolder(k.v) {
 			return l.errAt(k.key, "%s: %s", k.key, strings.TrimSuffix(err.Error(), "."))
 		}
 	}
@@ -447,4 +449,16 @@ func (l *loader) validateLaravel(c *Config) error {
 		}
 	}
 	return nil
+}
+
+// missingFolder reports whether v is a plain local path that doesn't
+// exist on this machine. A config is shared through git and checked in
+// CI, where the staging folder isn't there; the run that uses the
+// endpoint still refuses it then.
+func missingFolder(v string) bool {
+	if strings.ContainsAny(v, ":@") {
+		return false // a DSN, ssh form or alias is checked as written
+	}
+	_, err := os.Stat(v)
+	return errors.Is(err, fs.ErrNotExist)
 }
