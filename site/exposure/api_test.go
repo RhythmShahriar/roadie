@@ -384,6 +384,23 @@ func TestBasicAuthReal(t *testing.T) {
 	}
 }
 
+// TestBasicAuthProxyWarning: every snippet that lets loopback pass warns
+// that a reverse proxy on the same host makes every request loopback.
+func TestBasicAuthProxyWarning(t *testing.T) {
+	files, _, err := BasicAuth("staging")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{FileApache, FileNginx, FileCaddy} {
+		if !strings.Contains(string(files[f]), "# Behind a reverse proxy on this host every request is loopback: remove\n# the loopback allow lines there.\n") {
+			t.Errorf("%s lacks the reverse proxy warning", f)
+		}
+	}
+	if strings.Contains(string(files[FilePasswd]), "proxy") {
+		t.Error(".htpasswd holds a comment")
+	}
+}
+
 func TestBasicAuthBadUser(t *testing.T) {
 	for _, u := range []string{"", "a:b", "a b", "a\nb", `a"b`, "{x}", strings.Repeat("u", 65), "ü"} {
 		_, _, err := BasicAuth(u)

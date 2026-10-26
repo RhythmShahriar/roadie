@@ -105,6 +105,8 @@ func basicAuth(user, passwdFile string) (map[string][]byte, string, error) {
 # Loopback requests pass without a password, so WP-Cron spawns and Site
 # Health keep working; add the server's own address to "Require ip" when
 # they go out through its public IP.
+# Behind a reverse proxy on this host every request is loopback: remove
+# the loopback allow lines there.
 AuthType Basic
 AuthName "Staging copy"
 AuthUserFile ` + passwdFile + `
@@ -119,6 +121,8 @@ AuthUserFile ` + passwdFile + `
 # and reload nginx.
 # Loopback requests pass without a password (satisfy any), so WP-Cron
 # spawns and Site Health keep working.
+# Behind a reverse proxy on this host every request is loopback: remove
+# the loopback allow lines there.
 satisfy any;
 allow 127.0.0.1;
 allow ::1;
@@ -131,6 +135,8 @@ auth_basic_user_file ` + passwdFile + `;
 # the file itself; Caddy needs no .htpasswd.
 # Loopback requests pass without a password, so WP-Cron spawns and Site
 # Health keep working.
+# Behind a reverse proxy on this host every request is loopback: remove
+# the loopback allow lines there.
 @notLocal not remote_ip 127.0.0.1 ::1
 basicauth @notLocal {
 	` + user + ` ` + hash + `

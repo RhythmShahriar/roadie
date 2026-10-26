@@ -3,6 +3,8 @@
 # the file itself; Caddy needs no .htpasswd.
 # Loopback requests pass without a password, so WP-Cron spawns and Site
 # Health keep working.
+# Behind a reverse proxy on this host every request is loopback: remove
+# the loopback allow lines there.
 @notLocal not remote_ip 127.0.0.1 ::1
 basicauth @notLocal {
 	staging $2a$05$AAAAAAAAAAAAAAAAAAAAAAbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
