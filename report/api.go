@@ -5,8 +5,10 @@
 // it as Markdown, HTML, SARIF and JUnit. Every view is a rendering of the
 // signed JSON.
 //
-// The exported names in this file are the frozen cross-lane API; the cli
-// lane replaces the bodies, which return core.ErrNotBuilt until then.
+// The frozen cross-lane API (lanes.md 3.4) is Envelope and Canonical
+// (envelope.go, canonical.go), Signer, LoadSigner and Check (sign.go,
+// check.go), the renderers Markdown, HTML, SARIF and JUnit, Brand and
+// Save. Names are only added, never changed.
 package report
 
 import (
@@ -14,16 +16,6 @@ import (
 
 	"github.com/RhythmShahriar/roadie/core"
 )
-
-// Envelope builds the rhythm-roadie/v1 envelope of a result.
-func Envelope(r *core.Result, tool, version string) (*core.Envelope, error) {
-	return nil, core.ErrNotBuilt
-}
-
-// Canonical returns the canonical JSON of v that signatures cover (PRD 16.4).
-func Canonical(v any) ([]byte, error) {
-	return nil, core.ErrNotBuilt
-}
 
 // Signer signs envelopes with an Ed25519 key.
 type Signer struct{} // its fields are unexported and added by the owning lane

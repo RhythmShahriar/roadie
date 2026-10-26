@@ -19,6 +19,7 @@ import (
 	"github.com/RhythmShahriar/rhythm/kit/ui"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/report"
 )
 
 // The layout of Soundcheck and Echo: 76 columns, badges 10 wide.
@@ -31,12 +32,14 @@ const (
 // The exact strings of PRD 16.1 and 19.1 that tests pin.
 const (
 	honestyLine = "Pseudonymised, not anonymised. The copy still holds order totals, dates, products and anything Roadie can't recognise in free text. Treat it as personal data." //nolint:misspell // PRD 16.1's British wording, pinned
-	notCovered  = "Not covered by this report: files and uploads (PDF invoices, form uploads, images with location data), other databases, object caches (Redis, Memcached), search indexes (Algolia, ElasticPress), logs on disk outside wp-content, copies held by third parties (Mailchimp lists, Stripe customers), names and street addresses written in free text that Roadie didn't see in a structured column, encrypted columns, tables you told Roadie to keep."
 	// notStopped is PRD 13.5's list of what the kill switch can't stop.
-	notStopped = "a server crontab calling wp cron or artisan schedule:run, wp action-scheduler run by hand, queue workers already running, code that opens SMTP sockets or uses fsockopen with credentials Roadie doesn't know, raw cURL without --echo-proxy. Credentials are blanked so those paths fail at the provider. Blocking outbound traffic at the host is the only certainty."
+	notStopped = report.KillSwitchLimits
 	// cachesLine is the third ROADMAP item the ALSO block names (PRD 5).
 	cachesLine = "object caches and search indexes (Redis, Algolia, ElasticPress) are not copied or cleared"
 )
+
+// notCovered is PRD 19.1's Not covered sentence, as the reports write it.
+var notCovered = report.NotCoveredSentence
 
 // viewOpts are the switches of the terminal view.
 type viewOpts struct {

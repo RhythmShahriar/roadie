@@ -1,0 +1,225 @@
+{
+  "schema": "rhythm-roadie/v1",
+  "kind": "copy",
+  "tool": "rhythm-roadie",
+  "version": "1.0.0",
+  "complete": true,
+  "summary": {
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "info": 1,
+    "tables": 3,
+    "tables_pseudonymised": 2,
+    "rows": 60391,
+    "values_pseudonymised": 59478,
+    "urls_rewritten": 3912,
+    "keys_found": 1,
+    "keys_swapped": 1,
+    "keys_blanked": 0,
+    "side_effects_off": 2,
+    "side_effects_total": 2,
+    "uncovered_columns": 0
+  },
+  "verdict": "ok",
+  "data": {
+    "result": "pass",
+    "verify_mode": "exact",
+    "fail_on": "high",
+    "started": "2026-10-26T14:02:11Z",
+    "duration_ms": 82400,
+    "source": {
+      "kind": "ssh-site",
+      "display": "ssh://deploy@shop.com/var/www/shop",
+      "engine": "mysql",
+      "server": "8.0.36",
+      "bytes": 2400000000
+    },
+    "target": {
+      "kind": "local-site",
+      "display": "/var/www/staging",
+      "engine": "mysql",
+      "server": "8.0.36",
+      "bytes": 2390000000,
+      "state": "replaced"
+    },
+    "target_state": "replaced",
+    "production": [
+      "shop.com"
+    ],
+    "url": "https://staging.shop.test",
+    "stack": {
+      "name": "wordpress",
+      "profiles": [
+        "wordpress",
+        "woocommerce",
+        "woocommerce-hpos"
+      ],
+      "multisite": false,
+      "hpos": true,
+      "sites": 1
+    },
+    "consistency": {
+      "mode": "per-run",
+      "key_fingerprint": null
+    },
+    "input": {
+      "kind": "sha256-file",
+      "value": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "bytes": 2400000000
+    },
+    "output": null,
+    "ruleset_sha256": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
+    "config_sha256": "ef2d127de37b942baad06145e54b0c619a1f22327b2ebbcfbec78f5564afe39d",
+    "profile_pack": "1.0.0",
+    "echo_connector_sha256": "e7f6c011776e8db7cd330b54174fd76f7d0216b612387a5ffcfb81e6f0919683",
+    "tables": [
+      {
+        "name": "wp_users",
+        "rows": 18402,
+        "action": "pseudonymise",
+        "profile": "wordpress",
+        "columns": [
+          {
+            "name": "user_email",
+            "rule": "wordpress.users.user_email",
+            "changed": 18401,
+            "kept": 1
+          },
+          {
+            "name": "user_pass",
+            "rule": "wordpress.users.user_pass",
+            "changed": 18401,
+            "kept": 1
+          }
+        ]
+      },
+      {
+        "name": "wp_wc_orders",
+        "rows": 41077,
+        "action": "pseudonymise",
+        "profile": "woocommerce-hpos",
+        "columns": [
+          {
+            "name": "billing_email",
+            "rule": "woocommerce.wc_orders.billing_email",
+            "changed": 41077,
+            "kept": 0
+          }
+        ]
+      },
+      {
+        "name": "wp_woocommerce_sessions",
+        "rows": 912,
+        "action": "truncate",
+        "profile": "woocommerce",
+        "columns": []
+      }
+    ],
+    "covered": [
+      {
+        "table": "wp_users",
+        "column": "user_email",
+        "rate": 100
+      }
+    ],
+    "uncovered": [],
+    "keys": [
+      {
+        "id": "key.stripe-live",
+        "severity": "critical",
+        "provider": "Stripe",
+        "env": "live",
+        "location": {
+          "table": "wp_options",
+          "row": "option_name=woocommerce_stripe_settings",
+          "path": "serialized:secret_key"
+        },
+        "masked": "sk_l•••••",
+        "action": "swapped"
+      }
+    ],
+    "side_effects": [
+      {
+        "id": "side-effect.mail",
+        "status": "off",
+        "how": "Echo connector sealed in wp-content/mu-plugins",
+        "undo": "rhythm echo up on the staging host"
+      },
+      {
+        "id": "side-effect.cron",
+        "status": "off",
+        "how": "DISABLE_WP_CRON in wp-config.php",
+        "undo": "wp cron event run --due-now"
+      },
+      {
+        "id": "side-effect.jetpack",
+        "status": "not-present",
+        "how": "",
+        "undo": ""
+      }
+    ],
+    "findings": [
+      {
+        "id": "info.kept-users",
+        "severity": "info",
+        "title": "1 user kept as it is",
+        "count": 1,
+        "locations": [
+          {
+            "table": "wp_users",
+            "column": "user_email",
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "checks": [
+      {
+        "id": "exact.survivors",
+        "status": "pass",
+        "checked": 1210044
+      },
+      {
+        "id": "pii.email",
+        "status": "pass",
+        "checked": 18402,
+        "detail": "18,402 checked, all @example.invalid or kept"
+      },
+      {
+        "id": "keys",
+        "status": "pass",
+        "checked": 0,
+        "detail": "database, wp-config.php"
+      },
+      {
+        "id": "side-effects",
+        "status": "pass",
+        "checked": 2,
+        "detail": "2 of 2"
+      }
+    ],
+    "coverage": {
+      "tables_scanned": 61,
+      "tables_total": 61,
+      "rows_scanned": 1210044,
+      "bytes_scanned": 2390000000,
+      "skipped": [],
+      "sample": 0
+    },
+    "remote_commands": [],
+    "not_covered": [
+      "files and uploads (PDF invoices, form uploads, images with location data)",
+      "other databases",
+      "object caches (Redis, Memcached)",
+      "search indexes (Algolia, ElasticPress)",
+      "logs on disk outside wp-content",
+      "copies held by third parties (Mailchimp lists, Stripe customers)",
+      "names and street addresses written in free text that Roadie didn't see in a structured column",
+      "encrypted columns",
+      "tables you told Roadie to keep"
+    ],
+    "soundcheck": null
+  }
+}

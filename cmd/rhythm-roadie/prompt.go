@@ -165,12 +165,5 @@ func realLoadSigner(keyFile string, env func(string) (string, bool)) (signer, bo
 	return s, created, nil
 }
 
-// shortKeyID is a key ID as the screen shows it: "roadie:" and 7
-// characters, then "…" (PRD 16.4).
-func shortKeyID(id string) string {
-	rest, ok := strings.CutPrefix(id, "roadie:")
-	if !ok || len(rest) <= 7 {
-		return id
-	}
-	return "roadie:" + rest[:7] + "…"
-}
+// shortKeyID is a key ID as the screen shows it (PRD 16.4).
+func shortKeyID(id string) string { return report.ShortKeyID(id) }

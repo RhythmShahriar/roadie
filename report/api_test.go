@@ -12,16 +12,8 @@ import (
 
 // The frozen stubs answer core.ErrNotBuilt until the lane builds them.
 func TestStubsNotBuilt(t *testing.T) {
-	_, err := Envelope(&core.Result{}, "rhythm-roadie", "dev")
+	err := Check(nil, nil, nil)
 	if !errors.Is(err, core.ErrNotBuilt) {
-		t.Fatalf("call 1: %v, want core.ErrNotBuilt", err)
-	}
-	_, err = Canonical(nil)
-	if !errors.Is(err, core.ErrNotBuilt) {
-		t.Fatalf("call 2: %v, want core.ErrNotBuilt", err)
-	}
-	err = Check(nil, nil, nil)
-	if !errors.Is(err, core.ErrNotBuilt) {
-		t.Fatalf("call 3: %v, want core.ErrNotBuilt", err)
+		t.Fatalf("Check: %v, want core.ErrNotBuilt", err)
 	}
 }

@@ -12,61 +12,14 @@ import (
 	"github.com/RhythmShahriar/rhythm/kit/ui"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/report"
 )
 
 // The findings, keys, checks and side-effect blocks that plan, copy,
 // prepare and verify share.
 
-// checkLabels name verify's checks as the screen says them (product.md
-// 5.3). A check without a label shows its ID.
-var checkLabels = map[string]string{
-	core.FindingExactSurvivors:       "No pseudonymised value survives",
-	core.FindingPIIEmail:             "No real-looking emails",
-	core.FindingPIIPhone:             "No real-looking phones",
-	core.FindingPIIName:              "No real-looking names",
-	core.FindingPIIAddress:           "No real-looking addresses",
-	core.FindingPIIIP:                "No public IP addresses",
-	core.FindingPIICard:              "No card numbers",
-	core.FindingPIIIBAN:              "No IBANs",
-	"keys":                           "No live keys",
-	core.FindingURLProduction:        "No production URLs",
-	core.FindingURLProductionSiteURL: "Site URL is the copy's",
-	"side-effects":                   "Side effects off",
-	core.FindingConfigEnvironment:    "WP_ENVIRONMENT_TYPE is staging",
-	core.FindingSearchIndexable:      "Kept out of search engines",
-	core.FindingUploadsPersonal:      "No personal files in uploads",
-	core.FindingUncoveredColumn:      "Every personal-looking column covered",
-}
-
-// effectLabels name the side effects in the SIDE EFFECTS block and their
-// short forms in copy's "✓ Side effects" line.
-var effectLabels = map[string][2]string{
-	core.FindingSideEffectMail:            {"Echo connector, sealed", "Echo seal"},
-	core.FindingConfigEnvironment:         {"WP_ENVIRONMENT_TYPE", "WP_ENVIRONMENT_TYPE"},
-	core.FindingSideEffectCron:            {"WP-Cron", "cron"},
-	core.FindingSideEffectActionScheduler: {"Action Scheduler", "Action Scheduler"},
-	core.FindingSideEffectWebhooks:        {"WooCommerce webhooks", "webhooks"},
-	core.FindingSideEffectGateways:        {"Gateways", "gateways"},
-	core.FindingSideEffectSubscriptions:   {"Subscriptions", "Subscriptions"},
-	core.FindingSideEffectJetpack:         {"Jetpack", "Jetpack"},
-	core.FindingSideEffectAutomateWoo:     {"AutomateWoo", "AutomateWoo"},
-	core.FindingSideEffectQueue:           {"Queue", "queue"},
-	core.FindingSideEffectConnectorChange: {"Echo connector", "Echo connector"},
-	core.FindingSideEffectNotApplicable:   {"Database only", "database only"},
-	core.FindingConfigSalts:               {"Salts and APP_KEY", "salts"},
-	core.FindingSearchIndexable:           {"noindex", "noindex"},
-}
-
-func effectLabel(id string, short bool) string {
-	l, ok := effectLabels[id]
-	if !ok {
-		return id
-	}
-	if short {
-		return l[1]
-	}
-	return l[0]
-}
+// effectLabel names a side effect as the reports do.
+func effectLabel(id string, short bool) string { return report.EffectLabel(id, short) }
 
 // sevColor is the theme color of a severity.
 func sevColor(s core.Severity) lipgloss.TerminalColor { return ui.SeverityColor(s.String()) }
@@ -229,10 +182,7 @@ func findingDetails(f core.Finding, verbose bool) []string {
 // checkLines prints verify's checks with ✓ or ✗.
 func (v *view) checkLines(checks []core.Check) {
 	for _, c := range checks {
-		label := checkLabels[c.ID]
-		if label == "" {
-			label = c.ID
-		}
+		label := report.CheckLabel(c.ID)
 		detail := c.Detail
 		if detail == "" && c.Checked > 0 {
 			detail = num(c.Checked) + " checked"

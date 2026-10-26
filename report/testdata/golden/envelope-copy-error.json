@@ -1,0 +1,96 @@
+{
+  "schema": "rhythm-roadie/v1",
+  "kind": "copy",
+  "tool": "rhythm-roadie",
+  "version": "1.0.0",
+  "complete": false,
+  "summary": {
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "info": 0,
+    "tables": 0,
+    "tables_pseudonymised": 0,
+    "rows": 0,
+    "values_pseudonymised": 0,
+    "urls_rewritten": 0,
+    "keys_found": 0,
+    "keys_swapped": 0,
+    "keys_blanked": 0,
+    "side_effects_off": 0,
+    "side_effects_total": 0,
+    "uncovered_columns": 0
+  },
+  "verdict": "error",
+  "data": {
+    "result": "error",
+    "verify_mode": "none",
+    "fail_on": "high",
+    "started": "2026-10-26T14:02:11Z",
+    "duration_ms": 1200,
+    "source": {
+      "kind": "dump-file",
+      "display": "prod.sql.gz",
+      "engine": "",
+      "server": "",
+      "bytes": 0
+    },
+    "target": {
+      "kind": "local-site",
+      "display": "/var/www/shop",
+      "engine": "",
+      "server": "",
+      "bytes": 0,
+      "state": "untouched"
+    },
+    "target_state": "untouched",
+    "production": [
+      "shop.com"
+    ],
+    "url": "https://staging.shop.test",
+    "stack": {
+      "name": "",
+      "profiles": [],
+      "multisite": false,
+      "hpos": false,
+      "sites": 0
+    },
+    "consistency": {
+      "mode": "",
+      "key_fingerprint": null
+    },
+    "input": null,
+    "output": null,
+    "ruleset_sha256": "",
+    "config_sha256": "",
+    "profile_pack": "",
+    "echo_connector_sha256": "",
+    "tables": [],
+    "covered": [],
+    "uncovered": [],
+    "keys": [],
+    "side_effects": [],
+    "findings": [],
+    "checks": [],
+    "coverage": null,
+    "remote_commands": [],
+    "not_covered": [
+      "files and uploads (PDF invoices, form uploads, images with location data)",
+      "other databases",
+      "object caches (Redis, Memcached)",
+      "search indexes (Algolia, ElasticPress)",
+      "logs on disk outside wp-content",
+      "copies held by third parties (Mailchimp lists, Stripe customers)",
+      "names and street addresses written in free text that Roadie didn't see in a structured column",
+      "encrypted columns",
+      "tables you told Roadie to keep"
+    ],
+    "soundcheck": null,
+    "error": {
+      "code": "target-is-production",
+      "exit": 3,
+      "message": "target-is-production: /var/www/shop is shop.com, which production: lists. Roadie never writes to production. Point --to at the staging copy."
+    }
+  }
+}
