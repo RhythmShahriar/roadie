@@ -44,14 +44,14 @@ type survivorsDetector struct{ k core.Known }
 func (survivorsDetector) ID() string { return core.FindingExactSurvivors }
 
 // Scan emits one hit per surviving value, never two over the same bytes.
-func (d survivorsDetector) Scan(v []byte, _ core.ScanContext, emit func(core.Hit)) {
+func (d survivorsDetector) Scan(v []byte, sc core.ScanContext, emit func(core.Hit)) {
 	if d.k == nil || len(v) < minToken {
 		return
 	}
 	if wholeFake(bytes.TrimSpace(v)) {
 		return
 	}
-	s := &survivorScan{k: d.k}
+	s := &survivorScan{k: d.k, enum: enumColumn(sc.Column)}
 	s.ws = len(v) - len(bytes.TrimLeftFunc(v, unicode.IsSpace))
 	s.we = len(bytes.TrimRightFunc(v, unicode.IsSpace))
 	for _, singles := range []bool{false, true} {
@@ -94,6 +94,29 @@ type survivorScan struct {
 	// encoding gets the chance to report "Jane Doe" whole before any
 	// encoding reports "Jane" and "Doe" on their own.
 	singles bool
+	// enum says the column holds a schema's own codes (type, status),
+	// where a word that is also a customer's name is the code.
+	enum bool
+}
+
+// enumColumn reports whether a column holds a schema's codes rather
+// than anything a person typed: type, status and their prefixed forms
+// (post_type, comment_status).
+func enumColumn(col string) bool {
+	c := strings.ToLower(col)
+	return c == "type" || c == "status" || strings.HasSuffix(c, "_type") || strings.HasSuffix(c, "_status")
+}
+
+// commonWords are words a site's own text, slugs and codes use all
+// over: a customer named Shop or Order (the shop owner's account,
+// "Shop Manager") would make every shop_order and every order page a
+// survivor. A full name holding one is still looked up as a pair.
+var commonWords = map[string]bool{
+	"shop": true, "store": true, "order": true, "orders": true, "product": true, "customer": true, "admin": true,
+	"administrator": true, "owner": true, "manager": true, "editor": true, "author": true, "subscriber": true,
+	"contributor": true, "guest": true, "test": true, "cart": true, "checkout": true, "account": true,
+	"billing": true, "shipping": true, "support": true, "info": true, "sales": true, "team": true, "staff": true,
+	"office": true, "system": true, "page": true, "post": true, "user": true, "member": true, "default": true,
 }
 
 // covered reports whether a hit already holds part of start..end.
@@ -117,6 +140,9 @@ func (s *survivorScan) check(token []byte, start, end int, at mapper, enc string
 	}
 	kind, how, ok := s.k.Contains(token)
 	if !ok || roadieFake(kind, token) {
+		return false
+	}
+	if how == "raw" && slices.Contains(nameKinds, kind) && (s.enum || commonWords[strings.ToLower(string(token))]) {
 		return false
 	}
 	if kind == core.KCity && how == "raw" && (ls != s.ws || le != s.we) {
@@ -275,9 +301,13 @@ func phoneRuns(t []byte, fn func(start, end int, norm []byte)) {
 // isNameRune reports whether r is part of a word of a name.
 func isNameRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsMark(r) }
 
+// identRune reports whether r joins letters into an identifier.
+func identRune(r rune) bool { return r == '_' || r >= '0' && r <= '9' }
+
 // words calls word for every run of letters (an apostrophe or hyphen
 // inside one kept, as in O'Brien and Smith-Jones) and pair for every two
-// words joined by one space.
+// words joined by one space. A run joined to an underscore or a digit
+// is part of an identifier (shop_order, user2), not a word.
 func words(t []byte, word, pair func(start, end int)) {
 	prevStart, prevEnd := -1, -1
 	for i := 0; i < len(t); {
@@ -295,7 +325,9 @@ func words(t []byte, word, pair func(start, end int)) {
 			}
 			break
 		}
-		if j-i <= maxWord {
+		if identRune(runeBefore(t, i)) || identRune(runeAt(t, j)) {
+			prevEnd = -1
+		} else if j-i <= maxWord {
 			word(i, j)
 			if prevEnd >= 0 && i == prevEnd+1 && t[prevEnd] == ' ' {
 				pair(prevStart, j)

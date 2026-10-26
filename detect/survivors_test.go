@@ -304,3 +304,39 @@ func TestSurvivorsFakeOfAnotherKind(t *testing.T) {
 		t.Errorf("a real city: %d hits, want 1", len(hits))
 	}
 }
+
+// A name word joined to an underscore or a digit is part of an
+// identifier; a schema's code columns and the site's common words are
+// no survivors; the same name in a person's text still is.
+func TestSurvivorsIdentifiersAndCodes(t *testing.T) {
+	k := newKnown(t)
+	k.Add(core.KFullName, []byte("Shop Owner"))
+	k.Add(core.KFirstName, []byte("Shop"))
+	k.Add(core.KLastName, []byte("Owner"))
+	k.Add(core.KFirstName, []byte("Quillon"))
+	k.Seal()
+	d := Survivors(k)
+	cases := []struct {
+		leaf string
+		col  string
+		want int
+	}{
+		{"shop_order", "type", 0},
+		{"shop_order", "meta_value", 0},
+		{"wc-shop_owner", "meta_key", 0},
+		{"quillon_2", "meta_value", 0},
+		{"quillon2", "meta_value", 0},
+		{"Quillon", "type", 0},
+		{"Quillon", "post_status", 0},
+		{"Visit the shop page", "post_content", 0},
+		{"Quillon", "meta_value", 1},
+		{"Ask Quillon at the desk", "comment_content", 1},
+		{"hi quillon!", "meta_value", 1},
+		{"Shop Owner", "display_name", 1},
+	}
+	for _, c := range cases {
+		if hits := scanAll(d, c.leaf, core.ScanContext{Column: c.col}); len(hits) != c.want {
+			t.Errorf("%q in %s: %d hits %v, want %d", c.leaf, c.col, len(hits), hits, c.want)
+		}
+	}
+}

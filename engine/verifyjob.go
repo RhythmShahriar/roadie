@@ -183,5 +183,11 @@ func (r *runner) productionIndex(ctx context.Context, from core.Endpoint, defs [
 		return nil, nil, nil, err
 	}
 	known.Seal()
-	return known, found, productionPairs(ctx, s, r.cfg), nil
+	// The shop's own name words are no survivors, as in the copy's own
+	// verify (hostWordKnown).
+	var k core.Known = known
+	if words := hostWords(found); len(words) > 0 {
+		k = &hostWordKnown{Known: known, words: words}
+	}
+	return k, found, productionPairs(ctx, s, r.cfg), nil
 }
