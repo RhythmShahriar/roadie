@@ -1191,3 +1191,41 @@ func TestRunWiring(t *testing.T) {
 		t.Errorf("ExpectTables(%d), want 2", cs.expected)
 	}
 }
+
+// The dump reader's notes (a dropped GRANT) reach the plan once, though
+// both passes read the dump; a folder named as a dump gets dump-format.
+func TestRunDumpNotes(t *testing.T) {
+	useRunFakes(t)
+	old := openDump
+	openDump = func(ctx context.Context, r io.Reader, o dump.Options) (core.Source, error) {
+		td := wpUsers()
+		o.Progress.Note("dropped 1 GRANT statement (GRANT ALL ON shop.* TO …)")
+		o.Progress.Table("wp_users", 0)
+		return testutil.FakeSource(schemaOf("wp_", td), batches(td)), nil
+	}
+	t.Cleanup(func() { openDump = old })
+	dir := t.TempDir()
+	in := filepath.Join(dir, "shop.sql")
+	if err := os.WriteFile(in, []byte("-- dump\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	j := Job{Mode: Plan, From: core.Endpoint{Kind: core.DumpFile, Raw: in, Display: "shop.sql", Path: in}, Config: roadiecfg.Default(),
+		Opts: Options{URL: "https://staging.shop.test"}}
+	res, err := Run(context.Background(), j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var notes []string
+	for _, e := range res.PlannedEdits {
+		if e.Step == "dump" {
+			notes = append(notes, e.What)
+		}
+	}
+	if !slices.Equal(notes, []string{"dropped 1 GRANT statement (GRANT ALL ON shop.* TO …)"}) {
+		t.Errorf("dump notes %q", notes)
+	}
+	j.From.Path, j.From.Raw = dir, dir
+	if _, err := Run(context.Background(), j); !isCode(err, core.ErrDumpFormat) {
+		t.Errorf("a folder: %v", err)
+	}
+}

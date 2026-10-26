@@ -91,6 +91,9 @@ type runner struct {
 	// target: a run that stops after it left the target mixed, not
 	// untouched.
 	stepped bool
+	// notes are the dump reader's plan lines: statements the allowlist
+	// dropped and routines --keep-routines kept.
+	notes dumpNotes
 }
 
 // Run runs the job.
@@ -101,6 +104,9 @@ func Run(ctx context.Context, j Job) (*core.Result, error) {
 	}
 	r.res = &core.Result{Kind: string(j.Mode), Started: r.now(), TargetState: core.Untouched, FailOn: j.Opts.FailOn}
 	err := r.run(ctx)
+	for _, n := range r.notes.lines {
+		r.res.PlannedEdits = append(r.res.PlannedEdits, core.PlannedEdit{Step: "dump", File: r.j.From.Display, What: n})
+	}
 	r.endMaintenance(ctx)
 	r.res.RemoteCommands = r.remoteCommands()
 	for _, s := range r.opened {
@@ -787,9 +793,34 @@ func (r *runner) endMaintenance(ctx context.Context) {
 	_ = r.to.Remove(context.WithoutCancel(ctx), maintenanceFile)
 }
 
+// dumpNotes hears the dump reader's notes (dump.Notes) for the plan and
+// the report, once each though both passes read the dump, and passes
+// them to the run's progress. The reader's byte and table progress is
+// left out: the pipeline reports its own.
+type dumpNotes struct {
+	out   core.Progress
+	lines []string
+}
+
+func (*dumpNotes) Phase(string, int64) {}
+func (*dumpNotes) Advance(int64)       {}
+func (*dumpNotes) Table(string, int64) {}
+
+func (d *dumpNotes) Note(msg string) {
+	if slices.Contains(d.lines, msg) {
+		return
+	}
+	d.lines = append(d.lines, msg)
+	if d.out != nil {
+		d.out.Note(msg)
+	}
+}
+
 // dumpOptions are the dump reader's options for a file or stream.
 func (r *runner) dumpOptions(ctx context.Context, name string) (dump.Options, error) {
-	o := dump.Options{Name: name, MaxValue: r.opts.MaxValue, MaxRatio: r.opts.MaxOutputRatio, KeepRoutines: r.opts.KeepRoutines}
+	r.notes.out = r.j.Progress
+	o := dump.Options{Name: name, MaxValue: r.opts.MaxValue, MaxRatio: r.opts.MaxOutputRatio, KeepRoutines: r.opts.KeepRoutines,
+		Progress: &r.notes}
 	if r.opts.SchemaFile != "" {
 		s, err := readSchemaFile(ctx, r.opts.SchemaFile)
 		if err != nil {

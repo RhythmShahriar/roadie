@@ -113,6 +113,12 @@ type spool interface {
 // openDumpFile opens a dump file for one pass; closing the source closes
 // the file.
 func openDumpFile(ctx context.Context, path string, o dump.Options) (core.Source, error) {
+	// A folder (pg_dump -Fd, mydumper) gets dump-format's advice, not
+	// the OS's "is a directory".
+	var ce *core.Error
+	if err := dump.CheckInput(path); errors.As(err, &ce) {
+		return nil, err
+	}
 	f, err := os.Open(path) // #nosec G304 -- the dump the user named
 	if err != nil {
 		return nil, err
