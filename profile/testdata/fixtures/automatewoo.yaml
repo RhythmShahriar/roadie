@@ -16,3 +16,4 @@ lists:
   "truncate:{prefix}{site}automatewoo_queue": {positive: wp_automatewoo_queue, negative: wp_12_automatewoo_queue}
   "truncate:{prefix}{site}automatewoo_queue_meta": {positive: wp_automatewoo_queue_meta, negative: wp_12_automatewoo_queue_meta}
   "truncate:{prefix}{site}automatewoo_abandoned_carts": {positive: wp_automatewoo_abandoned_carts, negative: wp_12_automatewoo_abandoned_carts}
+  "truncate:{prefix}{site}automatewoo_customers": {positive: wp_2_automatewoo_customers, negative: wp_12_automatewoo_customers}

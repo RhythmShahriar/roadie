@@ -44,6 +44,7 @@ rules:
   - {table: "{prefix}{site}postmeta", where: {meta_key: "_payment_tokens"}, column: meta_value, rule: blank, explain: "saved payment token IDs"}
   - {table: "{prefix}{site}postmeta", where: {meta_key: "_billing_vat_number"}, column: meta_value, rule: blank, explain: "the customer's VAT number"}
   - {table: "{prefix}{site}postmeta", where: {meta_key: "_wcpay_*customer*"}, column: meta_value, rule: blank, explain: "WooPayments customer IDs"}
+  - {table: "{prefix}{site}posts", where: {post_type: "shop_order*"}, column: post_excerpt, rule: text, explain: "the customer's note on a legacy order (a refund's reason on a refund); free text"}
   - {table: "{prefix}{site}wc_customer_lookup", column: first_name, rule: first_name, explain: "the customer's first name in the analytics lookup"}
   - {table: "{prefix}{site}wc_customer_lookup", column: last_name, rule: last_name, explain: "the customer's last name"}
   - {table: "{prefix}{site}wc_customer_lookup", column: email, rule: email, explain: "the customer's email"}

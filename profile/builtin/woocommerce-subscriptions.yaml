@@ -16,4 +16,5 @@ detect:
 rules:
   - {table: "{prefix}{site}postmeta", where: {meta_key: _payment_method_token}, column: meta_value, rule: blank, explain: "the token renewals charge; blank so the copy can't renew against the live gateway"}
   - {table: "{prefix}{site}wc_orders_meta", where: {meta_key: _payment_method_token}, column: meta_value, rule: blank, explain: "the renewal token on an HPOS subscription"}
+  - {table: "{prefix}{site}posts", where: {post_type: shop_subscription}, column: post_excerpt, rule: text, explain: "the customer's note on a subscription kept as a post; free text"}
   - {table: "{prefix}{site}options", where: {option_name: wc_subscriptions_siteurl}, column: option_value, rule: keep, explain: "the obscured clone of siteurl; left as it is so the copy sees a duplicate site"}

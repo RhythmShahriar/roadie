@@ -1,8 +1,9 @@
 # Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
 # SPDX-License-Identifier: MIT
 
-# AutomateWoo (paid): queued emails and abandoned carts are cleared so
-# nothing is sent from the copy; guests and logs are pseudonymised.
+# AutomateWoo (paid): queued emails, abandoned carts and the customer
+# index are cleared so nothing is sent from the copy (AutomateWoo builds
+# the index again on demand); guests and logs are pseudonymised.
 id: automatewoo
 name: AutomateWoo
 stack: wordpress
@@ -18,3 +19,4 @@ truncate:
   - "{prefix}{site}automatewoo_queue"
   - "{prefix}{site}automatewoo_queue_meta"
   - "{prefix}{site}automatewoo_abandoned_carts"
+  - "{prefix}{site}automatewoo_customers"

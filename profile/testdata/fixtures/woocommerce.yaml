@@ -96,6 +96,9 @@ rules:
   "woocommerce.postmeta.meta_value._wcpay_*customer*":
     positive: {table: wp_postmeta, row: {meta_value: "x", meta_key: "_wcpay_xcustomerx"}}
     negative: {table: wp_postmeta, row: {meta_value: "x", meta_key: "x_wcpay_xcustomerx"}}
+  "woocommerce.posts.post_excerpt.shop_order*":
+    positive: {table: wp_2_posts, row: {post_excerpt: "Leave it with Anna Lee, +44 7700 900123", post_type: "shop_order"}}
+    negative: {table: wp_2_posts, row: {post_excerpt: "Leave it with Anna Lee, +44 7700 900123", post_type: "post"}}
   "woocommerce.wc_customer_lookup.first_name":
     positive: {table: wp_11_wc_customer_lookup, row: {first_name: "Anna"}}
     negative: {table: wp_12_wc_customer_lookup, row: {first_name: "Anna"}}
