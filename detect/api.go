@@ -14,23 +14,23 @@ import "github.com/RhythmShahriar/roadie/core"
 
 // All returns every PII detector of PRD 15.2.
 func All() []core.Detector {
-	return []core.Detector{Email()}
+	return []core.Detector{Email(), Phone(), IP(), Card(), IBAN()}
 }
 
 // Email finds real email addresses (pii.email, pii.email-role).
 func Email() core.Detector { return emailDetector{} }
 
 // Phone finds phone numbers (pii.phone).
-func Phone() core.Detector { return nil }
+func Phone() core.Detector { return phoneDetector{} }
 
 // IP finds public IP addresses (pii.ip).
-func IP() core.Detector { return nil }
+func IP() core.Detector { return ipDetector{} }
 
 // Card finds payment card numbers (pii.card).
-func Card() core.Detector { return nil }
+func Card() core.Detector { return cardDetector{} }
 
 // IBAN finds IBANs (pii.iban).
-func IBAN() core.Detector { return nil }
+func IBAN() core.Detector { return ibanDetector{} }
 
 // Name finds real names in name columns (pii.name).
 func Name() core.Detector { return nil }
@@ -40,7 +40,7 @@ func Address() core.Detector { return nil }
 
 // TextSpans finds emails, strong phones, cards and IPs in free text, for
 // pseudo.Scrub. Spans are of kind email, phone, ip or KCard.
-func TextSpans() core.Spanner { return nil }
+func TextSpans() core.Spanner { return textSpanner{} }
 
 // Survivors finds production values that survived in the copy, in any
 // encoding (exact.survivors). A nil k gives a detector that finds nothing, as heuristic mode has no

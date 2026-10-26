@@ -1,0 +1,46 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Fixtures for the card detector (PRD 15.2). luhn builds a Luhn-valid
+# number at test time ('#' a digit, '?' the check digit).
+detector: pii.card
+positive:
+  - value: "Paid with {card} yesterday"
+    luhn: "4539 14## #### ###?"
+  - value: "{card}"
+    luhn: "5425-23##-####-###?"
+  - value: "{card}"
+    luhn: "3714 ###### ####?"
+    note: Amex 4-6-5
+  - value: "{card}"
+    luhn: "6011##########?"
+    column: card_number
+    note: ungrouped in a card column
+  - value: "{card}"
+    luhn: "4539 14## #### #?"
+    note: thirteen digits
+  - value: "{card}"
+    luhn: "2223 00## #### ###?"
+    note: a 2-series Mastercard
+  - value: "{card}"
+    luhn: "4916############?"
+    column: meta_value
+    row: {meta_key: _cc_number}
+    note: a meta key naming a card
+negative:
+  - value: "4242 4242 4242 4242"
+  - value: "4111-1111-1111-1111"
+  - value: "5555 5555 5555 4444"
+  - value: "3782 822463 10005"
+    note: the Amex test card
+  - value: "{card}"
+    luhn: "4539########?##"
+    note: ungrouped in free text is an order ID as often as a card
+  - value: "Order 4539148803436467"
+  - value: "4539 1488 0343 6468"
+    note: fails the Luhn check
+  - value: "1234 5678 9012 3452"
+    note: no card starts with 1
+  - value: "7234 5678 9012 3456"
+  - value: "4539 1488-0343 6467"
+    note: mixed separators

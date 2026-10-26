@@ -31,7 +31,9 @@ type fixtureFile struct {
 // fixture is one value and where it sits.
 //
 // Real-looking numbers are not committed: {dN} in a value is replaced at
-// test time by N digits from a seed of the file and case.
+// test time by N digits from a seed of the file and case, luhn builds a
+// card number ('#' a digit, '?' the check digit) and iban builds an IBAN
+// with its check digits; {card} and {iban} put them in the value.
 type fixture struct {
 	Value  string            `yaml:"value"`
 	Want   string            `yaml:"want"`  // positive: the hit's ID, default the detector's
@@ -45,8 +47,11 @@ type fixture struct {
 		Phones []string `yaml:"phones"`
 		Kept   []string `yaml:"kept"`
 	} `yaml:"allow"`
-	Needs string `yaml:"needs"` // a lane whose real code the case needs
-	Note  string `yaml:"note"`
+	Luhn   string `yaml:"luhn"`
+	IBAN   string `yaml:"iban"`   // "GB..NWBK60161331926819": the dots become the check digits
+	Spaced bool   `yaml:"spaced"` // write the IBAN in groups of four
+	Needs  string `yaml:"needs"`  // a lane whose real code the case needs
+	Note   string `yaml:"note"`
 }
 
 var digitsTemplate = regexp.MustCompile(`\{d(\d+)\}`)
@@ -67,7 +72,53 @@ func (f fixture) expand(seed string) string {
 		n, _ := strconv.Atoi(m[2 : len(m)-1])
 		return digits(n)
 	})
+	if f.Luhn != "" {
+		v = strings.ReplaceAll(v, "{card}", makeLuhn(f.Luhn, digits))
+	}
+	if f.IBAN != "" {
+		v = strings.ReplaceAll(v, "{iban}", makeIBAN(digitsTemplate.ReplaceAllStringFunc(f.IBAN, func(m string) string {
+			n, _ := strconv.Atoi(m[2 : len(m)-1])
+			return digits(n)
+		}), f.Spaced))
+	}
 	return v
+}
+
+// makeLuhn fills '#' with digits and '?' with the Luhn check digit.
+func makeLuhn(p string, digits func(int) string) string {
+	b := []byte(p)
+	for i, c := range b {
+		if c == '#' {
+			b[i] = digits(1)[0]
+		}
+	}
+	q := strings.IndexByte(string(b), '?')
+	for d := byte('0'); d <= '9'; d++ {
+		b[q] = d
+		if luhn([]byte(asciiDigits(string(b)))) {
+			break
+		}
+	}
+	return string(b)
+}
+
+// makeIBAN computes the check digits for "CC..BBAN".
+func makeIBAN(p string, spaced bool) string {
+	cc, bban := p[:2], p[4:]
+	for n := 2; n <= 98; n++ {
+		s := fmt.Sprintf("%s%02d%s", cc, n, bban)
+		if ibanValid([]byte(s)) {
+			if spaced {
+				var parts []string
+				for i := 0; i < len(s); i += 4 {
+					parts = append(parts, s[i:min(i+4, len(s))])
+				}
+				s = strings.Join(parts, " ")
+			}
+			return s
+		}
+	}
+	panic("no check digits for " + p)
 }
 
 // context builds the scan context of a fixture.

@@ -10,9 +10,10 @@ import (
 	"github.com/RhythmShahriar/roadie/core"
 )
 
-// The spanner and the uncovered-column scan are still stubs.
+// The uncovered-column scan is still a stub; the detect lane builds it
+// with verify.
 func TestStubsZero(t *testing.T) {
-	if TextSpans() != nil || Uncovered(nil, nil, nil) != nil {
+	if Uncovered(nil, nil, nil) != nil {
 		t.Fatal("stub returned a value")
 	}
 }
@@ -20,7 +21,8 @@ func TestStubsZero(t *testing.T) {
 // All returns every PII detector of PRD 15.2 once, in a fixed order.
 func TestAllIDs(t *testing.T) {
 	want := []string{
-		core.FindingPIIEmail,
+		core.FindingPIIEmail, core.FindingPIIPhone, core.FindingPIIIP, core.FindingPIICard,
+		core.FindingPIIIBAN,
 	}
 	var got []string
 	for _, d := range All() {

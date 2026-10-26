@@ -1,0 +1,36 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Fixtures for the IBAN detector (PRD 15.2). iban builds a valid IBAN at
+# test time: the two dots become its check digits.
+detector: pii.iban
+positive:
+  - value: "{iban}"
+    iban: "GB..NWBK6016{d10}"
+  - value: "Pay to {iban} by Friday"
+    iban: "DE..3704004405{d8}"
+  - value: "{iban}"
+    iban: "FR..2004101005{d10}M02"
+    spaced: true
+    note: printed in groups of four
+  - value: "IBAN: {iban}."
+    iban: "NL..RABO{d10}"
+  - value: "{iban}"
+    iban: "NO..{d11}"
+    note: the shortest length
+negative:
+  - value: "GB82WEST12345698765432"
+    note: the documented example
+  - value: "DE89 3704 0044 0532 0130 00"
+    note: the documented example, printed
+  - value: "GB00WEST12345698765432"
+    note: wrong check digits
+  - value: "DE00ORDR1234567890123"
+    note: an IBAN-shaped order reference
+  - value: "XX82WEST12345698765432"
+    note: not a registry country
+  - value: "GB82WEST1234569876543"
+    note: one character short
+  - value: "{iban}X"
+    iban: "GB..NWBK6016{d10}"
+    note: glued to more letters
