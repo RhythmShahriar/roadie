@@ -1,0 +1,140 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
+package dump
+
+import (
+	"bytes"
+	"regexp"
+
+	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/dump/internal/size"
+	"github.com/RhythmShahriar/roadie/dump/mysql"
+)
+
+// The end lines dump tools write. mysqldump, mariadb-dump and wp db
+// export (which runs one of them) end with "-- Dump completed" and a
+// date unless --skip-dump-date; pg_dump -Fp ends with "-- PostgreSQL
+// database dump complete" and, since 17.6 and 16.10, a \unrestrict line
+// after it.
+const (
+	mysqlTrailer = "Dump completed"
+	pgTrailer    = "PostgreSQL database dump complete"
+)
+
+// reAdminerEnd is the date line Adminer writes last.
+var reAdminerEnd = regexp.MustCompile(`(?m)^-- \d{4}-\d\d-\d\d \d\d:\d\d:\d\d`)
+
+// endCheck decides at the end of the input whether the dump is whole.
+// Tools that write an end line must have written it, with nothing but
+// comments (and pg_dump's \unrestrict) after it. phpMyAdmin, Adminer and
+// dumps without a tool line write none: their end is accepted only at a
+// statement boundary after a COMMIT, a complete INSERT or the ALTER
+// TABLE and UNLOCK TABLES lines that close a table, or after Adminer's
+// closing date line.
+type endCheck struct {
+	trailer  string // the end line wanted, "" for tools that write none
+	seen     bool   // the end line was read and nothing but comments followed
+	adminer  bool
+	dateSeen bool   // Adminer's closing date line was read last
+	closed   bool   // the last statement that counts closes an export
+	any      bool   // a statement that counts was read
+	lastKind string // the kind of that statement, for the message
+}
+
+// newEndCheck reads the tool from the decompressed head: the first line
+// that names one decides, as for the dialect.
+func newEndCheck(head []byte) *endCheck {
+	for line := range bytes.Lines(head) {
+		switch {
+		case bytes.HasPrefix(line, []byte("-- MySQL dump")), bytes.HasPrefix(line, []byte("-- MariaDB dump")):
+			return &endCheck{trailer: mysqlTrailer}
+		case bytes.HasPrefix(line, []byte("-- PostgreSQL database dump")):
+			return &endCheck{trailer: pgTrailer}
+		case bytes.HasPrefix(line, []byte("-- Adminer")):
+			return &endCheck{adminer: true}
+		case bytes.HasPrefix(line, []byte("-- phpMyAdmin SQL Dump")):
+			return &endCheck{}
+		}
+	}
+	return &endCheck{}
+}
+
+// see follows one batch as read, before the allowlist drops anything.
+func (e *endCheck) see(b *core.Batch) {
+	if b.Pass == nil {
+		if b.Last {
+			e.count("INSERT", true)
+		} else {
+			e.count("INSERT", false) // an INSERT still open
+		}
+		return
+	}
+	st := b.Pass
+	switch st.Kind {
+	case core.StmtComment:
+		if e.trailer != "" && bytes.Contains(st.Text, []byte("-- "+e.trailer)) {
+			e.seen = true
+		}
+		if e.adminer {
+			e.dateSeen = reAdminerEnd.Match(st.Text)
+		}
+		return
+	case mysql.KindClient:
+		// pg_dump's \unrestrict comes after its end line.
+		if e.trailer == pgTrailer && bytes.HasPrefix(bytes.TrimSpace(st.Text), []byte(`\unrestrict `)) {
+			return
+		}
+	case core.StmtSet:
+		// phpMyAdmin restores its settings after COMMIT.
+		e.seen, e.dateSeen = false, false
+		return
+	}
+	e.seen, e.dateSeen = false, false
+	switch st.Kind {
+	case core.StmtTransaction:
+		e.count("START TRANSACTION", isCommit(st.Text))
+	case mysql.KindAlterTable, core.StmtAlterKeys, core.StmtUnlock:
+		e.count("ALTER TABLE", true)
+	case core.StmtCreateTable:
+		e.count("CREATE TABLE", false)
+	default:
+		e.count(string(st.Kind), false)
+	}
+}
+
+func (e *endCheck) count(kind string, closes bool) {
+	e.seen, e.dateSeen = false, false
+	e.any, e.closed, e.lastKind = true, closes, kind
+}
+
+// isCommit reports whether a transaction statement is COMMIT.
+func isCommit(text []byte) bool {
+	return bytes.HasPrefix(bytes.ToLower(bytes.TrimSpace(mysql.Body(text, mysql.Mode{}))), []byte("commit"))
+}
+
+// whole reports whether the dump ended where its tool ends one.
+func (e *endCheck) whole() bool {
+	switch {
+	case e.trailer != "":
+		return e.seen
+	case e.adminer && e.dateSeen:
+		return true
+	}
+	return !e.any || e.closed
+}
+
+// truncatedError is dump-truncated for a dump that ended cleanly between
+// statements but not where its tool ends one.
+func (e *endCheck) truncatedError(name, table string, raw int64) *core.Error {
+	where := "ends early"
+	if table != "" {
+		where = "ends inside table " + table
+	}
+	what := `with no "` + e.trailer + `" line`
+	if e.trailer == "" {
+		what = "with no closing COMMIT or complete INSERT"
+	}
+	return core.Errorf(core.ErrDumpTruncated, 3, "dump-truncated: %s %s at %s, %s. Export it again; the target is untouched.",
+		name, where, size.GB(raw), what)
+}
