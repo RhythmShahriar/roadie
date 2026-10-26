@@ -1,0 +1,14 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Email Log keeps a copy of every mail sent: recipients, subjects and
+# bodies. A staging copy needs none of it, so the log is truncated.
+id: email-log
+name: Email Log
+stack: wordpress
+checked_against: "docs: https://plugins.svn.wordpress.org/email-log/trunk/include/Core/DB/TableManager.php"
+detect:
+  tables_any: ["{prefix}{site}email_log"]
+  files: [wp-content/plugins/email-log/email-log.php]
+truncate:
+  - "{prefix}{site}email_log"

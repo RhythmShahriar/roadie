@@ -1,0 +1,21 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Ninja Forms 3: submissions are nf_sub posts whose values sit in post
+# meta _field_<field id>. The ninja-field-types row fix reads nf3_fields
+# in pass 1 and gives every typed field its own rule; the _field_* rule
+# below is the fallback.
+id: ninja-forms
+name: Ninja Forms
+stack: wordpress
+checked_against: "docs: https://plugins.svn.wordpress.org/ninja-forms/trunk/includes/Database/Migrations/Fields.php"
+detect:
+  tables_any: ["{prefix}{site}nf3_forms", "{prefix}{site}nf3_fields"]
+  files: [wp-content/plugins/ninja-forms/ninja-forms.php]
+rules:
+  - {table: "{prefix}{site}postmeta", where: {meta_key: "_field_*"}, column: meta_value, rule: text, explain: "a submission's field value; ninja-field-types fakes typed fields and the rest are scrubbed"}
+  - {table: "{prefix}{site}nf3_object_meta", column: value, rule: text, explain: "settings of saved objects, which can hold submitted values"}
+  - {table: "{prefix}{site}nf3_object_meta", column: meta_value, rule: text, explain: "the same settings in the newer column"}
+truncate:
+  - "{prefix}{site}nf3_chunks" # partly uploaded submissions
+row_fixes: [ninja-field-types]

@@ -1,0 +1,19 @@
+# Positive and negative rows for every rule of the automatewoo profile.
+# Blogs 2 and 11 exist (their options tables), so {site} tables have wp_2_ and
+# wp_11_ copies; blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
+tables: [wp_2_options, wp_11_options]
+rules:
+  "automatewoo.automatewoo_guests.email":
+    positive: {table: wp_automatewoo_guests, row: {email: "anna.lee@example.com"}}
+    negative: {table: wp_12_automatewoo_guests, row: {email: "anna.lee@example.com"}}
+  "automatewoo.automatewoo_guest_meta.meta_value":
+    positive: {table: wp_2_automatewoo_guest_meta, row: {meta_value: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_automatewoo_guest_meta, row: {meta_value: "Call Anna on +44 7700 900123"}}
+  "automatewoo.automatewoo_log_meta.meta_value":
+    positive: {table: wp_automatewoo_log_meta, row: {meta_value: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_automatewoo_log_meta, row: {meta_value: "Call Anna on +44 7700 900123"}}
+lists:
+  "truncate:{prefix}{site}automatewoo_queue": {positive: wp_automatewoo_queue, negative: wp_12_automatewoo_queue}
+  "truncate:{prefix}{site}automatewoo_queue_meta": {positive: wp_automatewoo_queue_meta, negative: wp_12_automatewoo_queue_meta}
+  "truncate:{prefix}{site}automatewoo_abandoned_carts": {positive: wp_automatewoo_abandoned_carts, negative: wp_12_automatewoo_abandoned_carts}
+  "truncate:{prefix}{site}automatewoo_customers": {positive: wp_2_automatewoo_customers, negative: wp_12_automatewoo_customers}

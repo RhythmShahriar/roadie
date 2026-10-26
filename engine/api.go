@@ -5,16 +5,13 @@
 // the compiled rules in parallel while keeping input order, writes the
 // target, turns side effects off and hands the copy to verify.
 //
-// The exported names in this file are the frozen cross-lane API; the
-// engine lane replaces the bodies, which return core.ErrNotBuilt until then.
+// The exported names in this file are the frozen cross-lane API. Run is
+// in run.go and VerifyJob in verifyjob.go.
 package engine
 
 import (
-	"context"
-
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/roadiecfg"
-	"github.com/RhythmShahriar/roadie/verify"
 )
 
 // Mode is the command being run.
@@ -78,16 +75,4 @@ type Job struct {
 	Confirm  func(question, expect string) (bool, error) // nil: no terminal
 	Progress core.Progress
 	Clock    core.Clock
-}
-
-// Run runs the job.
-func Run(ctx context.Context, j Job) (*core.Result, error) {
-	return nil, core.ErrNotBuilt
-}
-
-// VerifyJob builds a standalone verify: opens the target read-only for its schema, detects stack and
-// profiles, compiles the covering rules and the kill-switch Steps; with from set it runs pass 1 over
-// production read-only to fill Known and ProductionPairs (exact mode).
-func VerifyJob(ctx context.Context, j Job, target core.Endpoint, from *core.Endpoint) (verify.Job, error) {
-	return verify.Job{}, core.ErrNotBuilt
 }

@@ -1,0 +1,34 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Laravel: the fixed tables of the skeleton, Fortify and the first-party
+# packages. An app's own tables come from laravel.tables in
+# .roadie/config.yaml, which turns into rules beside these.
+id: laravel
+name: Laravel
+stack: laravel
+checked_against: "docs: https://github.com/laravel/laravel/blob/12.x/database/migrations/0001_01_01_000000_create_users_table.php"
+detect:
+  tables_any: [migrations]
+rules:
+  - {table: users, column: name, rule: full_name, explain: "the account's name"}
+  - {table: users, column: email, rule: email, explain: "the account's email"}
+  - {table: users, column: password, rule: password, explain: "the password hash; reset so no real password works on the copy"}
+  - {table: users, column: remember_token, rule: "null", explain: "the remember-me token that would log in to the copy"}
+  - {table: users, column: two_factor_secret, rule: "null", explain: "the Fortify two-factor secret, encrypted with the old APP_KEY"}
+  - {table: users, column: two_factor_recovery_codes, rule: "null", explain: "the Fortify recovery codes"}
+  - {table: notifications, column: data, rule: text, explain: "the notification's JSON, which often names the person"}
+truncate:
+  - password_reset_tokens  # pending password resets
+  - password_resets        # the same before Laravel 10
+  - sessions               # logged-in sessions with IP addresses and browsers
+  - personal_access_tokens # Sanctum API tokens
+  - cache                  # cached values, rebuilt on demand
+  - cache_locks
+  - jobs                   # queued jobs from production would run on the copy
+  - job_batches
+  - failed_jobs            # failed job payloads with the data they carried
+  - telescope_entries      # Telescope's request, mail and query log
+  - telescope_entries_tags
+  - telescope_monitoring
+  - "pulse_*"              # Pulse metrics with user IDs and URLs

@@ -1,0 +1,7 @@
+# Positive and negative rows for every rule of the wp-mail-smtp profile.
+# Blogs 2 and 11 exist (their options tables), so {site} tables have wp_2_ and
+# wp_11_ copies; blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
+tables: [wp_2_options, wp_11_options]
+lists:
+  "truncate:{prefix}{site}wpmailsmtp_emails_log": {positive: wp_wpmailsmtp_emails_log, negative: wp_12_wpmailsmtp_emails_log}
+  "truncate:{prefix}{site}wpmailsmtp_debug_events": {positive: wp_2_wpmailsmtp_debug_events, negative: wp_12_wpmailsmtp_debug_events}

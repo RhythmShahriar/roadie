@@ -1,0 +1,27 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# WordPress multisite network tables. Each blog's own tables are covered
+# by the other profiles through {site}.
+id: multisite
+name: WordPress multisite
+stack: wordpress
+checked_against: "docs: https://raw.githubusercontent.com/WordPress/WordPress/6.8-branch/wp-admin/includes/schema.php"
+detect:
+  tables_any: ["{prefix}blogs", "{prefix}sitemeta"]
+rules:
+  - {table: "{prefix}blogs", column: domain, rule: rewrite-url, explain: "the blog's host, a bare host rewritten to its staging host"}
+  - {table: "{prefix}blogs", column: path, rule: rewrite-url, explain: "the blog's path, rewritten only when the staging URL has another path"}
+  - {table: "{prefix}site", column: domain, rule: rewrite-url, explain: "the network's host"}
+  - {table: "{prefix}site", column: path, rule: rewrite-url, explain: "the network's path"}
+  - {table: "{prefix}sitemeta", where: {meta_key: admin_email}, column: meta_value, rule: email, explain: "the network admin's email"}
+  - {table: "{prefix}sitemeta", where: {meta_key: site_admins}, column: meta_value, rule: "serialized:*=username", explain: "the logins of the super admins, a serialized list"}
+  - {table: "{prefix}sitemeta", where: {meta_key: siteurl}, column: meta_value, rule: rewrite-url, explain: "the network URL"}
+  - {table: "{prefix}sitemeta", where: {meta_key: "*domain*"}, column: meta_value, rule: rewrite-url, explain: "a network setting named for a domain (a domain-mapping plugin's, for example); a bare host is rewritten to its staging host"}
+  - {table: "{prefix}signups", column: user_email, rule: email, explain: "the email of a pending sign-up"}
+  - {table: "{prefix}signups", column: user_login, rule: username, explain: "the login a sign-up asked for"}
+  - {table: "{prefix}signups", column: meta, rule: text, explain: "sign-up details, a serialized array"}
+  - {table: "{prefix}signups", column: activation_key, rule: blank, explain: "the key that activates the sign-up"}
+  - {table: "{prefix}registration_log", column: email, rule: email, explain: "who registered a blog"}
+  - {table: "{prefix}registration_log", column: IP, rule: ip, explain: "the IP address of the registration"}
+  - {table: "{prefix}blogmeta", column: meta_value, rule: text, explain: "blog metadata of any plugin, scrubbed as free text"}

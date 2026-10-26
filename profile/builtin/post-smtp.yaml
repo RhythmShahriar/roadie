@@ -1,0 +1,17 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Post SMTP keeps a copy of every mail sent: recipients, subjects and
+# bodies. A staging copy needs none of it, so the log is truncated.
+id: post-smtp
+name: Post SMTP
+stack: wordpress
+checked_against: "docs: https://plugins.svn.wordpress.org/post-smtp/trunk/Postman/Postman-Email-Log/PostmanEmailLogService.php"
+detect:
+  tables_any: ["{prefix}{site}post_smtp_logs", "{prefix}{site}post_smtp_logmeta"]
+  files: [wp-content/plugins/post-smtp/postman-smtp.php]
+rules:
+  - {table: "{prefix}{site}posts", where: {post_type: postman_sent_mail}, column: post_content, rule: delete-row, explain: "a mail logged by Post SMTP before 2.5, kept as a post"}
+truncate:
+  - "{prefix}{site}post_smtp_logs"
+  - "{prefix}{site}post_smtp_logmeta"

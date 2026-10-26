@@ -1,0 +1,43 @@
+# Positive and negative rows for every rule of the wpforms profile.
+# Blogs 2 and 11 exist (their options tables), so {site} tables have wp_2_ and
+# wp_11_ copies; blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
+tables: [wp_2_options, wp_11_options]
+rules:
+  "wpforms.wpforms_entries.fields":
+    positive: {table: wp_wpforms_entries, row: {fields: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_wpforms_entries, row: {fields: "Call Anna on +44 7700 900123"}}
+  "wpforms.wpforms_entries.meta":
+    positive: {table: wp_2_wpforms_entries, row: {meta: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_wpforms_entries, row: {meta: "Call Anna on +44 7700 900123"}}
+  "wpforms.wpforms_entries.ip_address":
+    positive: {table: wp_11_wpforms_entries, row: {ip_address: "203.0.113.9"}}
+    negative: {table: wp_12_wpforms_entries, row: {ip_address: "203.0.113.9"}}
+  "wpforms.wpforms_entries.user_agent":
+    positive: {table: wp_wpforms_entries, row: {user_agent: "Mozilla/5.0"}}
+    negative: {table: wp_12_wpforms_entries, row: {user_agent: "Mozilla/5.0"}}
+  "wpforms.wpforms_entries.user_uuid":
+    positive: {table: wp_2_wpforms_entries, row: {user_uuid: "x"}}
+    negative: {table: wp_12_wpforms_entries, row: {user_uuid: "x"}}
+  "wpforms.wpforms_entry_fields.value":
+    positive: {table: wp_11_wpforms_entry_fields, row: {value: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_wpforms_entry_fields, row: {value: "Call Anna on +44 7700 900123"}}
+  "wpforms.wpforms_entry_meta.data":
+    positive: {table: wp_wpforms_entry_meta, row: {data: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_wpforms_entry_meta, row: {data: "Call Anna on +44 7700 900123"}}
+  "wpforms.wpforms_payments.title":
+    positive: {table: wp_2_wpforms_payments, row: {title: "Anna Lee"}}
+    negative: {table: wp_12_wpforms_payments, row: {title: "Anna Lee"}}
+  "wpforms.wpforms_payments.customer_id":
+    positive: {table: wp_11_wpforms_payments, row: {customer_id: "x"}}
+    negative: {table: wp_12_wpforms_payments, row: {customer_id: "x"}}
+  "wpforms.wpforms_payments.transaction_id":
+    positive: {table: wp_wpforms_payments, row: {transaction_id: "x"}}
+    negative: {table: wp_12_wpforms_payments, row: {transaction_id: "x"}}
+  "wpforms.wpforms_payments.subscription_id":
+    positive: {table: wp_2_wpforms_payments, row: {subscription_id: "x"}}
+    negative: {table: wp_12_wpforms_payments, row: {subscription_id: "x"}}
+  "wpforms.wpforms_payment_meta.meta_value":
+    positive: {table: wp_11_wpforms_payment_meta, row: {meta_value: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_wpforms_payment_meta, row: {meta_value: "Call Anna on +44 7700 900123"}}
+lists:
+  "truncate:{prefix}{site}wpforms_logs": {positive: wp_wpforms_logs, negative: wp_12_wpforms_logs}

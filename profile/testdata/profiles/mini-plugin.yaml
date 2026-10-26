@@ -1,0 +1,10 @@
+id: mini-plugin
+name: A plugin for detection tests
+stack: wordpress
+checked_against: "install: Mini Plugin 1.0"
+detect:
+  tables_any: ["{prefix}{site}mini_entries"]
+  options_any: [mini_version]
+  files: [wp-content/plugins/mini/mini.php]
+rules:
+  - {table: "{prefix}{site}mini_entries", column: email, rule: email, explain: "entry email"}

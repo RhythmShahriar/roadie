@@ -1,0 +1,6 @@
+# Positive and negative rows for every rule of the email-log profile.
+# Blogs 2 and 11 exist (their options tables), so {site} tables have wp_2_ and
+# wp_11_ copies; blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
+tables: [wp_2_options, wp_11_options]
+lists:
+  "truncate:{prefix}{site}email_log": {positive: wp_email_log, negative: wp_12_email_log}

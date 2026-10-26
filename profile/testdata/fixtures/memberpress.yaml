@@ -1,0 +1,49 @@
+# Positive and negative rows for every rule of the memberpress profile.
+# Its tables are network-wide ({prefix} only), so a blog's wp_2_ copy is a
+# lookalike.
+tables: [wp_2_options]
+rules:
+  "memberpress.mepr_transactions.ip_addr":
+    positive: {table: wp_mepr_transactions, row: {ip_addr: "203.0.113.9"}}
+    negative: {table: wp_2_mepr_transactions, row: {ip_addr: "203.0.113.9"}}
+  "memberpress.mepr_transactions.trans_num":
+    positive: {table: wp_mepr_transactions, row: {trans_num: "x"}}
+    negative: {table: wp_2_mepr_transactions, row: {trans_num: "x"}}
+  "memberpress.mepr_transactions.response":
+    positive: {table: wp_mepr_transactions, row: {response: "x"}}
+    negative: {table: wp_2_mepr_transactions, row: {response: "x"}}
+  "memberpress.mepr_subscriptions.subscr_id":
+    positive: {table: wp_mepr_subscriptions, row: {subscr_id: "x"}}
+    negative: {table: wp_2_mepr_subscriptions, row: {subscr_id: "x"}}
+  "memberpress.mepr_subscriptions.ip_addr":
+    positive: {table: wp_mepr_subscriptions, row: {ip_addr: "203.0.113.9"}}
+    negative: {table: wp_2_mepr_subscriptions, row: {ip_addr: "203.0.113.9"}}
+  "memberpress.mepr_subscriptions.token":
+    positive: {table: wp_mepr_subscriptions, row: {token: "x"}}
+    negative: {table: wp_2_mepr_subscriptions, row: {token: "x"}}
+  "memberpress.mepr_subscriptions.cc_last4":
+    positive: {table: wp_mepr_subscriptions, row: {cc_last4: "x"}}
+    negative: {table: wp_2_mepr_subscriptions, row: {cc_last4: "x"}}
+  "memberpress.mepr_subscriptions.response":
+    positive: {table: wp_mepr_subscriptions, row: {response: "x"}}
+    negative: {table: wp_2_mepr_subscriptions, row: {response: "x"}}
+  "memberpress.usermeta.meta_value.mepr-address-one":
+    positive: {table: wp_usermeta, row: {meta_value: "1 High Street", meta_key: "mepr-address-one"}}
+    negative: {table: wp_usermeta, row: {meta_value: "1 High Street", meta_key: "xmepr-address-one"}}
+  "memberpress.usermeta.meta_value.mepr-address-two":
+    positive: {table: wp_usermeta, row: {meta_value: "1 High Street", meta_key: "mepr-address-two"}}
+    negative: {table: wp_usermeta, row: {meta_value: "1 High Street", meta_key: "xmepr-address-two"}}
+  "memberpress.usermeta.meta_value.mepr-address-city":
+    positive: {table: wp_usermeta, row: {meta_value: "Leeds", meta_key: "mepr-address-city"}}
+    negative: {table: wp_usermeta, row: {meta_value: "Leeds", meta_key: "xmepr-address-city"}}
+  "memberpress.usermeta.meta_value.mepr-address-zip":
+    positive: {table: wp_usermeta, row: {meta_value: "LS1 4AP", meta_key: "mepr-address-zip"}}
+    negative: {table: wp_usermeta, row: {meta_value: "LS1 4AP", meta_key: "xmepr-address-zip"}}
+  "memberpress.usermeta.meta_value.mepr-address-state":
+    positive: {table: wp_usermeta, row: {meta_value: "x", meta_key: "mepr-address-state"}}
+    negative: {table: wp_usermeta, row: {meta_value: "x", meta_key: "xmepr-address-state"}}
+  "memberpress.usermeta.meta_value.mepr-address-country":
+    positive: {table: wp_usermeta, row: {meta_value: "x", meta_key: "mepr-address-country"}}
+    negative: {table: wp_usermeta, row: {meta_value: "x", meta_key: "xmepr-address-country"}}
+lists:
+  "keep:{prefix}mepr_members": {positive: wp_mepr_members, negative: wp_2_mepr_members}

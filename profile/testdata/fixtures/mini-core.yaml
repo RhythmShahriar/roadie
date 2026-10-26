@@ -1,0 +1,35 @@
+# Broken on purpose: TestFixtureHarnessCatchesGaps checks the harness
+# reports each gap. Blog 2 makes the schema a multisite.
+tables: [wp_2_options]
+rules:
+  mini-core.users.user_email:
+    positive: {table: wp_users, row: {user_email: anna@example.com}}
+    negative: {table: wp_users, row: {user_email: anna@example.com}}
+  mini-core.users.user_pass:
+    positive: {table: wp_users, row: {user_pass: "$P$Bhash"}}
+    negative: {table: wp_usersx, row: {user_pass: "$P$Bhash"}}
+  mini-core.comments.comment_content:
+    positive: {table: wp_2_comments, row: {comment_content: "call me"}}
+    negative: {table: wp_22_comments, row: {comment_content: "call me"}}
+  mini-core.postmeta.meta_value._billing_email:
+    positive: {table: wp_postmeta, row: {meta_key: _billing_email, meta_value: anna@example.com}}
+    negative: {table: wp_postmeta, row: {meta_key: _shipping_email, meta_value: anna@example.com}}
+  mini-core.postmeta.meta_value._billing_city:
+    positive: {table: wp_postmeta, row: {meta_key: _billing_city, meta_value: Leeds}}
+    negative: {table: wp_postmeta, row: {meta_key: _shipping_city, meta_value: Leeds}}
+  mini-core.postmeta.meta_value._billing_country:
+    positive: {table: wp_postmeta, row: {meta_key: _billing_country, meta_value: GB}}
+    negative: {table: wp_postmeta, row: {meta_key: _order_currency, meta_value: GBP}}
+  mini-core.postmeta.meta_value.billing-rest:
+    positive: {table: wp_postmeta, row: {meta_key: _billing_phone, meta_value: "+44 7700 900123"}}
+    negative: {table: wp_postmeta, row: {meta_key: _order_total, meta_value: "10.00"}}
+  mini-core.options.option_value._transient_*:
+    positive: {table: wp_options, row: {option_name: _transient_x, option_value: "1"}}
+    negative: {table: wp_options, row: {option_name: blogname, option_value: Shop}}
+  mini-core.options.option_value.woocommerce_stripe_settings.serialized:secret_key:
+    positive: {table: wp_2_options, row: {option_name: woocommerce_stripe_settings, option_value: "a:0:{}"}}
+    negative: {table: wp_2_options, row: {option_name: woocommerce_paypal_settings, option_value: "a:0:{}"}}
+lists:
+  truncate:{prefix}{site}sessions: {positive: wp_sessions, negative: wp_2_sessions}
+  drop:{prefix}old_log: {positive: wp_old_log, negative: wp_2_old_log}
+  keep:{prefix}{site}stats: {positive: wp_2_stats, negative: wp_statsx}

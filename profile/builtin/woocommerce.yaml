@@ -1,0 +1,65 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# WooCommerce orders in posts and postmeta (the legacy store and the
+# copy HPOS keeps in compatibility mode), customers, downloads and
+# webhooks. The HPOS tables are in woocommerce-hpos.
+id: woocommerce
+name: WooCommerce
+stack: wordpress
+checked_against: "docs: https://raw.githubusercontent.com/woocommerce/woocommerce/9.8.0/plugins/woocommerce/includes/class-wc-install.php"
+detect:
+  tables_any: ["{prefix}{site}woocommerce_order_items", "{prefix}{site}wc_customer_lookup"]
+  options_any: [woocommerce_version]
+  files: [wp-content/plugins/woocommerce/woocommerce.php]
+rules:
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _billing_email}, column: meta_value, rule: email, explain: "the order's billing email"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _billing_phone}, column: meta_value, rule: phone, explain: "the order's billing phone"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _billing_first_name}, column: meta_value, rule: first_name, explain: "the order's billing first name"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _billing_last_name}, column: meta_value, rule: last_name, explain: "the order's billing last name"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _billing_company}, column: meta_value, rule: company, explain: "the order's billing company"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _billing_address_1}, column: meta_value, rule: street, explain: "the order's billing street"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _billing_address_2}, column: meta_value, rule: street, explain: "the order's billing second address line"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _billing_city}, column: meta_value, rule: city, part: city, explain: "the order's billing city"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _billing_postcode}, column: meta_value, rule: postcode, part: postcode, explain: "the order's billing postcode"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _billing_country}, column: meta_value, rule: blank, part: country, explain: "the order's billing country"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _billing_state}, column: meta_value, rule: blank, part: state, explain: "the order's billing state"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _billing_address_index}, column: meta_value, rule: text, explain: "the billing search index; the hpos-address-index row fix rebuilds it from the fake parts"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _shipping_phone}, column: meta_value, rule: phone, explain: "the order's shipping phone"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _shipping_first_name}, column: meta_value, rule: first_name, explain: "the order's shipping first name"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _shipping_last_name}, column: meta_value, rule: last_name, explain: "the order's shipping last name"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _shipping_company}, column: meta_value, rule: company, explain: "the order's shipping company"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _shipping_address_1}, column: meta_value, rule: street, explain: "the order's shipping street"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _shipping_address_2}, column: meta_value, rule: street, explain: "the order's shipping second address line"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _shipping_city}, column: meta_value, rule: city, part: city, explain: "the order's shipping city"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _shipping_postcode}, column: meta_value, rule: postcode, part: postcode, explain: "the order's shipping postcode"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _shipping_country}, column: meta_value, rule: blank, part: country, explain: "the order's shipping country"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _shipping_state}, column: meta_value, rule: blank, part: state, explain: "the order's shipping state"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: _shipping_address_index}, column: meta_value, rule: text, explain: "the shipping search index; the hpos-address-index row fix rebuilds it from the fake parts"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: "_customer_ip_address"}, column: meta_value, rule: ip, explain: "the IP address the order came from"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: "_customer_user_agent"}, column: meta_value, rule: user_agent, explain: "the browser the order came from"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: "_stripe_customer_id"}, column: meta_value, rule: blank, explain: "the Stripe customer ID, which reaches the live Stripe account"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: "_stripe_source_id"}, column: meta_value, rule: blank, explain: "the Stripe payment source ID"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: "_stripe_intent_id"}, column: meta_value, rule: blank, explain: "the Stripe payment intent ID"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: "_payment_tokens"}, column: meta_value, rule: blank, explain: "saved payment token IDs"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: "_billing_vat_number"}, column: meta_value, rule: blank, explain: "the customer's VAT number"}
+  - {table: "{prefix}{site}postmeta", where: {meta_key: "_wcpay_*customer*"}, column: meta_value, rule: blank, explain: "WooPayments customer IDs"}
+  - {table: "{prefix}{site}posts", where: {post_type: "shop_order*"}, column: post_excerpt, rule: text, explain: "the customer's note on a legacy order (a refund's reason on a refund); free text"}
+  - {table: "{prefix}{site}wc_customer_lookup", column: first_name, rule: first_name, explain: "the customer's first name in the analytics lookup"}
+  - {table: "{prefix}{site}wc_customer_lookup", column: last_name, rule: last_name, explain: "the customer's last name"}
+  - {table: "{prefix}{site}wc_customer_lookup", column: email, rule: email, explain: "the customer's email"}
+  - {table: "{prefix}{site}wc_customer_lookup", column: username, rule: username, explain: "the customer's login"}
+  - {table: "{prefix}{site}wc_customer_lookup", column: city, rule: city, part: city, explain: "the customer's city"}
+  - {table: "{prefix}{site}wc_customer_lookup", column: postcode, rule: postcode, part: postcode, explain: "the customer's postcode"}
+  - {table: "{prefix}{site}woocommerce_downloadable_product_permissions", column: user_email, rule: email, explain: "the email a download was granted to"}
+  - {table: "{prefix}{site}wc_download_log", column: user_ip_address, rule: ip, explain: "the IP address of a download"}
+  - {table: "{prefix}{site}wc_webhooks", column: status, rule: "fixed:paused", explain: "webhooks paused so the copy never calls the live endpoints"}
+  - {table: "{prefix}{site}wc_webhooks", column: secret, rule: blank, explain: "the webhook signing secret"}
+  - {table: "{prefix}{site}wc_webhooks", column: delivery_url, rule: keep, explain: "kept so the webhook can be checked; it is paused"}
+truncate:
+  - "{prefix}{site}woocommerce_sessions"
+  - "{prefix}{site}woocommerce_payment_tokens"
+  - "{prefix}{site}woocommerce_payment_tokenmeta"
+  - "{prefix}{site}woocommerce_api_keys"
+  - "{prefix}{site}wc_admin_note_actions"
+row_fixes: [hpos-address-index]

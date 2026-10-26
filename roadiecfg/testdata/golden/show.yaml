@@ -1,0 +1,53 @@
+# Effective settings from .roadie/config.yaml and the defaults; each value names its source.
+source: mysql://shop:•••@db.shop.com/shop  # file
+target: /var/www/staging  # file
+url: https://staging.shop.test  # flag
+production:  # file
+  - shop.com  # file
+url_map: {}  # default
+stack: wordpress  # file
+profiles: [auto]  # default
+remote:
+  wp: wp  # default
+pseudonymise:
+  email_domain: example.invalid  # default
+  phone_style: echo  # default
+  locale: en  # default
+  keep: [country, state]  # default
+  keep_users: [admin]  # file
+  consistency: per-run  # default
+  on_unparseable: blank  # default
+  passwords: reset  # default
+  free_text: scrub  # default
+drop: []  # default
+truncate: []  # default
+columns: []  # default
+keys:
+  mode: swap  # default
+  test_keys: {paypal: '${ROADIE_PAYPAL_TEST}', stripe: sk_t•••••}  # file
+  ignore: []  # default
+side_effects:
+  echo:
+    install: true  # default
+    url: http://127.0.0.1:8025  # default
+    mode: seal  # default
+    proxy: ""  # default
+  cron: pause  # default
+  action_scheduler: pause  # default
+  webhooks: pause  # default
+  gateways: test-mode  # default
+  subscriptions: staging  # default
+  mail: seal  # default
+noindex: true  # default
+basic_auth: false  # default
+verify:
+  fail_on: high  # default
+  allow_emails: []  # default
+  allow_phones: []  # default
+  skip: []  # default
+  sign: true  # default
+  ignore: []  # default
+laravel:
+  env_file: .env  # default
+  tables: {}  # default
+  env: {}  # default

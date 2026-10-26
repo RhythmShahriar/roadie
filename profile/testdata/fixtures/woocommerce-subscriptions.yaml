@@ -1,0 +1,17 @@
+# Positive and negative rows for every rule of the woocommerce-subscriptions profile.
+# Blogs 2 and 11 exist (their options tables), so {site} tables have wp_2_ and
+# wp_11_ copies; blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
+tables: [wp_2_options, wp_11_options]
+rules:
+  "woocommerce-subscriptions.postmeta.meta_value._payment_method_token":
+    positive: {table: wp_postmeta, row: {meta_value: "x", meta_key: "_payment_method_token"}}
+    negative: {table: wp_postmeta, row: {meta_value: "x", meta_key: "x_payment_method_token"}}
+  "woocommerce-subscriptions.wc_orders_meta.meta_value._payment_method_token":
+    positive: {table: wp_2_wc_orders_meta, row: {meta_value: "x", meta_key: "_payment_method_token"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "x", meta_key: "x_payment_method_token"}}
+  "woocommerce-subscriptions.posts.post_excerpt.shop_subscription":
+    positive: {table: wp_posts, row: {post_excerpt: "Ring Anna on +44 7700 900123", post_type: "shop_subscription"}}
+    negative: {table: wp_posts, row: {post_excerpt: "Ring Anna on +44 7700 900123", post_type: "shop_order"}}
+  "woocommerce-subscriptions.options.option_value.wc_subscriptions_siteurl":
+    positive: {table: wp_options, row: {option_value: "x", option_name: "wc_subscriptions_siteurl"}}
+    negative: {table: wp_options, row: {option_value: "x", option_name: "xwc_subscriptions_siteurl"}}

@@ -1,0 +1,16 @@
+# Positive and negative rows for every rule of the ninja-forms profile.
+# Blogs 2 and 11 exist (their options tables), so {site} tables have wp_2_ and
+# wp_11_ copies; blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
+tables: [wp_2_options, wp_11_options]
+rules:
+  "ninja-forms.postmeta.meta_value._field_*":
+    positive: {table: wp_postmeta, row: {meta_value: "Call Anna on +44 7700 900123", meta_key: "_field_3"}}
+    negative: {table: wp_postmeta, row: {meta_value: "Call Anna on +44 7700 900123", meta_key: "x_field_3"}}
+  "ninja-forms.nf3_object_meta.value":
+    positive: {table: wp_2_nf3_object_meta, row: {value: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_nf3_object_meta, row: {value: "Call Anna on +44 7700 900123"}}
+  "ninja-forms.nf3_object_meta.meta_value":
+    positive: {table: wp_11_nf3_object_meta, row: {meta_value: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_nf3_object_meta, row: {meta_value: "Call Anna on +44 7700 900123"}}
+lists:
+  "truncate:{prefix}{site}nf3_chunks": {positive: wp_nf3_chunks, negative: wp_12_nf3_chunks}

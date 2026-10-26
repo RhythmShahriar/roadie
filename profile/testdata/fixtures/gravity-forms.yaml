@@ -1,0 +1,29 @@
+# Positive and negative rows for every rule of the gravity-forms profile.
+# Blogs 2 and 11 exist (their options tables), so {site} tables have wp_2_ and
+# wp_11_ copies; blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
+tables: [wp_2_options, wp_11_options]
+rules:
+  "gravity-forms.gf_entry.ip":
+    positive: {table: wp_gf_entry, row: {ip: "203.0.113.9"}}
+    negative: {table: wp_12_gf_entry, row: {ip: "203.0.113.9"}}
+  "gravity-forms.gf_entry.user_agent":
+    positive: {table: wp_2_gf_entry, row: {user_agent: "Mozilla/5.0"}}
+    negative: {table: wp_12_gf_entry, row: {user_agent: "Mozilla/5.0"}}
+  "gravity-forms.gf_entry.source_url":
+    positive: {table: wp_11_gf_entry, row: {source_url: "x"}}
+    negative: {table: wp_12_gf_entry, row: {source_url: "x"}}
+  "gravity-forms.gf_entry.transaction_id":
+    positive: {table: wp_gf_entry, row: {transaction_id: "x"}}
+    negative: {table: wp_12_gf_entry, row: {transaction_id: "x"}}
+  "gravity-forms.gf_entry_meta.meta_value":
+    positive: {table: wp_2_gf_entry_meta, row: {meta_value: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_gf_entry_meta, row: {meta_value: "Call Anna on +44 7700 900123"}}
+  "gravity-forms.gf_entry_notes.value":
+    positive: {table: wp_11_gf_entry_notes, row: {value: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_gf_entry_notes, row: {value: "Call Anna on +44 7700 900123"}}
+  "gravity-forms.gf_entry_notes.user_name":
+    positive: {table: wp_gf_entry_notes, row: {user_name: "Anna Lee"}}
+    negative: {table: wp_12_gf_entry_notes, row: {user_name: "Anna Lee"}}
+lists:
+  "truncate:{prefix}{site}gf_draft_submissions": {positive: wp_gf_draft_submissions, negative: wp_12_gf_draft_submissions}
+  "truncate:{prefix}{site}gf_form_view": {positive: wp_2_gf_form_view, negative: wp_12_gf_form_view}

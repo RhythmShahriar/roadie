@@ -1,0 +1,20 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Laravel Cashier (Stripe): the customer and payment method columns it
+# adds to the billable model and its subscription tables.
+id: laravel-cashier
+name: Laravel Cashier
+stack: laravel
+checked_against: "docs: https://github.com/laravel/cashier-stripe/tree/15.x/database/migrations"
+detect:
+  tables_any: [subscription_items]
+rules:
+  - {table: users, column: stripe_id, rule: "null", explain: "the live Stripe customer ID; null so the copy can't charge it"}
+  - {table: users, column: pm_type, rule: "null", explain: "the saved card's brand"}
+  - {table: users, column: pm_last_four, rule: "null", explain: "the saved card's last four digits"}
+  - {table: users, column: trial_ends_at, rule: keep, explain: "a date, kept so trials behave the same"}
+  - {table: subscriptions, column: stripe_id, rule: keep, explain: "the subscription's Stripe ID, useless without the live key"}
+  - {table: subscriptions, column: stripe_price, rule: keep, explain: "the price ID, needed to show the plan"}
+keep:
+  - subscription_items # price IDs and quantities only

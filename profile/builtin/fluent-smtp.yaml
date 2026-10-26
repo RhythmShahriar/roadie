@@ -1,0 +1,14 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# FluentSMTP keeps a copy of every mail sent: recipients, subjects and
+# bodies. A staging copy needs none of it, so the log is truncated.
+id: fluent-smtp
+name: FluentSMTP
+stack: wordpress
+checked_against: "docs: https://plugins.svn.wordpress.org/fluent-smtp/trunk/database/migrations/EmailLogs.php"
+detect:
+  tables_any: ["{prefix}{site}fsmpt_email_logs"]
+  files: [wp-content/plugins/fluent-smtp/fluent-smtp.php]
+truncate:
+  - "{prefix}{site}fsmpt_email_logs"

@@ -1,0 +1,149 @@
+# Positive and negative rows for every rule of the woocommerce-hpos profile.
+# Blogs 2 and 11 exist (their options tables), so {site} tables have wp_2_ and
+# wp_11_ copies; blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
+tables: [wp_2_options, wp_11_options]
+rules:
+  "woocommerce-hpos.wc_orders.billing_email":
+    positive: {table: wp_wc_orders, row: {billing_email: "anna.lee@example.com"}}
+    negative: {table: wp_12_wc_orders, row: {billing_email: "anna.lee@example.com"}}
+  "woocommerce-hpos.wc_orders.ip_address":
+    positive: {table: wp_2_wc_orders, row: {ip_address: "203.0.113.9"}}
+    negative: {table: wp_12_wc_orders, row: {ip_address: "203.0.113.9"}}
+  "woocommerce-hpos.wc_orders.user_agent":
+    positive: {table: wp_wc_orders, row: {user_agent: "Mozilla/5.0"}}
+    negative: {table: wp_12_wc_orders, row: {user_agent: "Mozilla/5.0"}}
+  "woocommerce-hpos.wc_orders.customer_note":
+    positive: {table: wp_11_wc_orders, row: {customer_note: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_wc_orders, row: {customer_note: "Call Anna on +44 7700 900123"}}
+  "woocommerce-hpos.wc_orders.transaction_id":
+    positive: {table: wp_wc_orders, row: {transaction_id: "x"}}
+    negative: {table: wp_12_wc_orders, row: {transaction_id: "x"}}
+  "woocommerce-hpos.wc_order_addresses.first_name":
+    positive: {table: wp_2_wc_order_addresses, row: {first_name: "Anna"}}
+    negative: {table: wp_12_wc_order_addresses, row: {first_name: "Anna"}}
+  "woocommerce-hpos.wc_order_addresses.last_name":
+    positive: {table: wp_wc_order_addresses, row: {last_name: "Lee"}}
+    negative: {table: wp_12_wc_order_addresses, row: {last_name: "Lee"}}
+  "woocommerce-hpos.wc_order_addresses.company":
+    positive: {table: wp_11_wc_order_addresses, row: {company: "Lee Ltd"}}
+    negative: {table: wp_12_wc_order_addresses, row: {company: "Lee Ltd"}}
+  "woocommerce-hpos.wc_order_addresses.address_1":
+    positive: {table: wp_wc_order_addresses, row: {address_1: "1 High Street"}}
+    negative: {table: wp_12_wc_order_addresses, row: {address_1: "1 High Street"}}
+  "woocommerce-hpos.wc_order_addresses.address_2":
+    positive: {table: wp_2_wc_order_addresses, row: {address_2: "1 High Street"}}
+    negative: {table: wp_12_wc_order_addresses, row: {address_2: "1 High Street"}}
+  "woocommerce-hpos.wc_order_addresses.city":
+    positive: {table: wp_wc_order_addresses, row: {city: "Leeds"}}
+    negative: {table: wp_12_wc_order_addresses, row: {city: "Leeds"}}
+  "woocommerce-hpos.wc_order_addresses.postcode":
+    positive: {table: wp_11_wc_order_addresses, row: {postcode: "LS1 4AP"}}
+    negative: {table: wp_12_wc_order_addresses, row: {postcode: "LS1 4AP"}}
+  "woocommerce-hpos.wc_order_addresses.country":
+    positive: {table: wp_wc_order_addresses, row: {country: "x"}}
+    negative: {table: wp_12_wc_order_addresses, row: {country: "x"}}
+  "woocommerce-hpos.wc_order_addresses.state":
+    positive: {table: wp_2_wc_order_addresses, row: {state: "x"}}
+    negative: {table: wp_12_wc_order_addresses, row: {state: "x"}}
+  "woocommerce-hpos.wc_order_addresses.email":
+    positive: {table: wp_wc_order_addresses, row: {email: "anna.lee@example.com"}}
+    negative: {table: wp_12_wc_order_addresses, row: {email: "anna.lee@example.com"}}
+  "woocommerce-hpos.wc_order_addresses.phone":
+    positive: {table: wp_11_wc_order_addresses, row: {phone: "+44 7700 900123"}}
+    negative: {table: wp_12_wc_order_addresses, row: {phone: "+44 7700 900123"}}
+  "woocommerce-hpos.wc_order_operational_data.order_key":
+    positive: {table: wp_wc_order_operational_data, row: {order_key: "x"}}
+    negative: {table: wp_12_wc_order_operational_data, row: {order_key: "x"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._billing_email":
+    positive: {table: wp_2_wc_orders_meta, row: {meta_value: "anna.lee@example.com", meta_key: "_billing_email"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "anna.lee@example.com", meta_key: "x_billing_email"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._billing_phone":
+    positive: {table: wp_wc_orders_meta, row: {meta_value: "+44 7700 900123", meta_key: "_billing_phone"}}
+    negative: {table: wp_wc_orders_meta, row: {meta_value: "+44 7700 900123", meta_key: "x_billing_phone"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._billing_first_name":
+    positive: {table: wp_11_wc_orders_meta, row: {meta_value: "Anna", meta_key: "_billing_first_name"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "Anna", meta_key: "x_billing_first_name"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._billing_last_name":
+    positive: {table: wp_wc_orders_meta, row: {meta_value: "Lee", meta_key: "_billing_last_name"}}
+    negative: {table: wp_wc_orders_meta, row: {meta_value: "Lee", meta_key: "x_billing_last_name"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._billing_company":
+    positive: {table: wp_2_wc_orders_meta, row: {meta_value: "Lee Ltd", meta_key: "_billing_company"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "Lee Ltd", meta_key: "x_billing_company"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._billing_address_1":
+    positive: {table: wp_wc_orders_meta, row: {meta_value: "1 High Street", meta_key: "_billing_address_1"}}
+    negative: {table: wp_wc_orders_meta, row: {meta_value: "1 High Street", meta_key: "x_billing_address_1"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._billing_address_2":
+    positive: {table: wp_11_wc_orders_meta, row: {meta_value: "1 High Street", meta_key: "_billing_address_2"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "1 High Street", meta_key: "x_billing_address_2"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._billing_city":
+    positive: {table: wp_wc_orders_meta, row: {meta_value: "Leeds", meta_key: "_billing_city"}}
+    negative: {table: wp_wc_orders_meta, row: {meta_value: "Leeds", meta_key: "x_billing_city"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._billing_postcode":
+    positive: {table: wp_2_wc_orders_meta, row: {meta_value: "LS1 4AP", meta_key: "_billing_postcode"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "LS1 4AP", meta_key: "x_billing_postcode"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._billing_country":
+    positive: {table: wp_wc_orders_meta, row: {meta_value: "x", meta_key: "_billing_country"}}
+    negative: {table: wp_wc_orders_meta, row: {meta_value: "x", meta_key: "x_billing_country"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._billing_state":
+    positive: {table: wp_11_wc_orders_meta, row: {meta_value: "x", meta_key: "_billing_state"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "x", meta_key: "x_billing_state"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._billing_address_index":
+    positive: {table: wp_wc_orders_meta, row: {meta_value: "Call Anna on +44 7700 900123", meta_key: "_billing_address_index"}}
+    negative: {table: wp_wc_orders_meta, row: {meta_value: "Call Anna on +44 7700 900123", meta_key: "x_billing_address_index"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._shipping_phone":
+    positive: {table: wp_2_wc_orders_meta, row: {meta_value: "+44 7700 900123", meta_key: "_shipping_phone"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "+44 7700 900123", meta_key: "x_shipping_phone"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._shipping_first_name":
+    positive: {table: wp_wc_orders_meta, row: {meta_value: "Anna", meta_key: "_shipping_first_name"}}
+    negative: {table: wp_wc_orders_meta, row: {meta_value: "Anna", meta_key: "x_shipping_first_name"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._shipping_last_name":
+    positive: {table: wp_11_wc_orders_meta, row: {meta_value: "Lee", meta_key: "_shipping_last_name"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "Lee", meta_key: "x_shipping_last_name"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._shipping_company":
+    positive: {table: wp_wc_orders_meta, row: {meta_value: "Lee Ltd", meta_key: "_shipping_company"}}
+    negative: {table: wp_wc_orders_meta, row: {meta_value: "Lee Ltd", meta_key: "x_shipping_company"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._shipping_address_1":
+    positive: {table: wp_2_wc_orders_meta, row: {meta_value: "1 High Street", meta_key: "_shipping_address_1"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "1 High Street", meta_key: "x_shipping_address_1"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._shipping_address_2":
+    positive: {table: wp_wc_orders_meta, row: {meta_value: "1 High Street", meta_key: "_shipping_address_2"}}
+    negative: {table: wp_wc_orders_meta, row: {meta_value: "1 High Street", meta_key: "x_shipping_address_2"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._shipping_city":
+    positive: {table: wp_11_wc_orders_meta, row: {meta_value: "Leeds", meta_key: "_shipping_city"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "Leeds", meta_key: "x_shipping_city"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._shipping_postcode":
+    positive: {table: wp_wc_orders_meta, row: {meta_value: "LS1 4AP", meta_key: "_shipping_postcode"}}
+    negative: {table: wp_wc_orders_meta, row: {meta_value: "LS1 4AP", meta_key: "x_shipping_postcode"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._shipping_country":
+    positive: {table: wp_2_wc_orders_meta, row: {meta_value: "x", meta_key: "_shipping_country"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "x", meta_key: "x_shipping_country"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._shipping_state":
+    positive: {table: wp_wc_orders_meta, row: {meta_value: "x", meta_key: "_shipping_state"}}
+    negative: {table: wp_wc_orders_meta, row: {meta_value: "x", meta_key: "x_shipping_state"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._shipping_address_index":
+    positive: {table: wp_11_wc_orders_meta, row: {meta_value: "Call Anna on +44 7700 900123", meta_key: "_shipping_address_index"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "Call Anna on +44 7700 900123", meta_key: "x_shipping_address_index"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._customer_ip_address":
+    positive: {table: wp_wc_orders_meta, row: {meta_value: "203.0.113.9", meta_key: "_customer_ip_address"}}
+    negative: {table: wp_wc_orders_meta, row: {meta_value: "203.0.113.9", meta_key: "x_customer_ip_address"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._customer_user_agent":
+    positive: {table: wp_2_wc_orders_meta, row: {meta_value: "Mozilla/5.0", meta_key: "_customer_user_agent"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "Mozilla/5.0", meta_key: "x_customer_user_agent"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._stripe_customer_id":
+    positive: {table: wp_wc_orders_meta, row: {meta_value: "x", meta_key: "_stripe_customer_id"}}
+    negative: {table: wp_wc_orders_meta, row: {meta_value: "x", meta_key: "x_stripe_customer_id"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._stripe_source_id":
+    positive: {table: wp_11_wc_orders_meta, row: {meta_value: "x", meta_key: "_stripe_source_id"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "x", meta_key: "x_stripe_source_id"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._stripe_intent_id":
+    positive: {table: wp_wc_orders_meta, row: {meta_value: "x", meta_key: "_stripe_intent_id"}}
+    negative: {table: wp_wc_orders_meta, row: {meta_value: "x", meta_key: "x_stripe_intent_id"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._payment_tokens":
+    positive: {table: wp_2_wc_orders_meta, row: {meta_value: "x", meta_key: "_payment_tokens"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "x", meta_key: "x_payment_tokens"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._billing_vat_number":
+    positive: {table: wp_wc_orders_meta, row: {meta_value: "x", meta_key: "_billing_vat_number"}}
+    negative: {table: wp_wc_orders_meta, row: {meta_value: "x", meta_key: "x_billing_vat_number"}}
+  "woocommerce-hpos.wc_orders_meta.meta_value._wcpay_*customer*":
+    positive: {table: wp_11_wc_orders_meta, row: {meta_value: "x", meta_key: "_wcpay_xcustomerx"}}
+    negative: {table: wp_2_wc_orders_meta, row: {meta_value: "x", meta_key: "x_wcpay_xcustomerx"}}
