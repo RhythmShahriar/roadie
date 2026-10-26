@@ -1,0 +1,14 @@
+# config init --from found these columns that look personal and no profile
+# covers. Check each rule, then uncomment the entries to keep.
+#  - table: wp_loyalty_members
+#    column: email
+#    rule: email                   # 98% of sampled values look personal
+#  - table: wp_loyalty_members
+#    column: phone
+#    rule: phone                   # 41% of sampled values look personal
+#  - table: crm_contacts
+#    column: surname
+#    rule: last_name               # the name looks personal
+#  - table: crm_contacts
+#    column: remarks
+#    rule: text                    # 23% of sampled values look personal

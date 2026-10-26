@@ -1,0 +1,74 @@
+# Roadie settings. Everything here is optional; delete what you don't change.
+# Reference: https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Configuration
+# Commit this file to share it. Never put passwords here: ${ROADIE_*} reads the
+# environment (only ROADIE_ names). Reports, keys and backups stay out of git.
+
+source: ""                                   # ssh://deploy@shop.com/var/www/shop, prod.sql.gz, @prod, mysql://...
+target: ""                                   # /var/www/staging, ssh://..., @staging, staging.sql.gz
+url: ""                                      # the copy's URL, e.g. https://staging.shop.test
+production: []                               # never a target; verify flags these, e.g. ["shop.com", "*.shop.com"]
+url_map: {}                                  # extra pairs, e.g. {"cdn.shop.com": "cdn.staging.shop.test"}
+stack: auto                                  # auto, wordpress, laravel or sql
+profiles: [auto]                             # auto: by the tables found. Or name them: [woocommerce, gravity-forms]
+remote:
+  wp: wp                                     # WP-CLI on the remote host, if not on its PATH
+
+pseudonymise:
+  email_domain: example.invalid    # fake emails: u<16 hex>@example.invalid (reserved domains only)
+  phone_style: echo                # echo: +1 555 01xx xxx (Echo's test range). country: keep the
+                                   # country's fictional range where one exists (UK 07700 900xxx)
+  locale: en                       # fake names and streets: en, de, fr, es, nl, it
+  keep: [country, state]           # address parts kept for tax and shipping rules
+  keep_users: []                   # logins or emails left as they are, e.g. ["admin", "*@agency.example"]
+  consistency: per-run             # per-run: a new key each copy. stable: .roadie/key or ROADIE_KEY
+  on_unparseable: blank            # a serialized value that won't parse and looks personal: blank or fail
+  passwords: reset                 # reset: every user not kept gets an unusable hash. keep
+  free_text: scrub                 # scrub: replace known values and email-, phone- and card-shaped
+                                   # text in notes, comments and form entries. blank. keep
+
+drop: []                           # tables not copied at all, globs allowed
+truncate: []                       # structure copied, rows not (profiles add sessions and mail logs)
+
+columns: []                        # your own tables, or overrides of a profile:
+#  - table: wp_loyalty_members
+#    column: email
+#    rule: email                   # email, phone, name, first_name, last_name, full_name, address,
+#                                  # street, city, postcode, ip, dob, company, username, url,
+#                                  # user_agent, text (scrub), blank, null, keep, fixed:<value>,
+#                                  # json:<path>=<rule>, serialized:<key>=<rule>
+#  - table: wp_postmeta
+#    where: {meta_key: _billing_vat_number}
+#    column: meta_value
+#    rule: blank
+
+keys:
+  mode: swap                       # swap: the test key below when set, else blank. blank: blank all
+  test_keys: {}                    # e.g. {stripe: "${ROADIE_STRIPE_TEST_SECRET}",
+                                   #       stripe_publishable: "${ROADIE_STRIPE_TEST_PUBLISHABLE}"}
+  ignore: []                       # known test values: [{id: key.generic, location: "wp_options my_flag", reason: "...", until: 2027-01-31}]
+
+side_effects:
+  echo: {install: true, url: "http://127.0.0.1:8025", mode: seal, proxy: ""}
+  cron: pause                      # pause: DISABLE_WP_CRON true; events kept. keep
+  action_scheduler: pause          # pause: runners stopped, pending actions kept. cancel. keep
+  webhooks: pause                  # WooCommerce webhooks paused and secrets blanked. keep
+  gateways: test-mode              # known gateways to test mode, unknown ones disabled. keep
+  subscriptions: staging           # WooCommerce Subscriptions staging mode forced. keep
+  mail: seal                       # WordPress mailers through Echo; Laravel MAIL_* to Echo's SMTP
+
+noindex: true                      # mu-plugin noindex header, robots and crawler block
+basic_auth: false                  # true prints snippets; Roadie never edits server config
+
+verify:
+  fail_on: high
+  allow_emails: []                 # business addresses that may stay, e.g. ["info@shop.com"]
+  allow_phones: []
+  skip: []
+  sign: true
+  ignore: []                       # [{id: pii.phone, location: "wp_options shop_phone", reason: "...", until: 2027-01-31}]
+
+laravel:                           # only for stack laravel
+  env_file: .env
+  tables: {}                       # Laravel has no fixed schema; name yours, e.g.
+                                   # users: {email: email, name: full_name, phone: phone}
+  env: {}                          # extra .env keys to set, e.g. {QUEUE_CONNECTION: sync}
