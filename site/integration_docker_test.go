@@ -67,9 +67,9 @@ while ( true ) {
 }
 `
 
-// fixturePlugin mails on every init and from a cron hook, and lets
-// WordPress reach the sink's private address (as a real relay or ERP
-// would be public).
+// fixturePlugin mails on every init and from a cron hook. It lets
+// WordPress reach the sink's private address, as a real relay or ERP
+// would be public.
 const fixturePlugin = `<?php
 /*
  * Plugin Name: Roadie fixture mailer
