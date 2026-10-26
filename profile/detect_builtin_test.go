@@ -83,6 +83,20 @@ func TestBuiltinDetection(t *testing.T) {
 	if got := DetectWithOptions(t.Context(), core68, nil, defs, map[string]bool{"wc_subscriptions_siteurl": true}); !slices.Contains(got, "woocommerce-subscriptions") {
 		t.Errorf("subscriptions by option: %v", got)
 	}
+	// WooCommerce from a partial dump: any of its own tables or options.
+	for _, tb := range []string{"wp_wc_orders", "wp_woocommerce_sessions", "wp_wc_order_stats", "wp_woocommerce_api_keys"} {
+		if got := Detect(schemaOf("wp_", "wp_options", tb), nil, defs); !slices.Contains(got, "woocommerce") {
+			t.Errorf("WooCommerce by %s: %v", tb, got)
+		}
+	}
+	for _, opt := range []string{"woocommerce_db_version", "woocommerce_custom_orders_table_enabled"} {
+		if got := DetectWithOptions(t.Context(), core68, nil, defs, map[string]bool{opt: true}); !slices.Contains(got, "woocommerce") {
+			t.Errorf("WooCommerce by option %s: %v", opt, got)
+		}
+	}
+	if got := Detect(schemaOf("wp_", "wp_options", "wp_12_wc_orders", "wp_shop_orders"), nil, defs); slices.Contains(got, "woocommerce") {
+		t.Errorf("WooCommerce from lookalikes: %v", got)
+	}
 	site := testutil.FakeSite(map[string][]byte{"wp-content/plugins/flamingo/flamingo.php": []byte("<?php")})
 	if got := Detect(core68, site, defs); !slices.Contains(got, "contact-form-7-flamingo") {
 		t.Errorf("Flamingo by file: %v", got)
