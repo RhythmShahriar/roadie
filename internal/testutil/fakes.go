@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/RhythmShahriar/roadie/core"
 )
@@ -260,6 +261,9 @@ type Known struct {
 	mu     sync.Mutex
 	vals   map[string]knownVal
 	sealed bool
+	// raw counts the distinct values, so Len (which the transform asks
+	// for every leaf) takes no lock and walks no map.
+	raw atomic.Int64
 }
 
 type knownVal struct {
@@ -277,6 +281,9 @@ func (k *Known) Add(kind core.FakeKind, original []byte) {
 	n := bytes.ToLower(bytes.TrimSpace(original))
 	m := md5.Sum(n) // #nosec G401 -- an encoding to look for, not a security use
 	s := sha256.Sum256(n)
+	if v, ok := k.vals[string(n)]; !ok || v.enc != "raw" {
+		k.raw.Add(1)
+	}
 	k.vals[string(n)] = knownVal{kind, "raw"}
 	k.vals[hex.EncodeToString(m[:])] = knownVal{kind, "md5"}
 	k.vals[hex.EncodeToString(s[:])] = knownVal{kind, "sha256"}
@@ -297,17 +304,7 @@ func (k *Known) Contains(token []byte) (core.FakeKind, string, bool) {
 }
 
 // Len returns the number of values added (each counted once).
-func (k *Known) Len() int {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	n := 0
-	for _, v := range k.vals {
-		if v.enc == "raw" {
-			n++
-		}
-	}
-	return n
-}
+func (k *Known) Len() int { return int(k.raw.Load()) }
 
 // Spanner is a core.Spanner that finds email addresses only.
 type Spanner struct{}

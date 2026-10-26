@@ -72,9 +72,12 @@ type known struct {
 	macs  sync.Pool // of *scratch
 	mu    sync.Mutex
 	adds  int
-	tabs  [3]table        // raw, md5, sha256
-	seal  bool            // under mu, for Add and Seal
-	ready atomic.Bool     // set after Seal, read by Contains without the lock
+	tabs  [3]table    // raw, md5, sha256
+	seal  bool        // under mu, for Add and Seal
+	ready atomic.Bool // set after Seal, read by Contains without the lock
+	// size is Len once sealed: the transform asks for it on every leaf,
+	// so it is counted once at Seal and read without the lock.
+	size  atomic.Int64
 	kinds []core.FakeKind // kind byte - 1 to kind
 	// seed and filters make a Bloom filter over the raw tokens, so a
 	// lookup of a token never added mostly skips the HMAC. The seed is
@@ -417,6 +420,15 @@ func (kn *known) Seal() {
 	for i := range kn.tabs {
 		kn.tabs[i].seal()
 	}
+	n := 0
+	for _, c := range kn.tabs[0].chunks {
+		for _, e := range c {
+			if e&wholeValue != 0 {
+				n++
+			}
+		}
+	}
+	kn.size.Store(int64(n))
 	kn.seal = true
 	kn.ready.Store(true)
 }
@@ -634,18 +646,13 @@ func (kn *known) kindOf(k byte) core.FakeKind {
 // Len returns the number of distinct values once sealed. Before Seal it
 // returns the number of Add calls kept so far.
 func (kn *known) Len() int {
+	if kn.ready.Load() {
+		return int(kn.size.Load())
+	}
 	kn.mu.Lock()
 	defer kn.mu.Unlock()
 	if !kn.seal {
 		return kn.adds
 	}
-	n := 0
-	for _, c := range kn.tabs[0].chunks {
-		for _, e := range c {
-			if e&wholeValue != 0 {
-				n++
-			}
-		}
-	}
-	return n
+	return int(kn.size.Load())
 }
