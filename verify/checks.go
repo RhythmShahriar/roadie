@@ -302,7 +302,9 @@ func metaNoindex(body []byte) bool {
 		tag := string(low[start : start+end])
 		off = start + end
 		name := attr(tag, "name")
-		if name != "robots" && name != "googlebot" {
+		// A tag for one crawler (name="googlebot") leaves the rest free
+		// to index, as a one-bot X-Robots-Tag rule does.
+		if name != "robots" {
 			continue
 		}
 		// The content is a comma list like the header's; "nonexistent"

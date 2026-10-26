@@ -508,7 +508,8 @@ func TestRobotsAndMeta(t *testing.T) {
 		`<meta name="robots" content="index,follow">`:       false,
 		`<meta name="robots"`:                               false,
 		`<meta name="robots" content="index, nonexistent">`: false,
-		`<meta name="googlebot" content="none">`:            true,
+		`<meta name="googlebot" content="none">`:            false,
+		`<meta name="bingbot" content="noindex">`:           false,
 	} {
 		if got := metaNoindex([]byte(b)); got != want {
 			t.Errorf("metaNoindex(%s) = %v", b, got)
