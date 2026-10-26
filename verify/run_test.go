@@ -266,7 +266,7 @@ func TestRunEveryDetector(t *testing.T) {
 		batch(meta, []string{"7", "billing_phone", "+44 7911 123456"}),
 		batch(comments, []string{"3", "81.2.69.160", "Nice shop"}),
 		batch(orders, []string{"9", "+49 30 901820", card, iban}),
-		batch(addr, []string{"2", "12 Mill Road", "ada.kowalczyk@gmail.com"}),
+		batch(addr, []string{"2", "12 Wexcombe Road", "ada.kowalczyk@gmail.com"}),
 	)})
 	for id, table := range map[string]string{
 		core.FindingPIIEmail: "wp_users", core.FindingPIIPhone: "wp_usermeta", core.FindingPIIIP: "wp_comments",
@@ -562,7 +562,7 @@ func TestRunRealConfigParsers(t *testing.T) {
 		t.Skip("needs the site lane")
 	}
 	st := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\ndefine( 'DB_HOST', 'db.shop.com' );\n")})
-	res := runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"})), Production: []string{"shop.com"}})
+	res := runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"})), Production: []string{"shop.com", "*.shop.com"}})
 	if find(res, core.FindingConfigPointsAtProduction) == nil {
 		t.Errorf("real wpconfig: %v", ids(res))
 	}

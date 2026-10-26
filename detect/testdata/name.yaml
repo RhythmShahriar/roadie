@@ -8,7 +8,7 @@ positive:
     table: wp_users
     column: display_name
     row: {user_email: ada.kowalczyk@gmail.com}
-  - value: "Ada"
+  - value: "Jadwiga"
     table: wp_usermeta
     column: meta_value
     row: {meta_key: first_name}

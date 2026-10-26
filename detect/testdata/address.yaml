@@ -12,7 +12,7 @@ positive:
     table: wp_postmeta
     column: meta_value
     row: {meta_key: _billing_address_2}
-  - value: "Calle Mayor 5"
+  - value: "Calle Zurbarán 5"
     table: wp_usermeta
     column: meta_value
     row: {meta_key: shipping_address_1}
@@ -22,7 +22,7 @@ positive:
   - value: "12 Baker Street"
     kind: street
     column: line
-  - value: "12 Mill Street"
+  - value: "12 Wexcombe Street"
     table: wp_usermeta
     column: meta_value
     row: {meta_key: shop_customer_address}
@@ -46,7 +46,7 @@ negative:
     row: {email: ada.kowalczyk@gmail.com}
     allow:
       kept: [ada.kowalczyk@gmail.com]
-  - value: "1 Main Street"
+  - value: "1 Oak Street"
     table: wp_wc_order_addresses
     column: address_1
     needs: values
@@ -64,12 +64,12 @@ negative:
   - value: "12 Baker Street"
     table: wp_posts
     column: post_content
-  - value: "12 Mill Street"
+  - value: "12 Wexcombe Street"
     table: wp_options
     column: option_value
     row: {option_name: woocommerce_store_address}
     note: the shop's own address in its settings
-  - value: "12 Mill Street"
+  - value: "12 Wexcombe Street"
     table: wp_users
     column: address
     row: {user_email: info@millstreet-bakery-demo.co.uk}

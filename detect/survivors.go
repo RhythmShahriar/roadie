@@ -49,15 +49,18 @@ func (d survivorsDetector) Scan(v []byte, _ core.ScanContext, emit func(core.Hit
 		return
 	}
 	s := &survivorScan{k: d.k}
-	s.pass(v, func(a, b int) (int, int) { return a, b }, "raw", 0)
-	if bytes.IndexByte(v, '&') >= 0 {
-		if t, offs, ok := decodeEntities(v); ok {
-			s.pass(t, offsetMapper(offs), "html-entity", 0)
+	for _, singles := range []bool{false, true} {
+		s.singles = singles
+		s.pass(v, func(a, b int) (int, int) { return a, b }, "raw", 0)
+		if bytes.IndexByte(v, '&') >= 0 {
+			if t, offs, ok := decodeEntities(v); ok {
+				s.pass(t, offsetMapper(offs), "html-entity", 0)
+			}
 		}
-	}
-	if bytes.IndexByte(v, '%') >= 0 {
-		if t, offs, ok := decodePercent(v); ok {
-			s.pass(t, offsetMapper(offs), "url", 0)
+		if bytes.IndexByte(v, '%') >= 0 {
+			if t, offs, ok := decodePercent(v); ok {
+				s.pass(t, offsetMapper(offs), "url", 0)
+			}
 		}
 	}
 	for _, h := range s.hits {
@@ -78,6 +81,11 @@ func offsetMapper(offs []int) mapper {
 type survivorScan struct {
 	k    core.Known
 	hits []core.Hit // sorted by Start, never overlapping
+	// singles is the second round: only single words are looked up. The
+	// known set holds a full name and each of its words, so every
+	// encoding gets the chance to report "Jane Doe" whole before any
+	// encoding reports "Jane" and "Doe" on their own.
+	singles bool
 }
 
 // covered reports whether a hit already holds part of start..end.
@@ -125,6 +133,11 @@ func hasLetter(b []byte) bool { return bytes.IndexFunc(b, unicode.IsLetter) >= 0
 // pass tokenises text and looks every token up. Emails go first, so the
 // words of an address that survived whole are not reported again.
 func (s *survivorScan) pass(t []byte, at mapper, enc string, depth int) {
+	if s.singles {
+		words(t, func(a, b int) { s.check(t[a:b], a, b, at, enc) }, func(int, int) {})
+		s.base64(t, at, depth)
+		return
+	}
 	if whole := bytes.TrimSpace(t); len(whole) <= maxWholeValue {
 		start := len(t) - len(bytes.TrimLeftFunc(t, unicode.IsSpace))
 		s.check(whole, start, start+len(whole), at, enc)
@@ -142,8 +155,12 @@ func (s *survivorScan) pass(t []byte, at mapper, enc string, depth int) {
 			s.check(norm[1:], a, b, at, enc)
 		}
 	})
-	words(t, func(a, b int) { s.check(t[a:b], a, b, at, enc) },
-		func(a, b int) { s.check(t[a:b], a, b, at, enc) })
+	words(t, func(int, int) {}, func(a, b int) { s.check(t[a:b], a, b, at, enc) })
+	s.base64(t, at, depth)
+}
+
+// base64 runs pass over every base64 run of t that decodes to text.
+func (s *survivorScan) base64(t []byte, at mapper, depth int) {
 	if depth < base64Depth {
 		base64Runs(t, func(a, b int, decoded []byte) {
 			ra, rb := at(a, b)
