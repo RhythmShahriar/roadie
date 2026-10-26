@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -172,8 +173,15 @@ func (c *Config) maskedValue(key, v string) string {
 	return v
 }
 
-// stripPassword replaces the password of a URL or DSN with •••.
+// passwordParams are the query parameters a DSN may carry its password
+// in, as the site lane reads them: password, pass, pwd and sslpassword.
+var passwordParams = []string{"password", "pass", "pwd", "sslpassword"}
+
+// stripPassword replaces the password of a URL or DSN with •••: the
+// user-info password and the value of every passwordParams query
+// parameter.
 func stripPassword(v string) string {
+	v = maskQueryPasswords(v)
 	u, err := url.Parse(v)
 	if err != nil || u.User == nil {
 		return v
@@ -183,4 +191,35 @@ func stripPassword(v string) string {
 	}
 	u.User = url.UserPassword(u.User.Username(), "xxx")
 	return strings.Replace(u.String(), ":xxx@", ":•••@", 1)
+}
+
+// maskQueryPasswords replaces the value of every passwordParams query
+// parameter with •••. It works on the raw text, so it still holds when
+// url.Parse fails. Each key is decoded and lowercased first: PASSWORD
+// and pass%77ord are read as password too.
+func maskQueryPasswords(s string) string {
+	before, query, ok := strings.Cut(s, "?")
+	if !ok {
+		return s
+	}
+	query, frag, hasFrag := strings.Cut(query, "#")
+	pairs := strings.Split(query, "&")
+	for i, pair := range pairs {
+		key, _, has := strings.Cut(pair, "=")
+		if !has {
+			continue
+		}
+		name, err := url.QueryUnescape(key)
+		if err != nil {
+			name = key
+		}
+		if slices.Contains(passwordParams, strings.ToLower(name)) {
+			pairs[i] = key + "=•••"
+		}
+	}
+	out := before + "?" + strings.Join(pairs, "&")
+	if hasFrag {
+		out += "#" + frag
+	}
+	return out
 }

@@ -464,6 +464,49 @@ keys:
 	}
 }
 
+// A DSN password given as a query parameter (password, pass, pwd or
+// sslpassword, any case) is masked in config show, written in the file
+// or read from a ROADIE_ variable; other parameters stay readable.
+func TestShowQueryPassword(t *testing.T) {
+	pw := "hunter2" + "secret"
+	body := `source: "postgres://u@db.example/shop?sslmode=require&password=` + pw + `"
+target: "mysql://u@db.example/staging?PWD=` + pw + `&charset=utf8mb4"
+side_effects:
+  echo:
+    proxy: "http://127.0.0.1:33021/?Pass%77ord=${ROADIE_PROXY_PW}#x"
+`
+	p := writeConfig(t, body)
+	c, err := Load(p, envOf(map[string]string{"ROADIE_PROXY_PW": pw}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, asJSON := range []bool{false, true} {
+		b, err := c.Show(asJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := string(b)
+		if strings.Contains(out, pw) {
+			t.Fatalf("a query password reached config show:\n%s", out)
+		}
+		if !strings.Contains(out, "sslmode=require") || !strings.Contains(out, "password=•••") ||
+			!strings.Contains(out, "PWD=•••") || !strings.Contains(out, "charset=utf8mb4") {
+			t.Errorf("masked wrong:\n%s", out)
+		}
+	}
+	for in, want := range map[string]string{
+		"postgres://u:p1@h/db?sslpassword=x&a=b": "postgres://u:•••@h/db?sslpassword=•••&a=b",
+		"h/db?pass=x#frag":                       "h/db?pass=•••#frag",
+		"h/db?password":                          "h/db?password",
+		"h/db?passwords=x":                       "h/db?passwords=x",
+		"/var/www/staging":                       "/var/www/staging",
+	} {
+		if got := stripPassword(in); got != want {
+			t.Errorf("stripPassword(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // FuzzLoad feeds random files to the loader: it never panics and every
 // failure is a *core.Error with exit 2.
 func FuzzLoad(f *testing.F) {
