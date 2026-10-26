@@ -665,3 +665,73 @@ func TestSSHFindWithoutPrintf(t *testing.T) {
 		t.Fatalf("other find failure: %v", err)
 	}
 }
+
+// Export hands over the raw export; a failed export is the stream's
+// read error.
+func TestSSHExport(t *testing.T) {
+	sh := remotetest.New(t)
+	s := openSSHT(t, sh, Options{ReadOnly: true})
+	ex, ok := s.(interface {
+		Export(context.Context) (io.ReadCloser, error)
+	})
+	if !ok {
+		t.Fatal("sshSite has no Export")
+	}
+	export := []byte("-- MySQL dump\nCREATE TABLE `wp_options` (x int);\n")
+	sh.Reply(export, "", 0)
+	rc, err := ex.Export(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := io.ReadAll(rc)
+	if err != nil || !bytes.Equal(b, export) {
+		t.Fatalf("read %q, %v", b, err)
+	}
+	if err := rc.Close(); err != nil {
+		t.Fatal(err)
+	}
+	sh.Reply(nil, "bash: wp: command not found\n", 127)
+	rc, err = ex.Export(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.ReadAll(rc); !errors.Is(err, &core.Error{Code: core.ErrWPCLI}) {
+		t.Fatalf("%v, want wp-cli", err)
+	}
+	_ = rc.Close()
+	assertAllowed(t, sh)
+}
+
+// Exists asks the host once per path until the site's files change.
+func TestSSHExistsCached(t *testing.T) {
+	sh := remotetest.New(t)
+	s := openSSHT(t, sh, Options{})
+	ctx := context.Background()
+	count := func() int {
+		n := 0
+		for _, c := range sh.Calls() {
+			if strings.Contains(remoteCmd(c), "wp-content/plugins/x/x.php") {
+				n++
+			}
+		}
+		return n
+	}
+	for range 3 {
+		if ok, err := s.Exists(ctx, "wp-content/plugins/x/x.php"); err != nil || !ok {
+			t.Fatalf("exists %v %v", ok, err)
+		}
+	}
+	if n := count(); n != 1 {
+		t.Errorf("%d asks, want 1", n)
+	}
+	if err := s.Remove(ctx, "wp-content/plugins/x/x.php"); err != nil {
+		t.Fatal(err)
+	}
+	sh.Reply(nil, "find: '/srv/shop/wp-content/plugins/x/x.php': No such file or directory\n", 1)
+	if ok, err := s.Exists(ctx, "wp-content/plugins/x/x.php"); err != nil || ok {
+		t.Errorf("after Remove: %v %v", ok, err)
+	}
+	if n := count(); n != 4 {
+		t.Errorf("%d calls, want 4 (the remove, then test and find again)", n)
+	}
+}

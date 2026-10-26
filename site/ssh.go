@@ -35,6 +35,17 @@ type sshSite struct {
 
 	mu  sync.Mutex
 	cfg *dbConfig
+	// exists caches Exists for the run: profile detection asks for the
+	// same plugin files each time pass 1 sees new tables, and each ask
+	// is an ssh round trip. Anything that may change the files clears it.
+	exists map[string]bool
+}
+
+// forget clears the Exists cache before the site's files may change.
+func (s *sshSite) forget() {
+	s.mu.Lock()
+	s.exists = nil
+	s.mu.Unlock()
 }
 
 func openSSH(ctx context.Context, e core.Endpoint, o Options) (core.Site, error) {
@@ -101,6 +112,7 @@ func (s *sshSite) WriteFile(ctx context.Context, rel string, b []byte, perm fs.F
 	if s.ro {
 		return core.ErrReadOnly
 	}
+	defer s.forget()
 	p, err := s.remotePath(rel)
 	if err != nil {
 		return err
@@ -174,6 +186,7 @@ func (s *sshSite) Remove(ctx context.Context, rel string) error {
 	if err != nil {
 		return err
 	}
+	defer s.forget()
 	return s.r.Run(ctx, nil, io.Discard, remote.Remove, p)
 }
 
@@ -185,6 +198,26 @@ func (s *sshSite) Exists(ctx context.Context, rel string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	s.mu.Lock()
+	ok, seen := s.exists[p]
+	s.mu.Unlock()
+	if seen {
+		return ok, nil
+	}
+	ok, err = s.exists1(ctx, p)
+	if err == nil {
+		s.mu.Lock()
+		if s.exists == nil {
+			s.exists = map[string]bool{}
+		}
+		s.exists[p] = ok
+		s.mu.Unlock()
+	}
+	return ok, err
+}
+
+// exists1 asks the host whether p is there.
+func (s *sshSite) exists1(ctx context.Context, p string) (bool, error) {
 	base := path.Base(p)
 	if !s.ro || base == "wp-config.php" || base == ".env" {
 		err := s.r.Run(ctx, nil, io.Discard, remote.TestFile, p)
@@ -313,6 +346,7 @@ func (s *sshSite) EvalFile(ctx context.Context, script []byte) error {
 	if s.ro {
 		return core.ErrReadOnly
 	}
+	defer s.forget()
 	return s.r.Run(ctx, bytes.NewReader(script), io.Discard, remote.EvalFile)
 }
 
@@ -379,6 +413,46 @@ func (s *sshSite) exportCommand(ctx context.Context, tables []string) (remote.Te
 // Source streams the remote export straight into the dump reader; the
 // dump is never stored on this machine in the clear.
 func (s *sshSite) Source(ctx context.Context, tables []string) (core.Source, error) {
+	ex, err := s.export(ctx, tables)
+	if err != nil {
+		return nil, err
+	}
+	src, err := openDump(ex.ctx, ex.pr, dump.Options{Name: s.ep.Display})
+	if err != nil {
+		_ = ex.pr.Close()
+		ex.cancel()
+		if runErr := <-ex.done; runErr != nil && !errors.Is(runErr, context.Canceled) {
+			return nil, runErr
+		}
+		return nil, err
+	}
+	return &streamSource{Source: src, pr: ex.pr, cancel: ex.cancel, done: ex.done}, nil
+}
+
+// Export hands over the whole remote export as a dump stream, so a
+// two-pass run reads production once and keeps the dump in its
+// encrypted spool for pass 2 (PRD 10.3): two exports would be two
+// transactions that may not hold the same rows, and twice the load on
+// production. A failed export is the stream's read error.
+func (s *sshSite) Export(ctx context.Context) (io.ReadCloser, error) {
+	ex, err := s.export(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &exportReader{ex: ex}, nil
+}
+
+// remoteExport is one running remote export: its output and the
+// command's result once it ends.
+type remoteExport struct {
+	ctx    context.Context
+	pr     *io.PipeReader
+	cancel context.CancelFunc
+	done   chan error
+}
+
+// export starts the remote export of tables (all when empty).
+func (s *sshSite) export(ctx context.Context, tables []string) (*remoteExport, error) {
 	t, args, creds, err := s.exportCommand(ctx, tables)
 	if err != nil {
 		return nil, err
@@ -395,16 +469,28 @@ func (s *sshSite) Source(ctx context.Context, tables []string) (core.Source, err
 		_ = pw.CloseWithError(err)
 		done <- err
 	}()
-	src, err := openDump(ctx, pr, dump.Options{Name: s.ep.Display})
-	if err != nil {
-		_ = pr.Close()
-		cancel()
-		if runErr := <-done; runErr != nil && !errors.Is(runErr, context.Canceled) {
-			return nil, runErr
+	return &remoteExport{ctx: ctx, pr: pr, cancel: cancel, done: done}, nil
+}
+
+// exportReader is Export's stream. Close ends the export when it is
+// still running.
+type exportReader struct {
+	ex   *remoteExport
+	once sync.Once
+}
+
+func (r *exportReader) Read(p []byte) (int, error) { return r.ex.pr.Read(p) }
+
+func (r *exportReader) Close() error {
+	var err error
+	r.once.Do(func() {
+		_ = r.ex.pr.Close()
+		r.ex.cancel()
+		if runErr := <-r.ex.done; runErr != nil && !errors.Is(runErr, context.Canceled) && !errors.Is(runErr, io.ErrClosedPipe) {
+			err = runErr
 		}
-		return nil, err
-	}
-	return &streamSource{Source: src, pr: pr, cancel: cancel, done: done}, nil
+	})
+	return err
 }
 
 // streamSource ends the remote export when the source is closed and
