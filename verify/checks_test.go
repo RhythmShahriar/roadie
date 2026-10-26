@@ -382,6 +382,38 @@ func TestEchoWantsToken(t *testing.T) {
 	if f == nil || !strings.Contains(f.Title, "wants a token") || strings.Contains(f.Title, "isn't reachable") {
 		t.Errorf("401: %+v", res.Findings)
 	}
+	// A wrong token is refused all the same; the right one is sent in
+	// X-Echo-Token and never shows in a finding.
+	token := "echo-" + "test-token-1"
+	res = siteRun(t, Options{Echo: true, EchoURL: locked.URL, EchoToken: "wrong"})
+	if f := find(res, core.FindingSideEffectMail); f == nil || !strings.Contains(f.Title, "refused the token") {
+		t.Errorf("wrong token: %+v", res.Findings)
+	}
+	var got atomic.Value
+	open := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got.Store(r.Header.Get("X-Echo-Token"))
+		if r.Header.Get("X-Echo-Token") != token {
+			http.Error(w, "token required", http.StatusUnauthorized)
+			return
+		}
+		if r.URL.Path == "/api/health" {
+			fmt.Fprint(w, `{"mode":"seal"}`)
+			return
+		}
+		fmt.Fprint(w, `{"messages":[],"next":""}`)
+	}), false)
+	res = siteRun(t, Options{Echo: true, EchoURL: open.URL, EchoToken: token})
+	if got.Load() != token {
+		t.Errorf("token sent: %v", got.Load())
+	}
+	for _, f := range res.Findings {
+		if strings.Contains(f.Title, "token") {
+			t.Errorf("right token: %+v", f)
+		}
+		if strings.Contains(fmt.Sprint(f), token) {
+			t.Errorf("a finding shows the token: %+v", f)
+		}
+	}
 }
 
 func TestEchoURLMustBeLocal(t *testing.T) {

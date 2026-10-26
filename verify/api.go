@@ -43,7 +43,11 @@ type Options struct {
 	SiteURL     string
 	InsecureTLS string
 	EchoURL     string
-	Echo        bool
+	// EchoToken is sent to an Echo that asks for one (it listens beyond
+	// loopback); the CLI reads it from RHYTHM_ECHO_TOKEN, as Echo's own
+	// tools do. It never appears in a finding or a report.
+	EchoToken string
+	Echo      bool
 	// EchoSince is when the copy started: verify --echo counts the
 	// messages Echo let through from then on. Zero means unknown: the
 	// count starts when verify does, which the check's detail says.

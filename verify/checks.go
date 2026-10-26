@@ -429,7 +429,7 @@ func (r *run) echo(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	c := client.New(u.String(), "")
+	c := client.New(u.String(), r.j.Opts.EchoToken)
 	c.HTTP = echoClient(u)
 	r.count(core.FindingSideEffectMail, 1)
 	at := core.Location{File: u.Redacted()}
@@ -440,9 +440,14 @@ func (r *run) echo(ctx context.Context) {
 	h, err := c.Health(ctx)
 	if needsToken(err) {
 		// Echo asks for its token on every route once it listens beyond
-		// loopback; verify has no token to send yet.
-		mail(fmt.Sprintf("verify --echo: Echo at %s wants a token, which verify doesn't send", u.Redacted()),
-			"Run verify where Echo listens on loopback (http://127.0.0.1:8025), which needs no token.")
+		// loopback.
+		if r.j.Opts.EchoToken != "" {
+			mail(fmt.Sprintf("verify --echo: Echo at %s refused the token in RHYTHM_ECHO_TOKEN", u.Redacted()),
+				"Set RHYTHM_ECHO_TOKEN to the token Echo prints at start (rhythm echo up), then run verify again.")
+			return
+		}
+		mail(fmt.Sprintf("verify --echo: Echo at %s wants a token; set RHYTHM_ECHO_TOKEN", u.Redacted()),
+			"Set RHYTHM_ECHO_TOKEN to Echo's token, or run verify where Echo listens on loopback (http://127.0.0.1:8025), which needs no token.")
 		return
 	}
 	if err != nil {
