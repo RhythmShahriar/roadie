@@ -1061,10 +1061,12 @@ func production(cfg *roadiecfg.Config, found []string) []string {
 }
 
 // verifyOptions are verify's settings from the config and the flags.
+// SiteURL stays empty: verify fetches the staging site only for
+// verify --site (PRD 15.1), never because a copy named its URL.
 func (r *runner) verifyOptions() verify.Options {
 	return verify.Options{FailOn: r.opts.FailOn, Skip: slices.Clone(r.cfg.Verify.Skip),
 		Allow:   detect.Allow{Emails: slices.Clone(r.cfg.Verify.AllowEmails), Phones: slices.Clone(r.cfg.Verify.AllowPhones)},
-		SiteURL: r.opts.URL, EchoURL: r.cfg.SideEffects.Echo.URL, Jobs: r.opts.Jobs, Clock: r.j.Clock}
+		EchoURL: r.cfg.SideEffects.Echo.URL, Jobs: r.opts.Jobs, Clock: r.j.Clock}
 }
 
 // verify scans what was written in exact mode, read back from the target
