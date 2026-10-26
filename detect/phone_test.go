@@ -90,3 +90,21 @@ func TestPhoneTrunkNeverStretchesPastFifteen(t *testing.T) {
 		t.Errorf("a trunk number with 12 digits: %v", h)
 	}
 }
+
+// digitsAhead reads over one bracket pair at most: a second bracket ends
+// the number, so hostile "(0(0(0" text never runs the patterns.
+func TestDigitsAheadBrackets(t *testing.T) {
+	for s, want := range map[string]bool{
+		"(020) 7946 0958":    true,
+		"1 (212) 555-0100":   true,
+		"020 7946 0958":      true,
+		"(0(0(0(0(0(0(0(0(0": false,
+		"(020) (7946) 0958":  false,
+		"020) 7946) 0958":    false,
+		"0(0(0(0(0(0(0(0(0(": false,
+	} {
+		if got := digitsAhead([]byte(s), 0, minNational); got != want {
+			t.Errorf("digitsAhead(%q) = %v, want %v", s, got, want)
+		}
+	}
+}

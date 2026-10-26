@@ -5,6 +5,7 @@ package detect
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -124,6 +125,30 @@ func TestCanariesAreFlagged(t *testing.T) {
 	for _, ip := range c[core.KIP] {
 		if len(scanAll(IP(), ip, core.ScanContext{Column: "ip_address"})) != 1 {
 			t.Errorf("canary IP %q not flagged", ip)
+		}
+	}
+}
+
+// BenchmarkHostile measures the slowest inputs of TestLinearOnHostileInput
+// for the phone detector (column and text mode) and the spanner.
+func BenchmarkHostile(b *testing.B) {
+	for _, in := range []string{"(0", "1 ", "+1", "12-"} {
+		v := repeatTo(in, 2*mib)
+		phone := phoneDetector{}
+		for _, c := range []struct {
+			name string
+			fn   func()
+		}{
+			{"phone-column", func() { phone.Scan(v, core.ScanContext{Column: "billing_phone"}, func(core.Hit) {}) }},
+			{"phone-text", func() { phone.Scan(v, core.ScanContext{Column: "post_content"}, func(core.Hit) {}) }},
+			{"spans", func() { TextSpans().Spans(v) }},
+		} {
+			b.Run(fmt.Sprintf("%q/%s", in, c.name), func(b *testing.B) {
+				b.SetBytes(int64(len(v)))
+				for b.Loop() {
+					c.fn()
+				}
+			})
 		}
 	}
 }

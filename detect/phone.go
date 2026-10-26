@@ -324,16 +324,22 @@ var patternsByFirst = func() (m [256][]string) {
 
 // digitsAhead reports whether at least n digits follow v[i] before
 // anything but a digit or a separator, within the longest pattern's reach.
+// A pattern opens and closes at most one bracket, so a second "(" or ")"
+// ends the number: on text like "(0(0(0" the patterns are then never
+// tried at every digit.
 func digitsAhead(v []byte, i, n int) bool {
-	got := 0
+	got, opened, closed := 0, false, false
 	for end := min(len(v), i+20); i < end && got < n; {
 		if c := v[i]; c < utf8.RuneSelf {
 			switch {
 			case c >= '0' && c <= '9':
 				got++
+			case c == '(' && opened, c == ')' && closed:
+				return false
 			case !aheadSeparator[c]:
 				return false
 			}
+			opened, closed = opened || c == '(', closed || c == ')'
 			i++
 			continue
 		}
