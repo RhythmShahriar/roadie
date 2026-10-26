@@ -1,0 +1,88 @@
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config
+
+  [1;38;2;255;124;81m♪[0m [1mrhythm roadie[0m [38;2;107;113;128mdev[0m                             [38;2;107;113;128mshop.com → staging.shop.test[0m
+  [38;2;107;113;128m────────────────────────────────────────────────────────────────────────────[0m
+
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mSource[0m        ssh://deploy@shop.com/var/www/shop
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mTarget[0m        /var/www/staging
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mStack[0m         WordPress + WooCommerce (HPOS) + Subscriptions + Gravity
+                  Forms
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mPlan[0m          3 tables pseudonymised, 2 live keys, 4 side effects (plan
+                  -v for all)
+
+  [38;2;16;185;129m✓[0m Data           152,624 values pseudonymised in 3 tables, 3,912 URLs
+                   rewritten
+  [38;2;16;185;129m✓[0m Keys           1 swapped to a test key, 1 blanked
+  [38;2;239;68;68m✗[0m Side effects   still on: Echo seal
+  [38;2;16;185;129m✓[0m Search         noindex, robots.txt
+  [38;2;16;185;129m✓[0m Import         5 tables into /var/www/staging
+
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mNot stopped[0m   a server crontab calling wp cron or artisan schedule:run,
+                  wp action-scheduler run by hand, queue workers already
+                  running, code that opens SMTP sockets or uses fsockopen
+                  with credentials Roadie doesn't know, raw cURL without
+                  --echo-proxy. Credentials are blanked so those paths fail
+                  at the provider. Blocking outbound traffic at the host is
+                  the only certainty.
+
+  [1;38;2;255;124;81mVERIFY (exact)[0m [38;2;107;113;128m─────────────────────────────────────────────────────────────[0m
+
+    [38;2;16;185;129m✓[0m No pseudonymised value survives         [38;2;107;113;128m1.21 M hashes, every table and[0m
+                                              [38;2;107;113;128mtext[0m
+    [38;2;239;68;68m✗[0m No real-looking emails                  [38;2;107;113;128m17,880 look real[0m
+    [38;2;16;185;129m✓[0m No real-looking phones                  [38;2;107;113;128m41,077 checked[0m
+    [38;2;16;185;129m✓[0m No live keys                            [38;2;107;113;128mDB, wp-config.php, .env[0m
+    [38;2;16;185;129m✓[0m No production URLs                      [38;2;107;113;128m0 left of 3,912[0m
+    [38;2;239;68;68m✗[0m Side effects off                        [38;2;107;113;128m3 of 4[0m
+
+  [1;38;2;239;68;68mCRITICAL  1[0m [38;2;107;113;128m────────────────────────────────────────────────────────────────[0m
+
+ [38;2;239;68;68m▌[0m [1;38;2;11;11;12;48;2;239;68;68m CRITICAL [0m  [1mMail goes out for real[0m                        [38;2;107;113;128mside-effect.mail[0m
+ [38;2;239;68;68m▌[0m             [38;2;107;113;128mno Echo connector, no SMTP override: wp_mail uses WP Mail SMTP[0m
+ [38;2;239;68;68m▌[0m             [38;2;107;113;128m(SendGrid)[0m                                                    
+ [38;2;239;68;68m▌[0m             [1;38;2;255;124;81m→[0m rhythm-roadie prepare /var/www/staging --only side-effects  
+
+  [1;38;2;249;115;22mHIGH  1[0m [38;2;107;113;128m────────────────────────────────────────────────────────────────────[0m
+
+ [38;2;249;115;22m▌[0m [1;38;2;11;11;12;48;2;249;115;22m HIGH     [0m  [1m17,880 real-looking emails[0m                           [38;2;107;113;128mpii.email[0m
+ [38;2;249;115;22m▌[0m             [38;2;107;113;128mwp_users.user_email 17,880 · wp_wc_order_addresses.email[0m      
+ [38;2;249;115;22m▌[0m             [38;2;107;113;128m16,412[0m                                                        
+ [38;2;249;115;22m▌[0m             [38;2;107;113;128me.g. ad•••@gm•••.com[0m                                          
+
+  [1;38;2;234;179;8mMEDIUM  1[0m [38;2;107;113;128m──────────────────────────────────────────────────────────────────[0m
+
+    · 412 production URLs wp_posts 390 · wp_options 22 (url.production)
+
+ [38;2;239;68;68m╭───────────────────────────────────────────────────╮[0m
+ [38;2;239;68;68m│[0m  [1;38;2;239;68;68mFAIL[0m   [1mstaging.shop.test is not a safe copy yet[0m  [38;2;239;68;68m│[0m
+ [38;2;239;68;68m│[0m  1 critical · 1 high · 1 medium · 0 low · 1 info  [38;2;239;68;68m│[0m
+ [38;2;239;68;68m╰───────────────────────────────────────────────────╯[0m
+  [38;2;107;113;128m2.4 GB · 5 tables · 1m 22s[0m
+  [38;2;107;113;128m· info: 2 users kept as they are (admin, op•••@ag•••.example)[0m
+
+  Pseudonymised, not anonymised. The copy still holds order totals, dates,
+  products and anything Roadie can't recognise in free text. Treat it as
+  personal data.
+
+  Mail from this copy goes to Echo at http://127.0.0.1:8025. Run rhythm echo
+  up on the staging host, or the copy's mail will fail closed.
+
+  [1;38;2;107;113;128mALSO[0m [38;2;107;113;128m───────────────────────────────────────────────────────────────────────[0m
+
+    · noindex: X-Robots-Tag, robots.txt Disallow: / and the crawler block
+      (blog_public in the database left as it is)
+    · 3,912 production URLs rewritten in 2 tables
+    · Files are not copied. For uploads, leave out the folders that hold
+      personal data: rsync -a --exclude wp-content/debug.log --exclude
+      wp-content/uploads/wc-logs --exclude wp-content/uploads/gravity_forms
+      --exclude wp-content/updraft --exclude wp-content/ai1wm-backups
+      --exclude '*.sql' --exclude '*.sql.gz' --exclude '*.zip'
+      deploy@shop.com:/var/www/shop/ /var/www/staging/
+    · Basic auth is off: --basic-auth <user> writes snippets for Apache,
+      nginx and Caddy (Roadie never edits server config)
+    · Object caches and search indexes (Redis, Algolia, ElasticPress) are
+      not copied or cleared
+
+  [1;38;2;255;124;81m→[0m rhythm-roadie prepare /var/www/staging fixes what it can of these
+  [1;38;2;255;124;81m→[0m signed report: .roadie/reports/2026-10-26T14-02-11/report.html
+--- exit 1

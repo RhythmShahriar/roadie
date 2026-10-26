@@ -1,0 +1,64 @@
+$ rhythm-roadie plan --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config -v
+rhythm roadie dev - plan · nothing changes
+
+Source: ssh://deploy@shop.com/var/www/shop (MySQL 8.0, 2.4 GB, 5 tables)
+Target: /var/www/staging (MariaDB 10.11)
+Target check: not in production: [shop.com, *.shop.com]
+Stack: WordPress + WooCommerce (HPOS) + Subscriptions + Gravity Forms
+URLs: https://shop.com → https://staging.shop.test (serialized and JSON safe)
+Consistency: per-run key: each real person gets one fake, across every table
+
+DATA  4 tables
+wp_users (18,402 rows): user_email, user_login → fake; user_pass → reset (2 kept)
+      wp_users.user_email: rule wordpress.users.user_email, 18,400 changed, 2 kept
+      wp_users.user_login: rule wordpress.users.user_login, 18,400 changed, 2 kept
+      wp_users.user_pass: rule wordpress.users.user_pass, 18,400 changed, 2 kept
+wp_wc_orders (96,220 rows): billing_email → fake; customer_note → scrub
+      wp_wc_orders.billing_email: rule woocommerce-hpos.wc_orders.billing_email, 96,220 changed, 0 kept
+      wp_wc_orders.customer_note: rule woocommerce-hpos.wc_orders.customer_note, 1,204 changed, 0 kept
+wp_wpmailsmtp_emails_log (9,812 rows): truncated (wp-mail-smtp)
+wp_options (1,044 rows): option_value → URLs rewritten
+      wp_options.option_value: rule wordpress.options.option_value, 31 changed, 0 kept
+wp_terms (220 rows): kept as it is
+
+KEYS  2 live keys
+[CRITICAL] Stripe live key (wp_options woocommerce_stripe_settings)
+  secret_key = sk_l•••••
+  fix: swap: the test key from keys.test_keys
+[HIGH] SendGrid live key (wp-config.php line 41)
+  SG.•••••
+  fix: blank
+
+SIDE EFFECTS  4
+[ok] Echo connector, sealed: wp-content/mu-plugins/rhythm-echo.php (undo: delete the file)
+[ok] WP_ENVIRONMENT_TYPE: 'staging' in wp-config.php (the seal needs it)
+[ok] WP-Cron: DISABLE_WP_CRON true; 38 events kept, none run (undo: set DISABLE_WP_CRON to false)
+[ok] WooCommerce webhooks: 6 active → paused
+
+Not stopped: a server crontab calling wp cron or artisan schedule:run, wp action-scheduler run by hand, queue workers already running, code that opens SMTP sockets or uses fsockopen with credentials Roadie doesn't know, raw cURL without --echo-proxy. Credentials are blanked so those paths fail at the provider. Blocking outbound traffic at the host is the only certainty.
+
+FILE EDITS  2
+- wp-config.php: define WP_ENVIRONMENT_TYPE as 'staging' (config.environment)
+- wp-content/mu-plugins/rhythm-echo.php: install the Echo connector in seal mode (side-effect.mail)
+
+REMOTE COMMANDS  2
+- wp core version --skip-plugins --skip-themes
+- wp db export - --skip-plugins --skip-themes --single-transaction --skip-triggers
+
+ALSO
+- noindex: X-Robots-Tag, robots.txt Disallow: / and the crawler block (blog_public in the database left as it is)
+- 3,912 production URLs rewritten in 2 tables
+- Files are not copied. For uploads, leave out the folders that hold personal data: rsync -a --exclude wp-content/debug.log --exclude wp-content/uploads/wc-logs --exclude wp-content/uploads/gravity_forms --exclude wp-content/updraft --exclude wp-content/ai1wm-backups --exclude '*.sql' --exclude '*.sql.gz' --exclude '*.zip' deploy@shop.com:/var/www/shop/ /var/www/staging/
+- Basic auth is off: --basic-auth <user> writes snippets for Apache, nginx and Caddy (Roadie never edits server config)
+- Object caches and search indexes (Redis, Algolia, ElasticPress) are not copied or cleared
+
+UNCOVERED  1
+[MEDIUM] wp_loyalty_members.email looks personal and no rule covers it
+  98% of sampled values look personal
+  fix: add it under columns: in .roadie/config.yaml, or --allow-uncovered
+
+PLAN   copy would stop: 1 uncovered column
+read schema and counts in 3s; no rows changed
+
+rhythm-roadie explain uncovered-column
+--- exit 0

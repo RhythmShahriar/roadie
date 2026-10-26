@@ -1,0 +1,91 @@
+$ rhythm-roadie plan --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config
+
+  [1;38;2;255;124;81m♪[0m [1mrhythm roadie[0m [38;2;107;113;128mdev[0m                                   [38;2;107;113;128mplan · nothing changes[0m
+  [38;2;107;113;128m────────────────────────────────────────────────────────────────────────────[0m
+
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mSource[0m        ssh://deploy@shop.com/var/www/shop (MySQL 8.0, 2.4 GB, 5
+                  tables)
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mTarget[0m        /var/www/staging (MariaDB 10.11)
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mTarget check[0m  not in production: [shop.com, *.shop.com]
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mStack[0m         WordPress + WooCommerce (HPOS) + Subscriptions + Gravity
+                  Forms
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mURLs[0m          https://shop.com → https://staging.shop.test (serialized
+                  and JSON safe)
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mConsistency[0m   per-run key: each real person gets one fake, across every
+                  table
+
+  [1;38;2;255;124;81mDATA  4 tables[0m [38;2;107;113;128m─────────────────────────────────────────────────────────────[0m
+
+    wp_users                     18,402 rows   user_email, user_login → fake;
+                                               user_pass → reset (2 kept)
+    wp_wc_orders                 96,220 rows   billing_email → fake;
+                                               customer_note → scrub
+    wp_wpmailsmtp_emails_log      9,812 rows   truncated (wp-mail-smtp)
+    wp_options                    1,044 rows   option_value → URLs rewritten
+
+  [1;38;2;239;68;68mKEYS  2 live keys[0m [38;2;107;113;128m──────────────────────────────────────────────────────────[0m
+
+ [38;2;239;68;68m▌[0m [1;38;2;11;11;12;48;2;239;68;68m CRITICAL [0m  [1mStripe live key[0m         [38;2;107;113;128mwp_options woocommerce_stripe_settings[0m
+ [38;2;239;68;68m▌[0m             [38;2;107;113;128msecret_key = sk_l•••••[0m                                        
+ [38;2;239;68;68m▌[0m             [1;38;2;255;124;81m→[0m swap: the test key from keys.test_keys                      
+ [38;2;249;115;22m▌[0m [1;38;2;11;11;12;48;2;249;115;22m HIGH     [0m  [1mSendGrid live key[0m                        [38;2;107;113;128mwp-config.php line 41[0m
+ [38;2;249;115;22m▌[0m             [38;2;107;113;128mSG.•••••[0m                                                      
+ [38;2;249;115;22m▌[0m             [1;38;2;255;124;81m→[0m blank                                                       
+
+  [1;38;2;16;185;129mSIDE EFFECTS  4[0m [38;2;107;113;128m────────────────────────────────────────────────────────────[0m
+
+  [38;2;16;185;129m✓[0m Echo connector, sealed   wp-content/mu-plugins/rhythm-echo.php
+  [38;2;16;185;129m✓[0m WP_ENVIRONMENT_TYPE      'staging' in wp-config.php (the seal needs it)
+  [38;2;16;185;129m✓[0m WP-Cron                  DISABLE_WP_CRON true; 38 events kept, none run
+  [38;2;16;185;129m✓[0m WooCommerce webhooks     6 active → paused
+
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mNot stopped[0m   a server crontab calling wp cron or artisan schedule:run,
+                  wp action-scheduler run by hand, queue workers already
+                  running, code that opens SMTP sockets or uses fsockopen
+                  with credentials Roadie doesn't know, raw cURL without
+                  --echo-proxy. Credentials are blanked so those paths fail
+                  at the provider. Blocking outbound traffic at the host is
+                  the only certainty.
+
+  [1;38;2;107;113;128mFILE EDITS  2[0m [38;2;107;113;128m──────────────────────────────────────────────────────────────[0m
+
+    · wp-config.php: define WP_ENVIRONMENT_TYPE as 'staging'
+    · wp-content/mu-plugins/rhythm-echo.php: install the Echo connector in
+      seal mode
+
+  [1;38;2;107;113;128mREMOTE COMMANDS  2[0m [38;2;107;113;128m─────────────────────────────────────────────────────────[0m
+
+    · wp core version --skip-plugins --skip-themes
+    · wp db export - --skip-plugins --skip-themes --single-transaction
+      --skip-triggers
+
+  [1;38;2;107;113;128mALSO[0m [38;2;107;113;128m───────────────────────────────────────────────────────────────────────[0m
+
+    · noindex: X-Robots-Tag, robots.txt Disallow: / and the crawler block
+      (blog_public in the database left as it is)
+    · 3,912 production URLs rewritten in 2 tables
+    · Files are not copied. For uploads, leave out the folders that hold
+      personal data: rsync -a --exclude wp-content/debug.log --exclude
+      wp-content/uploads/wc-logs --exclude wp-content/uploads/gravity_forms
+      --exclude wp-content/updraft --exclude wp-content/ai1wm-backups
+      --exclude '*.sql' --exclude '*.sql.gz' --exclude '*.zip'
+      deploy@shop.com:/var/www/shop/ /var/www/staging/
+    · Basic auth is off: --basic-auth <user> writes snippets for Apache,
+      nginx and Caddy (Roadie never edits server config)
+    · Object caches and search indexes (Redis, Algolia, ElasticPress) are
+      not copied or cleared
+
+  [1;38;2;234;179;8mUNCOVERED  1[0m [38;2;107;113;128m───────────────────────────────────────────────────────────────[0m
+
+ [38;2;234;179;8m▌[0m [1;38;2;11;11;12;48;2;234;179;8m MEDIUM   [0m  [1mwp_loyalty_members.email looks personal and no rule covers it[0m
+ [38;2;234;179;8m▌[0m             [38;2;107;113;128m98% of sampled values look personal[0m                          
+ [38;2;234;179;8m▌[0m             [1;38;2;255;124;81m→[0m add it under columns: in .roadie/config.yaml, or           
+ [38;2;234;179;8m▌[0m               --allow-uncovered                                          
+
+ [38;2;234;179;8m╭──────────────────────────────────────────────╮[0m
+ [38;2;234;179;8m│[0m  [1;38;2;234;179;8mPLAN[0m   [1mcopy would stop: 1 uncovered column[0m  [38;2;234;179;8m│[0m
+ [38;2;234;179;8m╰──────────────────────────────────────────────╯[0m
+  [38;2;107;113;128mread schema and counts in 3s; no rows changed[0m
+
+  [1;38;2;255;124;81m→[0m rhythm-roadie explain uncovered-column
+--- exit 0

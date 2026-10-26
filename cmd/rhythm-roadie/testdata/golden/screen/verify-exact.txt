@@ -1,0 +1,24 @@
+$ rhythm-roadie verify staging.sql --from prod.sql.gz --no-config
+rhythm roadie dev - verify · staging.sql
+
+Mode: exact: every value Roadie replaced was checked
+Database: staging.sql, 61 tables of 61, every row
+
+CHECKS  6
+[ok] No pseudonymised value survives: 1.21 M hashes, every table and text
+[ok] No real-looking emails: 18,402 checked, all @example.invalid or kept
+[ok] No real-looking phones: 41,077 checked
+[ok] No live keys: DB, wp-config.php, .env
+[ok] No production URLs: 0 left of 3,912
+[ok] Side effects off: 4 of 4
+
+PASS   staging.sql is a pseudonymised copy
+0 critical · 0 high · 0 medium · 0 low · 0 info
+61 tables · 2,100,000 rows · 0.0s
+
+Pseudonymised, not anonymised. The copy still holds order totals, dates, products and anything Roadie can't recognise in free text. Treat it as personal data.
+
+Not covered by this report: files and uploads (PDF invoices, form uploads, images with location data), other databases, object caches (Redis, Memcached), search indexes (Algolia, ElasticPress), logs on disk outside wp-content, copies held by third parties (Mailchimp lists, Stripe customers), names and street addresses written in free text that Roadie didn't see in a structured column, encrypted columns, tables you told Roadie to keep.
+
+signed report: .roadie/reports/2026-10-26T14-02-11/report.html
+--- exit 0

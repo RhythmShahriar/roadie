@@ -1,0 +1,19 @@
+{
+  "schema": "rhythm-roadie/v1",
+  "kind": "verify",
+  "tool": "rhythm-roadie",
+  "version": "1.0.0",
+  "complete": true,
+  "summary": {"critical": 1, "high": 1, "medium": 3, "low": 0, "info": 2, "tables": 0, "tables_pseudonymised": 0, "rows": 0, "values_pseudonymised": 0, "urls_rewritten": 0, "keys_found": 1, "keys_swapped": 0, "keys_blanked": 0, "side_effects_off": 0, "side_effects_total": 0, "uncovered_columns": 0},
+  "verdict": "findings",
+  "data": {
+    "result": "fail",
+    "fail_on": "high",
+    "target": {"kind": "dump", "display": "staging.sql"},
+    "tables": [{"name": "wp_users_canary_table", "rows": 3}],
+    "findings": [{"id": "pii.email", "severity": "critical", "title": "real-looking emails", "count": 3, "locations": [{"table": "wp_users_canary_table", "column": "user_email", "examples": ["a•••@g•••.com"]}]}],
+    "coverage": {"tables_scanned": 12, "tables_total": 12, "rows_scanned": 40, "bytes_scanned": 900, "skipped": [], "sample": 0},
+    "not_covered": [],
+    "signature": {"alg": "ed25519", "key_id": "roadie:7Q3kXc2bW9pLmN4a", "public_key": "AAAA", "sig": "AAAA"}
+  }
+}

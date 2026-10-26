@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"data\":{\"signature\":{\"alg\":\"ed25519\"}},\"schema\":\"rhythm-roadie/v1\"}")

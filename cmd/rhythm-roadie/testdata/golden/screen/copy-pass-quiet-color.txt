@@ -1,0 +1,12 @@
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config -q
+    [38;2;16;185;129m✓[0m No pseudonymised value survives         [38;2;107;113;128m1.21 M hashes, every table and[0m
+                                              [38;2;107;113;128mtext[0m
+    [38;2;16;185;129m✓[0m No real-looking emails                  [38;2;107;113;128m18,402 checked, all[0m
+                                              [38;2;107;113;128m@example.invalid or kept[0m
+    [38;2;16;185;129m✓[0m No real-looking phones                  [38;2;107;113;128m41,077 checked[0m
+    [38;2;16;185;129m✓[0m No live keys                            [38;2;107;113;128mDB, wp-config.php, .env[0m
+    [38;2;16;185;129m✓[0m No production URLs                      [38;2;107;113;128m0 left of 3,912[0m
+    [38;2;16;185;129m✓[0m Side effects off                        [38;2;107;113;128m4 of 4[0m
+PASS   staging.shop.test is a pseudonymised copy
+0 critical · 0 high · 0 medium · 0 low · 1 info
+--- exit 0

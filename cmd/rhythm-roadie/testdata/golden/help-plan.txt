@@ -1,0 +1,46 @@
+rhythm roadie plan: dry run of copy or prepare; lists every change and makes none
+
+Usage:
+  rhythm-roadie plan --from <source> [--to <target>] [flags]
+  rhythm-roadie plan <staging> [flags]
+
+plan takes every flag of copy (rhythm-roadie help copy) or, with <staging>, of
+prepare (rhythm-roadie help prepare). It opens the source and the target
+read-only, lists every table, rule, key, file edit, remote command and side
+effect and writes only its report.
+
+Plan:
+      --schema-only          read only CREATE TABLE statements or information_schema,
+                             not the rows (faster; row counts are estimates)
+      --fail-on <level>      exit 1 when the copy would stop or leave a finding at or
+                             above none (default), info, low, medium, high or critical
+
+Output:
+      --json                 JSON (schema rhythm-roadie/v1)
+      --md                   Markdown for pull requests and CI summaries
+      --html                 standalone HTML report
+      --sarif                SARIF 2.1.0 (verify only)
+      --junit                JUnit XML for CI test views (verify only)
+  -o, --output <file>        write the report to a file (format from the extension:
+                             .json .md .html .sarif .xml), keep the live view;
+                             repeat it for several files
+      --open                 open the HTML report when done
+  -q, --quiet                results only
+      --plain                no color, boxes or glyphs (screen readers, logs)
+      --no-color             no color (NO_COLOR too)
+  -v, --verbose              every table, rule and file edit as it happens
+      --debug                timings and counts too (never values)
+
+Settings:
+      --config <file>        settings file (default the nearest .roadie/config.yaml, here or above)
+      --no-config            don't read .roadie/config.yaml; use it in folders you don't trust
+      --offline              built-in profiles only, no update check (RHYTHM_OFFLINE=1 too)
+
+Exit codes (as in Tuner, Soundcheck and Echo):
+  0    ok: done and verify found nothing at or above --fail-on
+  1    findings: verify found something at or above --fail-on, plan would stop,
+       or a report's signature doesn't match
+  2    usage error: a wrong command line or a bad .roadie/config.yaml
+  3    couldn't run: source or target unreachable, a dump that ends early, a
+       target refused as production, nothing to scan
+  130  interrupted

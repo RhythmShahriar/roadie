@@ -1,0 +1,104 @@
+rhythm roadie prepare: make an existing staging copy safe in place
+
+Usage:
+  rhythm-roadie prepare <staging> [flags]
+  (staging: a site path, ssh://..., @alias or DSN; default target: in the config)
+
+Where:
+      --url <url>            the staging site's URL (default url: in the config)
+      --url-map <a=b,...>    extra URL pairs, e.g. for multisite subsites or a CDN
+      --stack <name>         wordpress, laravel or sql (default: detected)
+      --site <id>            multisite: only these blog IDs (repeatable; default all)
+      --only <parts>         data, keys, side-effects, urls, noindex (default all). E.g.
+                             --only side-effects re-applies the kill switch after a plugin
+                             update without touching the data
+      --production-url <url> the live site's URL, for rewriting and for verify (default
+                             production: in the config; asked on a terminal when the copy
+                             still holds it as siteurl)
+      --no-backup            don't back up the database first (default: back it up)
+      --dry-run              run plan with the same arguments: every change, none made
+
+Pseudonymise:
+      --keep-users <list>    user logins or emails kept as they are, globs allowed,
+                             e.g. admin,*@agency.example (default keep_users: in the config)
+      --keep-key             keep the consistency key in .roadie/key, so the next refresh
+                             gives each real person the same fake (default: a new key per run)
+      --email-domain <d>     reserved domain for fake emails (default example.invalid)
+      --admin-password-env <NAME>
+                             set every kept user's password from this ROADIE_ variable
+                             (default: kept users keep their password hash)
+      --allow-uncovered      copy even when columns that look personal have no rule
+                             (they are listed as findings; default: stop before writing)
+      --drop <tables>        leave these tables out of the copy, globs allowed
+      --truncate <tables>    copy the table's structure but not its rows
+      --one-pass             skip the name index pass (faster; names in free text stay)
+      --keep-routines        keep triggers, procedures and views (DEFINER removed)
+      --keep-app-key         Laravel: keep APP_KEY (encrypted columns stay readable)
+
+Keys and side effects:
+      --keys <mode>          swap (default): a live key becomes the test key you set in
+                             keys.test_keys, else it is blanked. blank: blank every live key
+      --no-kill-switch       copy the data only (verify will FAIL on side effects)
+      --echo-url <url>       where the installed Echo connector reports (default
+                             http://127.0.0.1:8025; RHYTHM_ECHO_URL)
+      --echo-proxy <addr>    also route raw cURL through Echo's proxy, e.g. 127.0.0.1:8026
+      --noindex=off          don't add noindex, robots and the crawler block (default on)
+      --basic-auth <user>    also write basic-auth snippets with a generated password,
+                             printed once (default off; on GitHub Actions it is
+                             masked and kept in .roadie/basic-auth/password)
+
+Target safety:
+      --production <list>    production hosts or URLs, e.g. shop.com,*.shop.com (adds to
+                             production: in the config); a target that matches is refused
+      --confirm-target <host>
+                             the target's host or database name, typed out; needed when
+                             the target is a site or database and there's no terminal
+      --target-is-staging <host>
+                             the target says it's production (WP_ENVIRONMENT_TYPE or APP_ENV)
+                             but isn't: name its host to go on. Never overrides a production:
+                             match or a target that is the source
+  -y, --yes                  don't ask before replacing the target's database
+      --fix-collation        rewrite MySQL 8 collations (utf8mb4_0900_*) for older MariaDB
+      --jobs <n>             transform workers (default the number of CPUs, at most 8)
+      --max-memory <size>    soft memory limit (default 1GiB)
+      --max-value <size>     largest single value accepted (default 256MiB)
+      --max-output-ratio <n> stop when the dump grows past n times its compressed size
+                             (default 20)
+
+After the copy:
+      --no-verify            skip the verify at the end (exit 0 means "copied", not "checked")
+      --fail-on <level>      exit 1 when verify finds something at or above none, info, low,
+                             medium, high (default) or critical
+      --soundcheck           also run rhythm-soundcheck run <url> --json on the copy
+      --sign=off             don't sign the JSON report (default: sign it)
+      --key <file>           sign with this Ed25519 key instead (ROADIE_SIGNING_KEY in CI)
+
+Output:
+      --json                 JSON (schema rhythm-roadie/v1)
+      --md                   Markdown for pull requests and CI summaries
+      --html                 standalone HTML report
+      --sarif                SARIF 2.1.0 (verify only)
+      --junit                JUnit XML for CI test views (verify only)
+  -o, --output <file>        write the report to a file (format from the extension:
+                             .json .md .html .sarif .xml), keep the live view;
+                             repeat it for several files
+      --open                 open the HTML report when done
+  -q, --quiet                results only
+      --plain                no color, boxes or glyphs (screen readers, logs)
+      --no-color             no color (NO_COLOR too)
+  -v, --verbose              every table, rule and file edit as it happens
+      --debug                timings and counts too (never values)
+
+Settings:
+      --config <file>        settings file (default the nearest .roadie/config.yaml, here or above)
+      --no-config            don't read .roadie/config.yaml; use it in folders you don't trust
+      --offline              built-in profiles only, no update check (RHYTHM_OFFLINE=1 too)
+
+Exit codes (as in Tuner, Soundcheck and Echo):
+  0    ok: done and verify found nothing at or above --fail-on
+  1    findings: verify found something at or above --fail-on, plan would stop,
+       or a report's signature doesn't match
+  2    usage error: a wrong command line or a bad .roadie/config.yaml
+  3    couldn't run: source or target unreachable, a dump that ends early, a
+       target refused as production, nothing to scan
+  130  interrupted

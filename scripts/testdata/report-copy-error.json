@@ -1,0 +1,14 @@
+{
+  "schema": "rhythm-roadie/v1",
+  "kind": "copy",
+  "tool": "rhythm-roadie",
+  "version": "1.0.0",
+  "complete": false,
+  "summary": {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0},
+  "verdict": "error",
+  "data": {
+    "result": "error",
+    "error": {"code": "target-is-production", "message": "target-is-production: /var/www/shop is shop.example, which production: lists. Roadie never writes to production. Point --to at the staging copy.", "exit": 3},
+    "not_covered": []
+  }
+}

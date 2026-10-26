@@ -1,0 +1,38 @@
+$ rhythm-roadie verify /var/www/old-staging --production shop.com --no-config
+
+  [1;38;2;255;124;81m♪[0m [1mrhythm roadie[0m [38;2;107;113;128mdev[0m                            [38;2;107;113;128mverify · /var/www/old-staging[0m
+  [38;2;107;113;128m────────────────────────────────────────────────────────────────────────────[0m
+
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mMode[0m          heuristic: this copy wasn't made by Roadie in this run
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mDatabase[0m      /var/www/old-staging, 61 tables of 61, every row
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mProduction[0m    shop.com
+
+  [1;38;2;255;124;81mCHECKS  5[0m [38;2;107;113;128m──────────────────────────────────────────────────────────────────[0m
+
+    [38;2;16;185;129m✓[0m No real-looking emails                  [38;2;107;113;128m18,402 checked, all[0m
+                                              [38;2;107;113;128m@example.invalid or kept[0m
+    [38;2;16;185;129m✓[0m No real-looking phones                  [38;2;107;113;128m41,077 checked[0m
+    [38;2;16;185;129m✓[0m No live keys                            [38;2;107;113;128mDB, wp-config.php, .env[0m
+    [38;2;16;185;129m✓[0m No production URLs                      [38;2;107;113;128m0 left of 3,912[0m
+    [38;2;16;185;129m✓[0m Side effects off                        [38;2;107;113;128m4 of 4[0m
+
+ [38;2;16;185;129m╭───────────────────────────────────────────────────╮[0m
+ [38;2;16;185;129m│[0m  [1;38;2;16;185;129mPASS[0m   [1mold-staging is a pseudonymised copy[0m       [38;2;16;185;129m│[0m
+ [38;2;16;185;129m│[0m  0 critical · 0 high · 0 medium · 0 low · 0 info  [38;2;16;185;129m│[0m
+ [38;2;16;185;129m╰───────────────────────────────────────────────────╯[0m
+  [38;2;107;113;128m61 tables · 2,100,000 rows · 0.0s[0m
+
+  Pseudonymised, not anonymised. The copy still holds order totals, dates,
+  products and anything Roadie can't recognise in free text. Treat it as
+  personal data.
+
+  Not covered by this report: files and uploads (PDF invoices, form uploads,
+  images with location data), other databases, object caches (Redis,
+  Memcached), search indexes (Algolia, ElasticPress), logs on disk outside
+  wp-content, copies held by third parties (Mailchimp lists, Stripe
+  customers), names and street addresses written in free text that Roadie
+  didn't see in a structured column, encrypted columns, tables you told Roadie
+  to keep.
+
+  [1;38;2;255;124;81m→[0m signed report: .roadie/reports/2026-10-26T14-02-11/report.html
+--- exit 0

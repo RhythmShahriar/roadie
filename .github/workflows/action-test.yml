@@ -1,0 +1,126 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Runs the Action from the working tree on Linux, macOS and Windows against
+# the demo shop's dump (fake customers only): verify on the leaky dump must
+# fail with its outputs set, a copy of it to a dump file must pass and a
+# verify of that copy must pass too. Roadie is built from this commit into
+# the folder the Action installs to, with a version the version input
+# names, so the Action reuses it and downloads nothing. Then the helper
+# scripts' offline tests. Everything is pinned by commit.
+name: action-test
+on:
+  push:
+    branches: [master]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  action:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Build Roadie where the Action installs it
+        run: go build -ldflags "-X main.version=0.0.0-test" -o "$RUNNER_TEMP/roadie-bin/rhythm-roadie$(go env GOEXE)" ./cmd/rhythm-roadie
+      - name: Write the demo shop's dump
+        id: demo
+        run: |
+          mkdir -p action-test
+          go run ./scripts/demodump -o action-test/leaky.sql -leaky
+          echo "production=$(go run ./scripts/demodump -production)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the leaky dump
+        id: leaky
+        continue-on-error: true
+        uses: ./
+        with:
+          version: 0.0.0-test
+          working-directory: action-test
+          target: leaky.sql
+          production: ${{ steps.demo.outputs.production }}
+          sarif: "true"
+      - name: It failed with findings and set every output
+        env:
+          OUTCOME: ${{ steps.leaky.outcome }}
+          CODE: ${{ steps.leaky.outputs.exit-code }}
+          VERDICT: ${{ steps.leaky.outputs.verdict }}
+          FINDINGS: ${{ steps.leaky.outputs.findings }}
+          REPORT: ${{ steps.leaky.outputs.report }}
+          HTML: ${{ steps.leaky.outputs.html }}
+          SARIF: ${{ steps.leaky.outputs.sarif-file }}
+          SIGNATURE: ${{ steps.leaky.outputs.signature }}
+          VERSION: ${{ steps.leaky.outputs.version }}
+        run: |
+          set -x
+          test "$OUTCOME" = failure
+          test "$CODE" = 1
+          test "$VERDICT" = fail
+          test "$FINDINGS" -gt 0
+          test -s "$REPORT"
+          test -s "$HTML"
+          test -s "$SARIF"
+          case "$SIGNATURE" in roadie:*) ;; *) exit 1 ;; esac
+          test "$VERSION" = 0.0.0-test
+          jq -e '.data.result == "fail"' "$REPORT"
+          rhythm-roadie report check "$REPORT"
+
+      - name: Copy it, pseudonymised, to a dump file
+        id: copy
+        uses: ./
+        with:
+          version: 0.0.0-test
+          working-directory: action-test
+          mode: copy
+          source: leaky.sql
+          target: staging.sql
+          url: https://staging.shop.test
+          production: ${{ steps.demo.outputs.production }}
+      - name: The copy passed
+        env:
+          CODE: ${{ steps.copy.outputs.exit-code }}
+          VERDICT: ${{ steps.copy.outputs.verdict }}
+          REPORT: ${{ steps.copy.outputs.report }}
+        run: |
+          set -x
+          test "$CODE" = 0
+          test "$VERDICT" = pass
+          test -s action-test/staging.sql
+          rhythm-roadie report check "$REPORT"
+
+      - name: Verify the copy on its own
+        id: staging
+        uses: ./
+        with:
+          version: 0.0.0-test
+          working-directory: action-test
+          target: staging.sql
+          production: ${{ steps.demo.outputs.production }}
+      - name: The copy verifies
+        env:
+          CODE: ${{ steps.staging.outputs.exit-code }}
+          VERDICT: ${{ steps.staging.outputs.verdict }}
+        run: |
+          set -x
+          test "$CODE" = 0
+          test "$VERDICT" = pass
+
+  scripts:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Test the Action's helper scripts offline
+        run: scripts/action-test.sh

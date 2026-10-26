@@ -1,0 +1,218 @@
+{
+  "schema": "rhythm-roadie/v1",
+  "kind": "verify",
+  "tool": "rhythm-roadie",
+  "version": "1.0.0",
+  "complete": true,
+  "summary": {
+    "critical": 1,
+    "high": 1,
+    "medium": 1,
+    "low": 0,
+    "info": 0,
+    "tables": 0,
+    "tables_pseudonymised": 0,
+    "rows": 0,
+    "values_pseudonymised": 0,
+    "urls_rewritten": 0,
+    "keys_found": 1,
+    "keys_swapped": 0,
+    "keys_blanked": 0,
+    "side_effects_off": 0,
+    "side_effects_total": 0,
+    "uncovered_columns": 1
+  },
+  "verdict": "findings",
+  "data": {
+    "result": "fail",
+    "verify_mode": "heuristic",
+    "fail_on": "high",
+    "started": "2026-10-26T14:10:11Z",
+    "duration_ms": 41000,
+    "source": {
+      "kind": "",
+      "display": "",
+      "engine": "",
+      "server": "",
+      "bytes": 0
+    },
+    "target": {
+      "kind": "dump-file",
+      "display": "staging.sql.gz",
+      "engine": "mysql",
+      "server": "",
+      "bytes": 1200000,
+      "state": "untouched"
+    },
+    "target_state": "untouched",
+    "production": [
+      "shop.com"
+    ],
+    "url": "",
+    "stack": {
+      "name": "wordpress",
+      "profiles": [
+        "wordpress",
+        "woocommerce"
+      ],
+      "multisite": false,
+      "hpos": false,
+      "sites": 0
+    },
+    "consistency": {
+      "mode": "stable",
+      "key_fingerprint": "roadie-key:ABCDEFGHJKLM"
+    },
+    "input": {
+      "kind": "sha256-file",
+      "value": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+      "bytes": 1200000
+    },
+    "output": null,
+    "ruleset_sha256": "",
+    "config_sha256": "",
+    "profile_pack": "",
+    "echo_connector_sha256": "",
+    "tables": [],
+    "covered": [],
+    "uncovered": [
+      {
+        "table": "wp_loyalty_members",
+        "column": "email",
+        "rate": 92
+      }
+    ],
+    "keys": [
+      {
+        "id": "key.stripe-live",
+        "severity": "critical",
+        "provider": "Stripe",
+        "env": "live",
+        "location": {
+          "table": "wp_options",
+          "row": "option_name=woocommerce_stripe_settings",
+          "path": "serialized:secret_key"
+        },
+        "masked": "sk_l•••••",
+        "action": "kept"
+      }
+    ],
+    "side_effects": [],
+    "findings": [
+      {
+        "id": "pii.email",
+        "severity": "high",
+        "title": "real-looking emails",
+        "count": 3,
+        "locations": [
+          {
+            "table": "wp_users",
+            "column": "user_email",
+            "row": "ID=42",
+            "count": 2
+          },
+          {
+            "table": "wp_postmeta",
+            "column": "meta_value",
+            "row": "meta_key=_billing_email",
+            "count": 1
+          }
+        ],
+        "examples": [
+          "ad•••@gm•••.com"
+        ],
+        "fix": "rhythm-roadie prepare staging.sql.gz"
+      },
+      {
+        "id": "key.stripe-live",
+        "severity": "critical",
+        "title": "Stripe live key",
+        "count": 1,
+        "locations": [
+          {
+            "table": "wp_options",
+            "column": "option_value",
+            "row": "option_name=woocommerce_stripe_settings",
+            "path": "serialized:secret_key",
+            "count": 1
+          }
+        ],
+        "examples": [
+          "sk_l•••••"
+        ]
+      },
+      {
+        "id": "config.environment",
+        "severity": "medium",
+        "title": "WP_ENVIRONMENT_TYPE is unset",
+        "count": 1,
+        "locations": [
+          {
+            "file": "wp-config.php",
+            "line": 41,
+            "count": 1
+          }
+        ]
+      }
+    ],
+    "checks": [
+      {
+        "id": "pii.email",
+        "status": "fail",
+        "checked": 18402
+      },
+      {
+        "id": "pii.phone",
+        "status": "pass",
+        "checked": 41077
+      },
+      {
+        "id": "keys",
+        "status": "fail",
+        "checked": 0,
+        "detail": "database"
+      },
+      {
+        "id": "uploads.personal",
+        "status": "skip",
+        "checked": 0,
+        "detail": "a dump has no uploads"
+      }
+    ],
+    "coverage": {
+      "tables_scanned": 58,
+      "tables_total": 61,
+      "rows_scanned": 980211,
+      "bytes_scanned": 1200000,
+      "skipped": [
+        {
+          "table": "wp_wc_admin_notes",
+          "reason": "a table Roadie was told to keep"
+        }
+      ],
+      "sample": 0
+    },
+    "remote_commands": [],
+    "not_covered": [
+      "files and uploads (PDF invoices, form uploads, images with location data)",
+      "other databases",
+      "object caches (Redis, Memcached)",
+      "search indexes (Algolia, ElasticPress)",
+      "logs on disk outside wp-content",
+      "copies held by third parties (Mailchimp lists, Stripe customers)",
+      "names and street addresses written in free text that Roadie didn't see in a structured column",
+      "encrypted columns",
+      "tables you told Roadie to keep",
+      "uploads on the staging host"
+    ],
+    "soundcheck": {
+      "ran": true,
+      "exit_code": 0,
+      "schema": "rhythm-soundcheck/v1",
+      "counts": {
+        "broken": 0,
+        "pages": 12
+      }
+    }
+  }
+}

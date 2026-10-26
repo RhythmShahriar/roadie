@@ -1,0 +1,43 @@
+$ rhythm-roadie verify /var/www/old-staging --production shop.com --no-config
+rhythm roadie dev - verify · /var/www/old-staging
+
+Mode: heuristic: this copy wasn't made by Roadie in this run
+Database: /var/www/old-staging, 61 tables of 61, every row
+Production: shop.com
+
+CHECKS  6
+[ok] No pseudonymised value survives: 1.21 M hashes, every table and text
+[FAIL] No real-looking emails: 17,880 look real
+[ok] No real-looking phones: 41,077 checked
+[ok] No live keys: DB, wp-config.php, .env
+[ok] No production URLs: 0 left of 3,912
+[FAIL] Side effects off: 3 of 4
+
+CRITICAL  1
+[CRITICAL] Mail goes out for real (side-effect.mail)
+  no Echo connector, no SMTP override: wp_mail uses WP Mail SMTP (SendGrid)
+  fix: rhythm-roadie prepare /var/www/staging --only side-effects
+
+HIGH  2
+[HIGH] 17,880 real-looking emails (pii.email)
+  wp_users.user_email 17,880 · wp_wc_order_addresses.email 16,412
+  e.g. ad•••@gm•••.com
+[HIGH] Stripe in live mode (key.live-mode)
+  wp_options woocommerce_stripe_settings → serialized:testmode
+
+MEDIUM  1
+[MEDIUM] 412 production URLs (url.production)
+  wp_posts 390 · wp_options 22
+
+FAIL   old-staging is not a safe copy yet
+1 critical · 2 high · 1 medium · 0 low · 0 info
+61 tables · 2,100,000 rows · 0.0s
+
+Pseudonymised, not anonymised. The copy still holds order totals, dates, products and anything Roadie can't recognise in free text. Treat it as personal data.
+
+Not covered by this report: files and uploads (PDF invoices, form uploads, images with location data), other databases, object caches (Redis, Memcached), search indexes (Algolia, ElasticPress), logs on disk outside wp-content, copies held by third parties (Mailchimp lists, Stripe customers), names and street addresses written in free text that Roadie didn't see in a structured column, encrypted columns, tables you told Roadie to keep.
+
+rhythm-roadie prepare /var/www/old-staging fixes what it can of these
+rhythm-roadie explain side-effect.mail
+signed report: .roadie/reports/2026-10-26T14-02-11/report.html
+--- exit 1

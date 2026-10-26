@@ -1,0 +1,61 @@
+$ rhythm-roadie verify /var/www/old-staging --production shop.com --no-config
+
+  [1;38;2;255;124;81m♪[0m [1mrhythm roadie[0m [38;2;107;113;128mdev[0m                            [38;2;107;113;128mverify · /var/www/old-staging[0m
+  [38;2;107;113;128m────────────────────────────────────────────────────────────────────────────[0m
+
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mMode[0m          heuristic: this copy wasn't made by Roadie in this run
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mDatabase[0m      /var/www/old-staging, 61 tables of 61, every row
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mProduction[0m    shop.com
+
+  [1;38;2;255;124;81mCHECKS  6[0m [38;2;107;113;128m──────────────────────────────────────────────────────────────────[0m
+
+    [38;2;16;185;129m✓[0m No pseudonymised value survives         [38;2;107;113;128m1.21 M hashes, every table and[0m
+                                              [38;2;107;113;128mtext[0m
+    [38;2;239;68;68m✗[0m No real-looking emails                  [38;2;107;113;128m17,880 look real[0m
+    [38;2;16;185;129m✓[0m No real-looking phones                  [38;2;107;113;128m41,077 checked[0m
+    [38;2;16;185;129m✓[0m No live keys                            [38;2;107;113;128mDB, wp-config.php, .env[0m
+    [38;2;16;185;129m✓[0m No production URLs                      [38;2;107;113;128m0 left of 3,912[0m
+    [38;2;239;68;68m✗[0m Side effects off                        [38;2;107;113;128m3 of 4[0m
+
+  [1;38;2;239;68;68mCRITICAL  1[0m [38;2;107;113;128m────────────────────────────────────────────────────────────────[0m
+
+ [38;2;239;68;68m▌[0m [1;38;2;11;11;12;48;2;239;68;68m CRITICAL [0m  [1mMail goes out for real[0m                        [38;2;107;113;128mside-effect.mail[0m
+ [38;2;239;68;68m▌[0m             [38;2;107;113;128mno Echo connector, no SMTP override: wp_mail uses WP Mail SMTP[0m
+ [38;2;239;68;68m▌[0m             [38;2;107;113;128m(SendGrid)[0m                                                    
+ [38;2;239;68;68m▌[0m             [1;38;2;255;124;81m→[0m rhythm-roadie prepare /var/www/staging --only side-effects  
+
+  [1;38;2;249;115;22mHIGH  2[0m [38;2;107;113;128m────────────────────────────────────────────────────────────────────[0m
+
+ [38;2;249;115;22m▌[0m [1;38;2;11;11;12;48;2;249;115;22m HIGH     [0m  [1m17,880 real-looking emails[0m                           [38;2;107;113;128mpii.email[0m
+ [38;2;249;115;22m▌[0m             [38;2;107;113;128mwp_users.user_email 17,880 · wp_wc_order_addresses.email[0m      
+ [38;2;249;115;22m▌[0m             [38;2;107;113;128m16,412[0m                                                        
+ [38;2;249;115;22m▌[0m             [38;2;107;113;128me.g. ad•••@gm•••.com[0m                                          
+ [38;2;249;115;22m▌[0m [1;38;2;11;11;12;48;2;249;115;22m HIGH     [0m  [1mStripe in live mode[0m                              [38;2;107;113;128mkey.live-mode[0m
+ [38;2;249;115;22m▌[0m             [38;2;107;113;128mwp_options woocommerce_stripe_settings → serialized:testmode[0m  
+
+  [1;38;2;234;179;8mMEDIUM  1[0m [38;2;107;113;128m──────────────────────────────────────────────────────────────────[0m
+
+    · 412 production URLs wp_posts 390 · wp_options 22 (url.production)
+
+ [38;2;239;68;68m╭───────────────────────────────────────────────────╮[0m
+ [38;2;239;68;68m│[0m  [1;38;2;239;68;68mFAIL[0m   [1mold-staging is not a safe copy yet[0m        [38;2;239;68;68m│[0m
+ [38;2;239;68;68m│[0m  1 critical · 2 high · 1 medium · 0 low · 0 info  [38;2;239;68;68m│[0m
+ [38;2;239;68;68m╰───────────────────────────────────────────────────╯[0m
+  [38;2;107;113;128m61 tables · 2,100,000 rows · 0.0s[0m
+
+  Pseudonymised, not anonymised. The copy still holds order totals, dates,
+  products and anything Roadie can't recognise in free text. Treat it as
+  personal data.
+
+  Not covered by this report: files and uploads (PDF invoices, form uploads,
+  images with location data), other databases, object caches (Redis,
+  Memcached), search indexes (Algolia, ElasticPress), logs on disk outside
+  wp-content, copies held by third parties (Mailchimp lists, Stripe
+  customers), names and street addresses written in free text that Roadie
+  didn't see in a structured column, encrypted columns, tables you told Roadie
+  to keep.
+
+  [1;38;2;255;124;81m→[0m rhythm-roadie prepare /var/www/old-staging fixes what it can of these
+  [1;38;2;255;124;81m→[0m rhythm-roadie explain side-effect.mail
+  [1;38;2;255;124;81m→[0m signed report: .roadie/reports/2026-10-26T14-02-11/report.html
+--- exit 1

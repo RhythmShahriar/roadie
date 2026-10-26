@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "rhythm-roadie",
+          "version": "1.0.0",
+          "informationUri": "https://github.com/RhythmShahriar/roadie",
+          "rules": [
+            {
+              "id": "info.kept-users",
+              "shortDescription": {
+                "text": "1 user kept as it is"
+              },
+              "helpUri": "https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Verify-And-Reports#info.kept-users",
+              "properties": {
+                "security-severity": "0.0"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              }
+            }
+          ]
+        }
+      },
+      "invocations": [
+        {
+          "executionSuccessful": true
+        }
+      ],
+      "results": [
+        {
+          "ruleId": "info.kept-users",
+          "level": "note",
+          "message": {
+            "text": "1 user kept as it is: wp_users.user_email"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "db://staging.shop.test/wp_users"
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "user_email",
+                  "fullyQualifiedName": "wp_users.user_email",
+                  "kind": "member"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "roadieFinding/v1": "34c3559a2af2db10"
+          },
+          "properties": {
+            "count": 1,
+            "severity": "info"
+          }
+        }
+      ],
+      "properties": {
+        "not_covered": "Not covered by this report: files and uploads (PDF invoices, form uploads, images with location data), other databases, object caches (Redis, Memcached), search indexes (Algolia, ElasticPress), logs on disk outside wp-content, copies held by third parties (Mailchimp lists, Stripe customers), names and street addresses written in free text that Roadie didn't see in a structured column, encrypted columns, tables you told Roadie to keep.",
+        "notice": "Pseudonymised data is still personal data under the GDPR (Article 4(5), Recital 26). This report shows what Roadie's checks found in this copy; it is not a statement that the copy holds no personal data. Signed by roadie:NHUPmL1… (rhythm-roadie report check report.json): the signature shows who ran Roadie, which version and rules, on which input and that the report is unchanged since. It doesn't prove the data holds no personal data.",
+        "result": "pass",
+        "verdict": "ok",
+        "verify_mode": "exact"
+      }
+    }
+  ]
+}

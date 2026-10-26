@@ -1,0 +1,36 @@
+# wordpress ssh to site
+noindex: X-Robots-Tag, robots.txt Disallow: / and the crawler block (blog_public in the database left as it is)
+3,912 production URLs rewritten in 2 tables
+Files are not copied. For uploads, leave out the folders that hold personal data: rsync -a --exclude wp-content/debug.log --exclude wp-content/uploads/wc-logs --exclude wp-content/uploads/gravity_forms --exclude wp-content/updraft --exclude wp-content/ai1wm-backups --exclude '*.sql' --exclude '*.sql.gz' --exclude '*.zip' deploy@shop.com:/var/www/shop/ /var/www/staging/
+Basic auth is off: --basic-auth <user> writes snippets for Apache, nginx and Caddy (Roadie never edits server config)
+Object caches and search indexes (Redis, Algolia, ElasticPress) are not copied or cleared
+# wordpress with basic auth and noindex off
+3,912 production URLs rewritten in 2 tables
+Files are not copied. For uploads, leave out the folders that hold personal data: rsync -a --exclude wp-content/debug.log --exclude wp-content/uploads/wc-logs --exclude wp-content/uploads/gravity_forms --exclude wp-content/updraft --exclude wp-content/ai1wm-backups --exclude '*.sql' --exclude '*.sql.gz' --exclude '*.zip' deploy@shop.com:/var/www/shop/ /var/www/staging/
+Basic auth snippets for Apache, nginx and Caddy go in .roadie/basic-auth/; add the one for your server (Roadie never edits server config)
+Object caches and search indexes (Redis, Algolia, ElasticPress) are not copied or cleared
+# wordpress dump to dump
+3,912 production URLs rewritten in 2 tables
+Files are not copied. For uploads, leave out the folders that hold personal data: rsync -a --exclude wp-content/debug.log --exclude wp-content/uploads/wc-logs --exclude wp-content/uploads/gravity_forms --exclude wp-content/updraft --exclude wp-content/ai1wm-backups --exclude '*.sql' --exclude '*.sql.gz' --exclude '*.zip' '<production>/' '<staging>/'
+Object caches and search indexes (Redis, Algolia, ElasticPress) are not copied or cleared
+# wordpress ssh on port 2222 to site
+noindex: X-Robots-Tag, robots.txt Disallow: / and the crawler block (blog_public in the database left as it is)
+3,912 production URLs rewritten in 2 tables
+Files are not copied. For uploads, leave out the folders that hold personal data: rsync -a -e 'ssh -p 2222' --exclude wp-content/debug.log --exclude wp-content/uploads/wc-logs --exclude wp-content/uploads/gravity_forms --exclude wp-content/updraft --exclude wp-content/ai1wm-backups --exclude '*.sql' --exclude '*.sql.gz' --exclude '*.zip' deploy@shop.com:/var/www/shop/ /var/www/staging/
+Basic auth is off: --basic-auth <user> writes snippets for Apache, nginx and Caddy (Roadie never edits server config)
+Object caches and search indexes (Redis, Algolia, ElasticPress) are not copied or cleared
+# wordpress ssh to ssh
+noindex: X-Robots-Tag, robots.txt Disallow: / and the crawler block (blog_public in the database left as it is)
+3,912 production URLs rewritten in 2 tables
+Files are not copied. For uploads, leave out the folders that hold personal data: ssh deploy@shop.com 'rsync -a --exclude wp-content/debug.log --exclude wp-content/uploads/wc-logs --exclude wp-content/uploads/gravity_forms --exclude wp-content/updraft --exclude wp-content/ai1wm-backups --exclude '\''*.sql'\'' --exclude '\''*.sql.gz'\'' --exclude '\''*.zip'\'' /var/www/shop/ web@staging.shop.test:/srv/staging/'
+Basic auth is off: --basic-auth <user> writes snippets for Apache, nginx and Caddy (Roadie never edits server config)
+Object caches and search indexes (Redis, Algolia, ElasticPress) are not copied or cleared
+# wordpress ssh to ssh on ports
+noindex: X-Robots-Tag, robots.txt Disallow: / and the crawler block (blog_public in the database left as it is)
+3,912 production URLs rewritten in 2 tables
+Files are not copied. For uploads, leave out the folders that hold personal data: ssh -p 2222 deploy@shop.com 'rsync -a -e '\''ssh -p 2200'\'' --exclude wp-content/debug.log --exclude wp-content/uploads/wc-logs --exclude wp-content/uploads/gravity_forms --exclude wp-content/updraft --exclude wp-content/ai1wm-backups --exclude '\''*.sql'\'' --exclude '\''*.sql.gz'\'' --exclude '\''*.zip'\'' /var/www/shop/ '\''web@staging.shop.test:/srv/it'\''\'\'''\''s/'\'''
+Basic auth is off: --basic-auth <user> writes snippets for Apache, nginx and Caddy (Roadie never edits server config)
+Object caches and search indexes (Redis, Algolia, ElasticPress) are not copied or cleared
+# laravel
+Basic auth is off: --basic-auth <user> writes snippets for Apache, nginx and Caddy (Roadie never edits server config)
+Object caches and search indexes (Redis, Algolia, ElasticPress) are not copied or cleared
