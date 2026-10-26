@@ -66,7 +66,7 @@ The file is called `.roadie/config.yaml` in messages when it is in the usual pla
 - `<file> line N: this isn't valid YAML: <yaml's words>` and `<file> line 1: the file must be a list of settings like "source:" and "stack: auto"`
 - `.roadie/config.yaml line 1: drop[1] is "wp_[", which isn't a valid glob (use *, ? and [abc] as in path.Match)`
 - `.roadie/config.yaml line 4: keys.test_keys.stripe reads ${STRIPE_TEST}; only ROADIE_ variables are read. Rename it ROADIE_STRIPE_TEST.`
-- `.roadie/config.yaml line 5: keys.test_keys.stripe reads ${ROADIE_STRIPE_TEST_SECRET}, which isn't set. Set it in the environment, or remove the entry.` (only when a run uses that key; `config check` lists every unset one)
+- `.roadie/config.yaml line 5: keys.test_keys.stripe reads ${ROADIE_STRIPE_TEST_SECRET}, which isn't set. Set it in the environment, or remove the entry.` (`plan`, `copy`, `prepare` and `verify` stop with it, exit 2, before the lock when a key they use reads an unset variable; a key a flag replaces, such as `url:` under `--url`, doesn't stop them; `config check` lists every unset one, `production:` and `verify.allow_emails` included)
 - `.roadie/config.yaml line 2: pseudonymise.email_domain is "shop.com", which can receive real mail. Use a reserved domain: example.invalid, example.com or a name under .test, .example, .invalid or .localhost.`
 - `stack is "wordpres"; did you mean wordpress? It takes auto, wordpress, laravel or sql.` and the same shape for every other enum.
 - `verify.ignore[0] needs a reason: say why this value may stay`, `keys.ignore[0].id is "pii.phnoe", which isn't a finding ID; did you mean pii.phone? rhythm-roadie explain lists them.`, `keys.ignore[0].until is "soon"; write a date like 2027-01-31`
@@ -76,7 +76,7 @@ The file is called `.roadie/config.yaml` in messages when it is in the usual pla
 - A live key given as a test key: the keys lane's `test-key-is-live` message with `.roadie/config.yaml line N: ` in front.
 - `.roadie/config.yaml line 2: side_effects.echo.url is http://echo.example.com:8025 over plain http to a public host; use https or an address on this machine or a private network` (plain http is fine to loopback, private and link-local IPs, `localhost`, single-label names and names under `.local`, `.localhost`, `.internal`, `.lan`, `.home.arpa`)
 
-`${ROADIE_NAME}` is read only in string values. `config show` masks test keys and every interpolated value (`sk_t•••••`); DSN and proxy passwords show as `•••`. Each value names its source: flag, file, echo, soundcheck or default.
+`${ROADIE_NAME}` is read only in string values. `config show` masks test keys and every interpolated value (`sk_t•••••`); DSN and proxy passwords show as `•••`, in the user info and in a `password`, `pass`, `pwd` or `sslpassword` query parameter (any case): `postgres://u@db.example/shop?sslmode=require&password=•••`. Each value names its source: flag, file, echo, soundcheck or default.
 
 A validation error about a value read from the environment shows the `${ROADIE_NAME}` reference where the value would stand, never the value: `.roadie/config.yaml line 1: url is "${ROADIE_URL}", which isn't a URL like https://staging.shop.test`. A value of three bytes or less is replaced only where it stands quoted.
 
@@ -651,7 +651,7 @@ A run that stops after a kill switch or exposure step changed the target reports
 
 ### Uncovered columns
 
-A text column no rule covers is scanned in pass 1 (up to 1,000 non-empty values, each cut to 1 KiB) and listed when its name or its values look personal (the detect lane's PRD 11.3 rule). `copy` and `prepare` then stop before pass 2 and before the kill switch or `.maintenance` touch the site, exit 1, target untouched:
+A text column no rule covers is scanned in pass 1 (a column with no type, as a data-only dump gives it, counts as text) (up to 1,000 non-empty values, each cut to 1 KiB) and listed when its name or its values look personal (the detect lane's PRD 11.3 rule). `copy` and `prepare` then stop before pass 2 and before the kill switch or `.maintenance` touch the site, exit 1, target untouched:
 
 `uncovered: 2 columns look personal and no rule covers them: wp_loyalty_members.email, wp_loyalty_members.phone. Add them under columns: (rhythm-roadie explain uncovered-column), or --allow-uncovered to copy and list them as findings. The target is untouched.`
 
