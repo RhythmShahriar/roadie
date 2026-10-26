@@ -179,6 +179,59 @@ func (r *run) configFile(name string) {
 				Locations: []core.LocationCount{{Location: at}}})
 		}
 	}
+	if r.skip.skips("config.") {
+		return
+	}
+	if p, ok := sameLocalDatabase(pairs, prod); ok {
+		r.add(core.Finding{ID: core.FindingConfigPointsAtProduction, Severity: core.SeverityCritical,
+			Title: p.Name + " is production's on the same local DB_HOST", Detail: p.Name + " " + localDBDetail,
+			Fix: fixes[core.FindingConfigPointsAtProduction], Locations: []core.LocationCount{{Location: core.Location{File: name, Line: p.Line}}}})
+	}
+}
+
+// localDBDetail explains a sameLocalDatabase finding.
+const localDBDetail = "and DB_HOST match production's and DB_HOST is local, so a copy on production's server (a host's or plugin's staging) uses production's database"
+
+// dbNameKeys and dbUserKeys name the database and its user in
+// wp-config.php and in a Laravel .env.
+var (
+	dbNameKeys = []string{"DB_NAME", "DB_DATABASE"}
+	dbUserKeys = []string{"DB_USER", "DB_USERNAME"}
+)
+
+// sameLocalDatabase reports the database name pair when DB_HOST is the
+// same machine-local server as production's and the database name is
+// production's too (and the user, when both sides set one).
+// pointsAtProduction lets a machine-local DB_HOST pass on its own since
+// it names a different server on each machine; a staging copy on
+// production's own server with production's database name is the case
+// it would miss.
+func sameLocalDatabase(pairs []core.Pair, prod map[string]string) (core.Pair, bool) {
+	val := map[string]core.Pair{}
+	for _, p := range pairs {
+		val[p.Name] = p
+	}
+	same := func(k string) bool {
+		pv, ok := prod[k]
+		p, have := val[k]
+		return ok && have && strings.TrimSpace(pv) != "" && strings.TrimSpace(pv) == strings.TrimSpace(p.Value)
+	}
+	host, ok := val["DB_HOST"]
+	if !ok || !same("DB_HOST") || !machineLocal(hostOf(strings.TrimSpace(host.Value))) {
+		return core.Pair{}, false
+	}
+	for _, k := range dbUserKeys {
+		_, inProd := prod[k]
+		if _, have := val[k]; have && inProd && !same(k) {
+			return core.Pair{}, false
+		}
+	}
+	for _, k := range dbNameKeys {
+		if same(k) {
+			return val[k], true
+		}
+	}
+	return core.Pair{}, false
 }
 
 // countConfig counts one parsed config file for the checks that read it.

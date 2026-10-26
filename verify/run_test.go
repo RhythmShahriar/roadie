@@ -955,3 +955,26 @@ func TestRunNestedFailsPartway(t *testing.T) {
 		t.Errorf("whole walk: %+v", res.Findings)
 	}
 }
+
+// A staging copy on production's server with production's database
+// name is config.points-at-production, at the DB_NAME line.
+func TestRunSameLocalDatabase(t *testing.T) {
+	cfg := []byte("<?php\ndefine( 'DB_NAME', 'shop_wp' );\ndefine( 'DB_HOST', 'localhost' );\n")
+	prod := []core.Pair{{Name: "DB_NAME", Value: "shop_wp"}, {Name: "DB_HOST", Value: "localhost"}}
+	st := testutil.FakeSite(map[string][]byte{"wp-config.php": cfg})
+	res := runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"})), ProductionPairs: prod})
+	f := find(res, core.FindingConfigPointsAtProduction)
+	if f == nil || f.Title != "DB_NAME is production's on the same local DB_HOST" || f.Locations[0].Line != 2 || f.Severity != core.SeverityCritical {
+		t.Fatalf("same local database: %+v", res.Findings)
+	}
+	st = testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\ndefine( 'DB_NAME', 'shop_staging' );\ndefine( 'DB_HOST', 'localhost' );\n")})
+	res = runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"})), ProductionPairs: prod})
+	if find(res, core.FindingConfigPointsAtProduction) != nil {
+		t.Errorf("own database flagged: %+v", res.Findings)
+	}
+	res = runJob(t, Job{Site: testutil.FakeSite(map[string][]byte{"wp-config.php": cfg}), Source: source(options([]string{"1", "blogname", "Shop"})),
+		ProductionPairs: prod, Opts: Options{Skip: []string{"config"}}})
+	if find(res, core.FindingConfigPointsAtProduction) != nil {
+		t.Errorf("skipped config still checked: %+v", res.Findings)
+	}
+}

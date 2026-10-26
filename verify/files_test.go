@@ -66,3 +66,44 @@ func TestPointsAtProductionMachineLocal(t *testing.T) {
 		t.Error("db listed in production: not matched")
 	}
 }
+
+// A machine-local DB_HOST equal on both sides is production's database
+// when the database name is production's too: a staging copy on
+// production's own server.
+func TestSameLocalDatabase(t *testing.T) {
+	prod := map[string]string{"DB_HOST": "localhost", "DB_NAME": "shop_wp", "DB_USER": "shop"}
+	pairs := func(kv ...string) []core.Pair {
+		var out []core.Pair
+		for i := 0; i < len(kv); i += 2 {
+			out = append(out, core.Pair{Name: kv[i], Value: kv[i+1], Line: i/2 + 1})
+		}
+		return out
+	}
+	cases := []struct {
+		name  string
+		pairs []core.Pair
+		prod  map[string]string
+		want  string
+	}{
+		{"same name and user", pairs("DB_HOST", "localhost", "DB_NAME", "shop_wp", "DB_USER", "shop"), prod, "DB_NAME"},
+		{"same name, no user here", pairs("DB_HOST", "localhost", "DB_NAME", "shop_wp"), prod, "DB_NAME"},
+		{"socket", pairs("DB_HOST", "localhost:/run/mysqld.sock", "DB_NAME", "shop_wp"),
+			map[string]string{"DB_HOST": "localhost:/run/mysqld.sock", "DB_NAME": "shop_wp"}, "DB_NAME"},
+		{"laravel", pairs("DB_HOST", "127.0.0.1", "DB_DATABASE", "shop", "DB_USERNAME", "shop"),
+			map[string]string{"DB_HOST": "127.0.0.1", "DB_DATABASE": "shop", "DB_USERNAME": "shop"}, "DB_DATABASE"},
+		{"own database", pairs("DB_HOST", "localhost", "DB_NAME", "shop_staging", "DB_USER", "shop"), prod, ""},
+		{"own user", pairs("DB_HOST", "localhost", "DB_NAME", "shop_wp", "DB_USER", "staging"), prod, ""},
+		{"other local host", pairs("DB_HOST", "127.0.0.1", "DB_NAME", "shop_wp"), prod, ""},
+		{"remote host", pairs("DB_HOST", "db.shop.com", "DB_NAME", "shop_wp"),
+			map[string]string{"DB_HOST": "db.shop.com", "DB_NAME": "shop_wp"}, ""},
+		{"no name in production", pairs("DB_HOST", "localhost", "DB_NAME", "shop_wp"), map[string]string{"DB_HOST": "localhost"}, ""},
+		{"empty name", pairs("DB_HOST", "localhost", "DB_NAME", ""), map[string]string{"DB_HOST": "localhost", "DB_NAME": ""}, ""},
+		{"no production pairs", pairs("DB_HOST", "localhost", "DB_NAME", "shop_wp"), nil, ""},
+	}
+	for _, c := range cases {
+		p, ok := sameLocalDatabase(c.pairs, c.prod)
+		if got := map[bool]string{true: p.Name}[ok]; got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}
