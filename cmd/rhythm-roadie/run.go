@@ -61,7 +61,9 @@ func runEngine(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 		job.ProjectDir = roadiecfg.ProjectDir(cfgPath)
 	}
 	lr := newLineReader(dep.stdin)
-	if mode == engine.Copy && job.Opts.URL == "" {
+	// A copy of an app's own schema (stack sql) has no site URL to
+	// rewrite to; WordPress and Laravel copies need one.
+	if mode == engine.Copy && job.Opts.URL == "" && job.Opts.Stack != "sql" {
 		const need = "copy needs --url, the staging site's URL (or url: in .roadie/config.yaml)"
 		if !dep.terminal() {
 			return usageError(stderr, p.cmd, need)

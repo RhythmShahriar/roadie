@@ -154,8 +154,8 @@ Where:
       --to <target>          dump file, -, site path, ssh://..., @alias or DSN
                              (default target: in the config)
       --url <url>            the staging site's URL (default url: in the config; asked on a
-                             terminal when neither is set). Production's URL is read from
-                             the source (siteurl, home, APP_URL)
+                             terminal when neither is set; not needed with stack sql).
+                             Production's URL is read from the source (siteurl, home, APP_URL)
       --url-map <a=b,...>    extra URL pairs, e.g. for multisite subsites or a CDN:
                              fr.shop.com=fr.staging.shop.test,cdn.shop.com=cdn.staging.shop.test
       --stack <name>         wordpress, laravel or sql (default: detected)
