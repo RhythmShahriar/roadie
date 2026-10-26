@@ -190,7 +190,11 @@ func (v *view) verifyView(r *core.Result, j engine.Job, exact bool, reportPath s
 	if sc := vr.Soundcheck; sc != nil && sc.Note != "" {
 		v.setting("Soundcheck", sc.Note)
 	}
-	word, line, color := verdict(r, r.FailOn, shortName(j.Opts.URL, r.Target))
+	name := shortName(j.Opts.URL, r.Target)
+	if r.Target.Kind == core.Stdio {
+		name = "stdin" // verify - reads the copy from stdin
+	}
+	word, line, color := verdict(r, r.FailOn, name)
 	v.box(word, line, counts(r.Summary()), color)
 	v.underBox(r, nil)
 	v.para(honestyLine)

@@ -35,7 +35,11 @@ func runLabel(j engine.Job) string {
 	case engine.Prepare:
 		return "prepare · " + endpointName(j.To, j.Opts.URL)
 	}
-	return endpointName(j.From, "") + " → " + endpointName(j.To, j.Opts.URL)
+	from := endpointName(j.From, "")
+	if j.From.Kind == core.Stdio {
+		from = "stdin" // a source on - is read from stdin
+	}
+	return from + " → " + endpointName(j.To, j.Opts.URL)
 }
 
 // endpointName is a short name for an endpoint: the URL's host when there

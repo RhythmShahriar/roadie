@@ -5,10 +5,13 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/engine"
 	"github.com/RhythmShahriar/roadie/site/remote/remotetest"
 )
 
@@ -118,5 +121,28 @@ func TestCopyURLOnlyForSites(t *testing.T) {
 	_, stderr, code = runEnv(t, nil, "copy", "--from", in, "--to", filepath.Join(dir, "out2.sql"))
 	if code != 2 || !strings.Contains(stderr, "copy needs --url") {
 		t.Errorf("no stack: exit %d %s", code, stderr)
+	}
+}
+
+// A copy read from stdin is named stdin, in the banner of a copy from -
+// and in the verdict of verify -.
+func TestStdinIsNamedStdin(t *testing.T) {
+	if got := runLabel(engine.Job{Mode: engine.Copy, From: core.Endpoint{Kind: core.Stdio, Display: "-"},
+		To: core.Endpoint{Kind: core.Stdio, Display: "-"}, Opts: engine.Options{URL: "https://staging.shop.test"}}); got != "stdin → staging.shop.test" {
+		t.Errorf("banner %q", got)
+	}
+	dir := t.TempDir()
+	t.Chdir(dir)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "verify", "-") // #nosec G204 -- the test binary itself
+	cmd.Env = append(os.Environ(), "ROADIE_TEST_MAIN=1", "RHYTHM_OFFLINE=1", "CI=1", "HOME="+dir, "RHYTHM_CONFIG_DIR="+dir, "RHYTHM_CACHE_DIR="+dir)
+	cmd.Stdin = strings.NewReader("CREATE TABLE `wp_options` (`option_id` int, `option_name` varchar(191), `option_value` longtext);\n" +
+		"INSERT INTO `wp_options` VALUES (1,'siteurl','https://staging.shop.test');\n")
+	out, _ := cmd.Output()
+	if !strings.Contains(string(out), "stdin is a pseudonymised copy") {
+		t.Errorf("verify -:\n%s", out)
 	}
 }
