@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/dump/mysql"
 )
 
 func checkPGText(text string, o Options) (Decision, error) {
@@ -46,7 +47,10 @@ func TestPGKept(t *testing.T) {
 		"ALTER TABLE ONLY public.t ATTACH PARTITION public.t_2026 FOR VALUES FROM ('2026-01-01') TO ('2027-01-01');",
 		"ALTER TABLE public.t ENABLE ROW LEVEL SECURITY;",
 		"DROP TABLE IF EXISTS public.\"User\";",
-		"BEGIN;", "COMMIT;",
+		"BEGIN;", "COMMIT;", "START TRANSACTION;", "END;",
+		"SET SESSION standard_conforming_strings TO 'off';", "SET standard_conforming_strings = DEFAULT;",
+		"SELECT pg_catalog.set_config('standard_conforming_strings', 'on', false);",
+		"RESET standard_conforming_strings;",
 		"-- just a comment\n",
 		"/* nested /* comment */ still */",
 	} {
@@ -110,6 +114,16 @@ func TestPGRefused(t *testing.T) {
 		{"CREATE TABLE public.t AS SELECT * FROM public.u;", "holds a CREATE TABLE ... AS statement"},
 		{"ALTER TABLE public.t SET TABLESPACE fast;", "holds an ALTER TABLE ... SET TABLESPACE statement"},
 		{"CALL public.p();", "holds a CALL statement"},
+		{"SET LOCAL standard_conforming_strings = off;", "holds a SET LOCAL standard_conforming_strings statement, which could change how the staging server reads backslashes in the rows after it."},
+		{"SET standard_conforming_strings = of;", "holds a SET standard_conforming_strings statement Roadie can't follow"},
+		{"SET standard_conforming_strings = off, on;", "holds a SET standard_conforming_strings statement Roadie can't follow"},
+		{"SET standard_conforming_strings = E'off';", "holds a SET standard_conforming_strings statement Roadie can't follow"},
+		{"SELECT pg_catalog.set_config('standard_conforming_strings', 'off', true);", "holds a set_config() of standard_conforming_strings Roadie can't follow"},
+		{"SELECT pg_catalog.set_config('standard_conforming_strings', 'no', false);", "holds a set_config() of standard_conforming_strings Roadie can't follow"},
+		{"ROLLBACK;", "holds a ROLLBACK statement, which could undo the dump's standard_conforming_strings setting"},
+		{"ABORT;", "holds an ABORT statement"},
+		{"ROLLBACK TO SAVEPOINT s;", "holds a ROLLBACK statement"},
+		{"COMMIT PREPARED 'x';", "holds a COMMIT PREPARED statement"},
 	} {
 		d, err := checkPGText(c.text, Options{Name: "prod.sql"})
 		var ce *core.Error
@@ -178,6 +192,49 @@ func TestFilterHead(t *testing.T) {
 		var ce *core.Error
 		if !errors.As(err, &ce) || ce.Code != core.ErrDumpRefused || ce.Line != 4 {
 			t.Errorf("%q: %v", s, err)
+		}
+	}
+}
+
+// Inside a transaction block a change of standard_conforming_strings is
+// refused: a ROLLBACK or an earlier failed statement would undo or skip
+// it on the server. The same change outside one is kept.
+func TestPGStandardStringsInTransaction(t *testing.T) {
+	for _, text := range []string{
+		"SET standard_conforming_strings = off;",
+		"SET SESSION standard_conforming_strings TO off;",
+		"RESET standard_conforming_strings;",
+		"RESET ALL;",
+		"SELECT pg_catalog.set_config('standard_conforming_strings', 'off', false);",
+	} {
+		f := NewFilter(Options{Name: "prod.sql", Dialect: core.Postgres})
+		run := func(sql string) error {
+			_, err := f.Add(&core.Batch{Pass: &core.Statement{Kind: core.StmtOther, Text: []byte(sql), Line: 3}}, mysql.Mode{})
+			return err
+		}
+		if err := run(text); err != nil {
+			t.Errorf("%q outside a transaction: %v", text, err)
+		}
+		for _, open := range []string{"BEGIN;", "START TRANSACTION ISOLATION LEVEL SERIALIZABLE;"} {
+			if err := run(open); err != nil {
+				t.Fatal(err)
+			}
+			err := run(text)
+			if err == nil || !strings.Contains(err.Error(), "holds a change to standard_conforming_strings inside a transaction") {
+				t.Errorf("%q after %q: %v", text, open, err)
+			}
+			if err := run("COMMIT AND CHAIN;"); err != nil {
+				t.Fatal(err)
+			}
+			if err := run(text); err == nil {
+				t.Errorf("%q after COMMIT AND CHAIN: kept", text)
+			}
+			if err := run("COMMIT;"); err != nil {
+				t.Fatal(err)
+			}
+			if err := run(text); err != nil {
+				t.Errorf("%q after COMMIT: %v", text, err)
+			}
 		}
 	}
 }

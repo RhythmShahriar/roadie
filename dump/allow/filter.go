@@ -81,6 +81,12 @@ func (f *Filter) Add(b *core.Batch, m mysql.Mode) (*core.Batch, error) {
 	for _, x := range d.drops {
 		f.drops = append(f.drops, pendingDrop{x, b.Pass.Line})
 	}
+	switch d.txn {
+	case 1:
+		f.o.InTransaction = true
+	case -1:
+		f.o.InTransaction = false
+	}
 	switch d.Verdict {
 	case Drop:
 		if d.prepared != "" {

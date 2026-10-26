@@ -55,6 +55,9 @@ type Options struct {
 	// (Percona Server's rocksdb_bulk_load probe), so their EXECUTE and
 	// DEALLOCATE are dropped too. The Filter keeps it.
 	Prepared map[string]bool
+	// InTransaction is set while a PostgreSQL dump has a transaction
+	// block open (BEGIN without its COMMIT yet). The Filter keeps it.
+	InTransaction bool
 }
 
 // Decision is the verdict on one statement.
@@ -78,6 +81,7 @@ type Decision struct {
 	drops    []object
 	creates  *object
 	prepared string
+	txn      int8 // +1 opens a PostgreSQL transaction block, -1 ends it
 }
 
 // object is a table, view, sequence or other named thing of a dump.

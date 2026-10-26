@@ -91,3 +91,41 @@ func TestOpenSQLModeFollowed(t *testing.T) {
 		}
 	}
 }
+
+// pgSmuggle is a row that is one string while backslashes are plain
+// bytes (standard_conforming_strings on) and ends early when they escape.
+const pgSmuggle = `INSERT INTO public.t VALUES ('a\'); DROP TABLE x; COPY public.t FROM PROGRAM 'id'; --');`
+
+// pgDump wraps statements in a pg_dump head that sets
+// standard_conforming_strings on, a table t and the trailer.
+func pgDump(stmts ...string) []byte {
+	return []byte(strings.Join(append([]string{
+		"--\n-- PostgreSQL database dump\n--\n",
+		"SET standard_conforming_strings = on;",
+		"CREATE TABLE public.t (a text);",
+	}, stmts...), "\n") + "\n--\n-- PostgreSQL database dump complete\n--\n")
+}
+
+// A standard_conforming_strings change the server may undo or skip stops
+// the run; a lasting one is followed.
+func TestOpenStandardStrings(t *testing.T) {
+	for name, stmts := range map[string][]string{
+		"rolled back":                 {"BEGIN;", "SET standard_conforming_strings = off;", "ROLLBACK;", pgSmuggle},
+		"aborted":                     {"START TRANSACTION;", "SET standard_conforming_strings = off;", "ABORT;", pgSmuggle},
+		"local outside a block":       {"SET LOCAL standard_conforming_strings = off;", pgSmuggle},
+		"local inside a block":        {"BEGIN;", "SET LOCAL standard_conforming_strings = off;", "COMMIT;", pgSmuggle},
+		"set_config local":            {"SELECT pg_catalog.set_config('standard_conforming_strings', 'off', true);", pgSmuggle},
+		"after a failed statement":    {"BEGIN;", "CREATE TABLE public.t (a text);", "SET standard_conforming_strings = off;", "COMMIT;", pgSmuggle},
+		"a value Roadie can't follow": {"SET standard_conforming_strings = of;", pgSmuggle},
+	} {
+		_, bs, err := openPG(t, pgDump(stmts...), Options{Name: "prod.sql"})
+		var ce *core.Error
+		if !errors.As(err, &ce) || ce.Code != core.ErrDumpRefused {
+			t.Errorf("%s: err = %v, %d rows", name, err, rowsOf(bs))
+		}
+	}
+	_, bs, err := openPG(t, pgDump("SET standard_conforming_strings = off;", `INSERT INTO public.t VALUES ('a\'b'), ('c');`), Options{Name: "prod.sql"})
+	if err != nil || rowsOf(bs) != 2 {
+		t.Errorf("a lasting change: err = %v, %d rows", err, rowsOf(bs))
+	}
+}

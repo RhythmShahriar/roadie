@@ -66,16 +66,19 @@ func checkPG(st core.Statement, o Options) Decision {
 	w0 := t.w(0)
 	switch w0 {
 	case "set":
-		return pgSet(t)
+		return pgSet(t, o)
 	case "reset":
 		if t.w(1) == "role" || t.is(1, "session", "authorization") {
 			return drop("RESET ROLE", reasonOwner)
+		}
+		if (t.w(1) == "standard_conforming_strings" || t.w(1) == "all") && o.InTransaction {
+			return refuse(labelSCSInTx, whySCS)
 		}
 		if pgVars[t.w(1)] || t.w(1) == "all" {
 			return keep()
 		}
 	case "select":
-		return pgSelect(t)
+		return pgSelect(t, o)
 	case "create":
 		return pgCreate(t, o)
 	case "drop":
@@ -94,8 +97,13 @@ func checkPG(st core.Statement, o Options) Decision {
 		}
 	case "copy":
 		return pgCopy(t)
-	case "begin", "start", "commit", "end", "rollback", "abort":
-		return keep()
+	case "begin", "start", "commit", "end":
+		return pgTransaction(t)
+	case "rollback", "abort":
+		// Under psql --single-transaction a ROLLBACK undoes every SET
+		// before it, standard_conforming_strings too. pg_dump never
+		// writes one.
+		return refuse(label(t, 1), whySCSRollback)
 	case "insert", "update", "delete", "merge":
 		l := label(t, 1)
 		return refuse(article(l)+" "+l+" statement that isn't a list of rows", whyRows)
@@ -127,8 +135,85 @@ func pgMeta(text []byte) Decision {
 	return refuse(what, whyClient)
 }
 
-func pgSet(t toks) Decision {
+// labelSCSInTx names a change of standard_conforming_strings the server
+// may undo or skip.
+const labelSCSInTx = "a change to standard_conforming_strings inside a transaction"
+
+// whySCS is the danger of a standard_conforming_strings change the reader
+// can't follow: the setting decides whether a backslash escapes a quote,
+// so a row Roadie keeps as data could end early on import and run the
+// rest as statements.
+var (
+	whySCS = why{
+		"could change how the staging server reads backslashes in the rows after it",
+		"Export the dump again with pg_dump -Fp, which sets standard_conforming_strings once at the top.",
+	}
+	whySCSRollback = why{"could undo the dump's standard_conforming_strings setting, " +
+		"which changes how the staging server reads backslashes in the rows after it", adviceLeaveOut}
+)
+
+// pgTransaction keeps BEGIN, START TRANSACTION, COMMIT and END and tells
+// the Filter whether a transaction block is open after it.
+func pgTransaction(t toks) Decision {
+	d := keep()
+	switch t.w(0) {
+	case "begin", "start":
+		if t.w(0) == "start" && t.w(1) != "transaction" {
+			return refuse(unknownLabel(t), whyUnknown)
+		}
+		d.txn = 1
+	default:
+		if t.w(1) == "prepared" {
+			return refuse(label(t, 2), whyUnknown)
+		}
+		// COMMIT AND CHAIN starts the next transaction at once.
+		if !t.seq("and", "chain") {
+			d.txn = -1
+		}
+	}
+	return d
+}
+
+// scsValue reports whether t[k] is the only token left and a value of
+// standard_conforming_strings the reader follows: on, off, true, false
+// or DEFAULT, bare or as a plain string.
+func scsValue(t toks, k int) bool {
+	if k != len(t)-1 {
+		return false
+	}
+	switch t.kind(k) {
+	case word:
+		switch t.w(k) {
+		case "on", "off", "true", "false", "default":
+			return true
+		}
+	case str:
+		switch strings.ToLower(t[k].w) {
+		case "'on'", "'off'", "'true'", "'false'":
+			return true
+		}
+	}
+	return false
+}
+
+func pgSet(t toks, o Options) Decision {
 	i := 1
+	if t.w(i) == "standard_conforming_strings" || t.w(i+1) == "standard_conforming_strings" {
+		switch k := i + 1; {
+		case t.w(1) == "local":
+			return refuse("a SET LOCAL standard_conforming_strings statement", whySCS)
+		case o.InTransaction:
+			return refuse(labelSCSInTx, whySCS)
+		default:
+			if t.w(1) == "session" {
+				k++
+			}
+			if !t.p(k, '=') && t.w(k) != "to" || !scsValue(t, k+1) {
+				return refuse("a SET standard_conforming_strings statement Roadie can't follow", whySCS)
+			}
+			return keep()
+		}
+	}
 	if t.w(i) == "session" || t.w(i) == "local" {
 		if t.is(i, "session", "authorization") {
 			return drop("SET SESSION AUTHORIZATION", reasonOwner)
@@ -157,7 +242,7 @@ func pgSet(t toks) Decision {
 
 // pgSelect keeps pg_dump's set_config for search_path and setval for a
 // sequence, called with literals only.
-func pgSelect(t toks) Decision {
+func pgSelect(t toks, o Options) Decision {
 	i := 1
 	if t.w(i) == "pg_catalog" && t.p(i+1, '.') {
 		i += 2
@@ -172,6 +257,16 @@ func pgSelect(t toks) Decision {
 		}
 		if fn == "set_config" && (t.kind(i+2) != str || !pgVars[strings.ToLower(strings.Trim(t[i+2].w, "'"))]) {
 			ok = false
+		}
+		if ok && fn == "set_config" && strings.EqualFold(t[i+2].w, "'standard_conforming_strings'") {
+			// set_config(name, value, is_local): only a lasting change
+			// with a value the reader follows.
+			switch {
+			case o.InTransaction:
+				return refuse(labelSCSInTx, whySCS)
+			case len(t) != i+8 || !t.p(i+3, ',') || !scsValue(t[:i+5], i+4) || !t.p(i+5, ',') || t.w(i+6) != "false":
+				return refuse("a set_config() of standard_conforming_strings Roadie can't follow", whySCS)
+			}
 		}
 		if ok {
 			return keep()
