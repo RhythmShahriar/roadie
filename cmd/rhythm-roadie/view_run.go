@@ -18,6 +18,7 @@ import (
 
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/engine"
+	"github.com/RhythmShahriar/roadie/site/killswitch"
 )
 
 // The screens of plan, copy and prepare (product.md 5.2, 5.3 and 5.5).
@@ -520,7 +521,18 @@ func (v *view) editsBlock(r *core.Result) {
 	}
 	v.section("FILE EDITS", len(r.PlannedEdits), "", lipgloss.Color(ui.Muted))
 	for _, e := range r.PlannedEdits {
-		line := e.File + ": " + e.What
+		line := e.What
+		if e.File != "" {
+			line = e.File + ": " + line
+		}
+		// A step Roadie can't take itself (killswitch.ManualPrefix) is
+		// the user's to do.
+		if rest, ok := strings.CutPrefix(e.What, killswitch.ManualPrefix); ok {
+			line = "by hand: " + rest
+			if e.File != "" {
+				line = "by hand, " + e.File + ": " + rest
+			}
+		}
 		if v.o.verbose && e.Step != "" {
 			line += " (" + e.Step + ")"
 		}

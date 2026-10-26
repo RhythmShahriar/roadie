@@ -691,3 +691,26 @@ func TestVerdictIncomplete(t *testing.T) {
 		t.Errorf("verdict %q", word)
 	}
 }
+
+// A plan line Roadie can't carry out itself reads as a step by hand; a
+// line without a file has no leading colon.
+func TestEditsBlockManual(t *testing.T) {
+	var b bytes.Buffer
+	v := &view{w: &b, o: viewOpts{plain: true}}
+	v.editsBlock(&core.Result{PlannedEdits: []core.PlannedEdit{
+		{Step: "side-effect.mail", File: "php.ini", What: "manual: sendmail_path = rhythm-echo sendmail"},
+		{Step: "side-effect.queue", What: "manual: restart the queue workers"},
+		{Step: "dump", What: "dropped 2 GRANT statements"},
+		{Step: "side-effect.cron", File: "wp-config.php", What: "define( 'DISABLE_WP_CRON', true );"},
+	}})
+	out := b.String()
+	for _, want := range []string{"by hand, php.ini: sendmail_path = rhythm-echo sendmail", "by hand: restart the queue workers",
+		"dropped 2 GRANT statements", "wp-config.php: define( 'DISABLE_WP_CRON', true );"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("edits lack %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, ": dropped") || strings.Contains(out, "manual:") {
+		t.Errorf("edits:\n%s", out)
+	}
+}
