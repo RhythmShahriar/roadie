@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"sync"
@@ -13,8 +14,9 @@ import (
 // Record is one line of runtime/sinkhole.jsonl. Kind "dns" is a lookup,
 // "tcp" a connection: every tcp record during a scenario is a side
 // effect that got past Roadie's kill switch (only the sealed network
-// stopped it). First holds up to 256 bytes the client sent; the harness
-// reads it, never prints it.
+// stopped it). First holds up to 256 bytes the client sent, with the
+// values of credential headers masked (maskHeaders); the harness reads
+// it, never prints it.
 type Record struct {
 	At    string `json:"at"`
 	Kind  string `json:"kind"`
@@ -36,6 +38,7 @@ type recorder struct {
 
 func (r *recorder) add(rec Record) {
 	rec.At = r.now().UTC().Format(time.RFC3339Nano)
+	rec.First = maskHeaders(rec.First)
 	b, err := json.Marshal(rec)
 	if err != nil {
 		return
@@ -43,4 +46,41 @@ func (r *recorder) add(rec Record) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	_, _ = r.w.Write(append(b, '\n'))
+}
+
+// secretHeaders carry credentials in plain HTTP: their values never reach
+// the log.
+var secretHeaders = [][]byte{
+	[]byte("authorization:"), []byte("proxy-authorization:"), []byte("cookie:"),
+	[]byte("set-cookie:"), []byte("x-api-key:"), []byte("api-key:"),
+}
+
+// masked replaces a credential header's value.
+var masked = []byte(" [masked]")
+
+// maskHeaders returns b with the value of every credential header line
+// replaced by "[masked]", to the end of the line or of b (a header cut
+// at 256 bytes). Everything else, r23's egress marker included, is kept
+// as it was. b itself is not changed.
+func maskHeaders(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	var out []byte
+	for line := range bytes.SplitAfterSeq(b, []byte("\n")) {
+		lower := bytes.ToLower(line)
+		secret := false
+		for _, h := range secretHeaders {
+			if bytes.HasPrefix(lower, h) {
+				end := line[len(bytes.TrimRight(line, "\r\n")):]
+				out = append(append(append(out, line[:len(h)]...), masked...), end...)
+				secret = true
+				break
+			}
+		}
+		if !secret {
+			out = append(out, line...)
+		}
+	}
+	return out
 }

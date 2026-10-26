@@ -6,8 +6,9 @@
 // name with its own address (the payment and messaging API hosts with
 // the stubs' address) and accepts TCP on every port (iptables in its
 // container redirects them all to -redirect), recording the client, the
-// port, the TLS server name, the HTTP Host and the first 256 bytes to
-// -log, then closing without answering anything useful. Every connection
+// port, the TLS server name, the HTTP Host and the first 256 bytes (with
+// the values of credential headers such as Authorization and Cookie
+// masked) to -log, then closing without answering anything useful. Every connection
 // it records during a scenario is a side effect Roadie did not stop.
 //
 // It is built on the host (make -C testbed binaries) and runs in the

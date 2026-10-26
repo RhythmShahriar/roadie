@@ -216,3 +216,33 @@ func TestPeekNegatives(t *testing.T) {
 		t.Error("Host from binary bytes")
 	}
 }
+
+func TestMaskHeaders(t *testing.T) {
+	key := "sk_" + "live_" + strings.Repeat("Ab3", 8)
+	for _, c := range []struct{ in, want string }{
+		{"GET /x HTTP/1.1\r\nHost: a\r\nAuthorization: Bearer " + key + "\r\nCookie: s=" + key + "\r\n\r\n",
+			"GET /x HTTP/1.1\r\nHost: a\r\nAuthorization: [masked]\r\nCookie: [masked]\r\n\r\n"},
+		{"POST /testbed-egress:curl HTTP/1.1\r\nproxy-authorization: Basic " + key + "\nX-Api-Key: " + key,
+			"POST /testbed-egress:curl HTTP/1.1\r\nproxy-authorization: [masked]\nX-Api-Key: [masked]"},
+		// Nothing to mask: unchanged, the r23 marker included.
+		{"testbed-egress:fsockopen\r\n", "testbed-egress:fsockopen\r\n"},
+		{"GET / HTTP/1.1\r\nX-Authorization-Hint: none\r\nHost: b\r\n", "GET / HTTP/1.1\r\nX-Authorization-Hint: none\r\nHost: b\r\n"},
+		{"EHLO staging\r\n", "EHLO staging\r\n"},
+		{"", ""},
+	} {
+		in := []byte(c.in)
+		if got := string(maskHeaders(in)); got != c.want {
+			t.Errorf("maskHeaders(%q)\n got %q\nwant %q", c.in, got, c.want)
+		}
+		if string(in) != c.in {
+			t.Errorf("maskHeaders changed its input %q", c.in)
+		}
+	}
+	var log syncBuf
+	r := &recorder{w: &log, now: time.Now}
+	r.add(Record{Kind: "tcp", First: []byte("GET / HTTP/1.1\r\nAuthorization: " + key + "\r\n")})
+	recs := log.records(t)
+	if len(recs) != 1 || strings.Contains(string(recs[0].First), "live_") || !strings.Contains(string(recs[0].First), "Authorization: [masked]") {
+		t.Errorf("the log holds the key: %+v", recs)
+	}
+}
