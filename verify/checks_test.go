@@ -208,16 +208,18 @@ func TestSiteProductionRefused(t *testing.T) {
 	}
 }
 
-// fakeEcho answers health in mode and lists sent messages.
-func fakeEcho(t *testing.T, mode string, sent int) *httptest.Server {
+// fakeEcho answers health in mode and lists sent messages; it fails the
+// test unless the list asks for messages since since.
+func fakeEcho(t *testing.T, mode string, sent int, since time.Time) *httptest.Server {
+	want := since.UTC().Format(time.RFC3339Nano)
 	return serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/v1/health":
 			fmt.Fprintf(w, `{"tool":"rhythm-echo","version":"1.1.2","mode":%q,"wire":1,"providers":[]}`, mode)
 		case "/v1/messages":
-			if r.URL.Query().Get("since") == "" {
-				t.Error("messages listed without since")
+			if got := r.URL.Query().Get("since"); got != want {
+				t.Errorf("messages listed since %q, want %q", got, want)
 			}
 			var ms []string
 			for i := range sent {
@@ -232,16 +234,22 @@ func fakeEcho(t *testing.T, mode string, sent int) *httptest.Server {
 }
 
 func TestEcho(t *testing.T) {
-	res := siteRun(t, Options{Echo: true, EchoURL: fakeEcho(t, "seal", 0).URL})
+	copied := time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC)
+	now := copied.Add(time.Hour)
+	clock := func() time.Time { return now }
+	res := siteRun(t, Options{Echo: true, EchoURL: fakeEcho(t, "seal", 0, copied).URL, EchoSince: copied, Clock: clock})
 	if find(res, core.FindingSideEffectMail) != nil {
 		t.Errorf("sealed: %+v", res.Findings)
 	}
-	res = siteRun(t, Options{Echo: true, EchoURL: fakeEcho(t, "observe", 0).URL})
+	if c := checkByID(res, core.FindingSideEffectMail); c.Status != "pass" || c.Detail != "" {
+		t.Errorf("sealed check %+v", c)
+	}
+	res = siteRun(t, Options{Echo: true, EchoURL: fakeEcho(t, "observe", 0, copied).URL, EchoSince: copied, Clock: clock})
 	if f := find(res, core.FindingSideEffectMail); f == nil || f.Severity != core.SeverityCritical || !strings.Contains(f.Title, "observe") {
 		t.Errorf("observe: %+v", res.Findings)
 	}
-	res = siteRun(t, Options{Echo: true, EchoURL: fakeEcho(t, "seal", 3).URL})
-	if f := find(res, core.FindingSideEffectMail); f == nil || !strings.Contains(f.Title, "let 3 messages through") {
+	res = siteRun(t, Options{Echo: true, EchoURL: fakeEcho(t, "seal", 3, copied).URL, EchoSince: copied, Clock: clock})
+	if f := find(res, core.FindingSideEffectMail); f == nil || f.Title != "Echo let 3 messages through since the copy" {
 		t.Errorf("sent: %+v", res.Findings)
 	}
 	l := listen(t)
@@ -251,6 +259,22 @@ func TestEcho(t *testing.T) {
 	want := "verify --echo: Echo isn't reachable at " + url + "; start it with rhythm echo up."
 	if f := find(res, core.FindingSideEffectMail); f == nil || f.Title != want {
 		t.Errorf("unreachable: %+v", res.Findings)
+	}
+}
+
+// Without the copy's start time the count starts with verify; both
+// the finding and the check say so.
+func TestEchoSinceUnknown(t *testing.T) {
+	now := time.Date(2026, 10, 26, 10, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	res := siteRun(t, Options{Echo: true, EchoURL: fakeEcho(t, "seal", 0, now).URL, Clock: clock})
+	want := "counted only messages since verify started; the copy's start time wasn't known"
+	if c := checkByID(res, core.FindingSideEffectMail); c.Status != "pass" || c.Detail != want {
+		t.Errorf("check %+v", c)
+	}
+	res = siteRun(t, Options{Echo: true, EchoURL: fakeEcho(t, "seal", 2, now).URL, Clock: clock})
+	if f := find(res, core.FindingSideEffectMail); f == nil || f.Title != "Echo let 2 messages through since verify started" {
+		t.Errorf("sent: %+v", res.Findings)
 	}
 }
 

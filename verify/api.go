@@ -41,10 +41,14 @@ type Options struct {
 	InsecureTLS string
 	EchoURL     string
 	Echo        bool
-	Baseline    string
-	Ignore      []Ignore
-	Jobs        int
-	Clock       core.Clock
+	// EchoSince is when the copy started: verify --echo counts the
+	// messages Echo let through from then on. Zero means unknown: the
+	// count starts when verify does, which the check's detail says.
+	EchoSince time.Time
+	Baseline  string
+	Ignore    []Ignore
+	Jobs      int
+	Clock     core.Clock
 }
 
 // Ignore hides a finding by ID and location until a date.

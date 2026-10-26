@@ -73,6 +73,8 @@ type run struct {
 	// checked is what each check looked at; why is why a check didn't run.
 	checked map[string]int64
 	why     map[string]string
+	// note is a check's detail when it passes, such as a narrower scope.
+	note map[string]string
 }
 
 // add records a finding unless the baseline or an ignore entry hides it.
@@ -118,7 +120,7 @@ func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 	}
 	defer closeAll()
 	r := &run{j: j, skip: newSkipper(j.Opts.Skip), site: st, keySeen: map[string]bool{}, start: time.Now(),
-		checked: map[string]int64{}, why: map[string]string{}}
+		checked: map[string]int64{}, why: map[string]string{}, note: map[string]string{}}
 	if j.Opts.Clock != nil {
 		r.start = j.Opts.Clock()
 	}

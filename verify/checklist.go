@@ -124,7 +124,7 @@ func (r *run) checks() []core.Check {
 			out = append(out, core.Check{ID: id, Status: "skip", Detail: why})
 			continue
 		}
-		c := core.Check{ID: id, Status: "pass", Checked: n}
+		c := core.Check{ID: id, Status: "pass", Checked: n, Detail: r.note[id]}
 		if hits := r.failingHits(id); hits > 0 {
 			c.Status = "fail"
 			c.Detail = fmt.Sprintf("%d %s", hits, plural(hits, "hit", "hits"))

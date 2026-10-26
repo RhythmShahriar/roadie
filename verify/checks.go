@@ -377,7 +377,8 @@ func robotsAllowAll(body []byte) bool {
 }
 
 // echo asks Echo whether its seal is on and how many messages it let
-// through since the run started (side-effect.mail).
+// through since Options.EchoSince, or since the run started when that is
+// unknown (side-effect.mail).
 func (r *run) echo(ctx context.Context) {
 	u, err := echoURL(r.j.Opts.EchoURL)
 	if err != nil {
@@ -409,7 +410,14 @@ func (r *run) echo(ctx context.Context) {
 			"Run Echo in seal mode: rhythm echo up --mode seal.")
 	}
 	sent := int64(0)
-	f := client.Filter{Since: r.started(), Limit: 200}
+	since, from := r.j.Opts.EchoSince, "since the copy"
+	if since.IsZero() {
+		// The caller doesn't know when the copy began, so only what Echo
+		// let through during this run is counted; the check says so.
+		since, from = r.start, "since verify started"
+		r.note[core.FindingSideEffectMail] = "counted only messages since verify started; the copy's start time wasn't known"
+	}
+	f := client.Filter{Since: since, Limit: 200}
 	for range maxEchoPages {
 		p, err := c.List(ctx, f)
 		if err != nil {
@@ -430,7 +438,7 @@ func (r *run) echo(ctx context.Context) {
 		f.Before = p.Next
 	}
 	if sent > 0 {
-		mail(fmt.Sprintf("Echo let %d messages through since the copy", sent),
+		mail(fmt.Sprintf("Echo let %d messages through %s", sent, from),
 			"Check who they reached in Echo's inbox, then keep Echo in seal mode.")
 	}
 }
@@ -454,6 +462,3 @@ func echoReason(err error) string {
 	}
 	return err.Error()
 }
-
-// started is when the run began, from Options.Clock.
-func (r *run) started() time.Time { return r.start }
