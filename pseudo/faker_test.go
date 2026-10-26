@@ -582,35 +582,58 @@ func hashesOf(vals ...[]byte) []string {
 	return out
 }
 
-func BenchmarkFakeEmail(b *testing.B) {
-	b.Run("cached", func(b *testing.B) {
-		f := mustFaker(b, testKey(1), Options{})
-		v := []byte("Jane.Doe@shop.com")
-		if _, err := f.Fake(core.KEmail, v, core.FakeOpts{}); err != nil {
-			b.Fatal(err)
-		}
-		b.ReportAllocs()
-		for b.Loop() {
-			_, _ = f.Fake(core.KEmail, v, core.FakeOpts{})
-		}
-	})
-	b.Run("uncached", func(b *testing.B) {
-		f := mustFaker(b, testKey(1), Options{})
-		vals := make([][]byte, 1<<16)
-		for i := range vals {
-			vals[i] = fmt.Appendf(nil, "customer%d@shop.com", i)
-		}
-		b.ReportAllocs()
-		i := 0
-		for b.Loop() {
-			// A fresh faker per pass keeps every call a miss.
-			if i%len(vals) == 0 {
-				b.StopTimer()
-				f = mustFaker(b, testKey(byte(i)), Options{})
-				b.StartTimer()
+// BenchmarkFake measures one fake of each common kind, from the cache
+// and as a miss (the first sight of a value in a run).
+func BenchmarkFake(b *testing.B) {
+	kinds := []struct {
+		kind core.FakeKind
+		val  string
+	}{
+		{core.KEmail, "customer%d@shop.com"},
+		{core.KFullName, "Jane Roe%d"},
+		{core.KPhone, "+44 7911 %06d"},
+		{core.KIP, "10.0.%d.%d"},
+		{core.KPostcode, "SW%d %dAA"},
+	}
+	for _, k := range kinds {
+		b.Run(string(k.kind)+"/cached", func(b *testing.B) {
+			f := mustFaker(b, testKey(1), Options{})
+			v := benchValue(k.val, 7)
+			if _, err := f.Fake(k.kind, v, core.FakeOpts{}); err != nil {
+				b.Fatal(err)
 			}
-			_, _ = f.Fake(core.KEmail, vals[i%len(vals)], core.FakeOpts{})
-			i++
-		}
-	})
+			b.ReportAllocs()
+			for b.Loop() {
+				_, _ = f.Fake(k.kind, v, core.FakeOpts{})
+			}
+		})
+		b.Run(string(k.kind)+"/uncached", func(b *testing.B) {
+			vals := make([][]byte, 1<<16)
+			for i := range vals {
+				vals[i] = benchValue(k.val, i)
+			}
+			f := mustFaker(b, testKey(1), Options{})
+			b.ReportAllocs()
+			i := 0
+			for b.Loop() {
+				// A fresh faker per pass keeps every call a miss.
+				if i%len(vals) == 0 {
+					b.StopTimer()
+					f = mustFaker(b, testKey(byte(i)), Options{})
+					b.StartTimer()
+				}
+				_, _ = f.Fake(k.kind, vals[i%len(vals)], core.FakeOpts{})
+				i++
+			}
+		})
+	}
+}
+
+// benchValue fills format with i, or with i's high and low bytes when it
+// takes two numbers, so every i gives a distinct value of the kind.
+func benchValue(format string, i int) []byte {
+	if strings.Count(format, "%d") == 2 {
+		return fmt.Appendf(nil, format, i>>8, i&0xff)
+	}
+	return fmt.Appendf(nil, format, i)
 }

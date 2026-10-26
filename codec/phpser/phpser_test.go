@@ -390,3 +390,24 @@ func BenchmarkValid(b *testing.B) {
 		Valid(in)
 	}
 }
+
+// Allocation guards: Valid allocates nothing and a Rewrite or Leaves
+// that changes nothing allocates for the leaf paths only, at most one
+// per string it hands to fn.
+func TestAllocs(t *testing.T) {
+	in := benchInput()
+	strs := 0
+	if err := Leaves(in, func(string, []byte, bool) { strs++ }); err != nil {
+		t.Fatal(err)
+	}
+	if n := testing.AllocsPerRun(10, func() { Valid(in) }); n != 0 {
+		t.Errorf("Valid: %v allocations, want 0", n)
+	}
+	none := func(string, []byte, bool) ([]byte, bool, error) { return nil, false, nil }
+	if n := testing.AllocsPerRun(10, func() { _, _, _ = Rewrite(in, none) }); n > float64(strs)+16 {
+		t.Errorf("Rewrite that changes nothing: %v allocations for %d strings", n, strs)
+	}
+	if n := testing.AllocsPerRun(10, func() { _ = Leaves(in, func(string, []byte, bool) {}) }); n > float64(strs)+16 {
+		t.Errorf("Leaves: %v allocations for %d strings", n, strs)
+	}
+}

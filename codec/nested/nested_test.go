@@ -336,3 +336,24 @@ func BenchmarkNested(b *testing.B) {
 		}
 	}
 }
+
+// Allocation guards: plain text costs the same few allocations at any
+// length; a JSON document that changes nothing allocates per row
+// for its leaf paths, not per byte.
+func TestAllocs(t *testing.T) {
+	none := func(string, []byte) ([]byte, bool) { return nil, false }
+	short := []byte(strings.Repeat("plain text ", 10))
+	long := []byte(strings.Repeat("plain text ", 10000))
+	ns := testing.AllocsPerRun(10, func() { _, _, _ = Rewrite(short, none, Options{}) })
+	nl := testing.AllocsPerRun(10, func() { _, _, _ = Rewrite(long, none, Options{}) })
+	if ns > 4 || nl > ns {
+		t.Errorf("text: %v allocations short, %v long; want at most 4 and no growth", ns, nl)
+	}
+	inner := `a:2:{s:5:"email";s:16:"jane@example.com";s:4:"name";s:8:"Jane Roe";}`
+	row, _ := json.Marshal(map[string]any{"id": 1, "data": inner, "note": strings.Repeat("n", 80)})
+	const rows = 500
+	in := []byte("[" + strings.Repeat(string(row)+",", rows-1) + string(row) + "]")
+	if n := testing.AllocsPerRun(5, func() { _, _, _ = Rewrite(in, none, Options{}) }); n > 20*rows {
+		t.Errorf("JSON that changes nothing: %v allocations for %d rows, want at most %d", n, rows, 20*rows)
+	}
+}

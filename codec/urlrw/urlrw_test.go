@@ -359,3 +359,21 @@ func BenchmarkURLRewrite(b *testing.B) {
 		}
 	})
 }
+
+// Allocation guards: text with no production URL costs no allocation in
+// Rewrite or Find, however long it is; "shop.com" without two slashes
+// before it and "//" alone are near misses that must stay cheap.
+func TestAllocs(t *testing.T) {
+	m := mustMap(t, Pair{"https://shop.com", "https://staging.shop.test"})
+	prose := []byte(strings.Repeat("Orders from shop.com ship in two days, see // and myshop.com for more. ", 2000))
+	if n := testing.AllocsPerRun(10, func() { m.Rewrite(prose) }); n != 0 {
+		t.Errorf("Rewrite with no match: %v allocations, want 0", n)
+	}
+	if n := testing.AllocsPerRun(10, func() { m.Find(prose) }); n != 0 {
+		t.Errorf("Find with no match: %v allocations, want 0", n)
+	}
+	one := []byte("see https://shop.com/x now")
+	if n := testing.AllocsPerRun(10, func() { m.Rewrite(one) }); n > 4 {
+		t.Errorf("Rewrite of one URL: %v allocations, want at most 4", n)
+	}
+}
