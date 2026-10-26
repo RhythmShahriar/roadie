@@ -220,6 +220,12 @@ func (f *field) leaf(p string, l []byte) {
 			lsc.ColumnKind = core.KIP
 		}
 	}
+	if p != "" && encrypted(l) {
+		// A Laravel job that implements ShouldBeEncrypted keeps its
+		// command encrypted inside the JSON payload of the jobs table.
+		f.acc.add(core.Finding{ID: core.FindingDataEncrypted, Severity: core.SeverityInfo, Title: titles[core.FindingDataEncrypted],
+			Locations: []core.LocationCount{{Location: f.lat}}})
+	}
 	if !f.public {
 		for _, d := range s.detectors {
 			d.Scan(l, lsc, f.emitFn)

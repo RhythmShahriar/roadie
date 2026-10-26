@@ -449,6 +449,23 @@ func TestRunEncrypted(t *testing.T) {
 	}
 }
 
+// A ShouldBeEncrypted job keeps its command encrypted inside the JSON
+// payload of the jobs table.
+func TestRunEncryptedJobPayload(t *testing.T) {
+	cmd := base64.StdEncoding.EncodeToString([]byte(`{"iv":"aXY=","value":"dmFsdWU=","mac":"0123456789abcdef","tag":""}`))
+	payload := `{"uuid":"7d3c","displayName":"App\\Jobs\\SendInvoice","data":{"commandName":"App\\Jobs\\SendInvoice","command":"` + cmd + `"}}`
+	res := runJob(t, Job{Source: source(batch(table("jobs", "id", "payload"), []string{"1", payload}))})
+	f := find(res, core.FindingDataEncrypted)
+	if f == nil || f.Locations[0].Column != "payload" {
+		t.Fatalf("job payload: %+v", res.Findings)
+	}
+	plain := `{"uuid":"7d3c","data":{"commandName":"App\\Jobs\\SendInvoice","command":"O:19:\"App\\Jobs\\SendInvoice\":0:{}"}}`
+	res = runJob(t, Job{Source: source(batch(table("jobs", "id", "payload"), []string{"1", plain}))})
+	if find(res, core.FindingDataEncrypted) != nil {
+		t.Errorf("plain job: %v", ids(res))
+	}
+}
+
 func TestRunURLs(t *testing.T) {
 	res := runJob(t, Job{Production: []string{"shop.com"}, Source: source(
 		options([]string{"1", "siteurl", "https://shop.com"}, []string{"2", "blogdescription", "Visit https://shop.com/sale or https://shop.com.au"}),
