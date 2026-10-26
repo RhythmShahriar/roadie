@@ -4,16 +4,20 @@
 package verify
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"os"
 	"strconv"
 	"strings"
+	"path/filepath"
 	"sync"
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/dump"
 )
 
 // benchMB is the size of the generated WooCommerce data BenchmarkVerify
@@ -138,5 +142,121 @@ func BenchmarkVerify(b *testing.B) {
 		if res.Coverage.BytesScanned == 0 || find(res, core.FindingPIIEmail) == nil {
 			b.Fatalf("scanned %d bytes, findings %v", res.Coverage.BytesScanned, ids(res))
 		}
+	}
+}
+
+// writeDump writes batches as a MySQL dump: one CREATE TABLE per table
+// and one extended INSERT per batch, values quoted and escaped the way
+// mysqldump does.
+func writeDump(name string, batches []*core.Batch) (int64, error) {
+	f, err := os.Create(name) // #nosec G304 -- a file in the benchmark's temp dir
+	if err != nil {
+		return 0, err
+	}
+	w := bufio.NewWriterSize(f, 1<<20)
+	created := map[string]bool{}
+	for _, b := range batches {
+		t := b.Table
+		if !created[t.Name] {
+			created[t.Name] = true
+			fmt.Fprintf(w, "CREATE TABLE `%s` (\n", t.Name)
+			for _, c := range t.Columns {
+				fmt.Fprintf(w, "  `%s` %s,\n", c.Name, c.Type)
+			}
+			fmt.Fprintf(w, "  PRIMARY KEY (`%s`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n", t.PrimaryKey[0])
+		}
+		if len(b.Rows) == 0 {
+			continue
+		}
+		fmt.Fprintf(w, "INSERT INTO `%s` VALUES ", t.Name)
+		for i, r := range b.Rows {
+			if i > 0 {
+				_ = w.WriteByte(',')
+			}
+			_ = w.WriteByte('(')
+			for k, v := range r.Values {
+				if k > 0 {
+					_ = w.WriteByte(',')
+				}
+				if v.Kind == core.Number {
+					_, _ = w.Write(v.Raw)
+					continue
+				}
+				_ = w.WriteByte('\'')
+				_, _ = w.WriteString(mysqlEscape.Replace(string(v.Raw)))
+				_ = w.WriteByte('\'')
+			}
+			_ = w.WriteByte(')')
+		}
+		_, _ = w.WriteString(";\n")
+	}
+	if err := w.Flush(); err != nil {
+		_ = f.Close()
+		return 0, err
+	}
+	st, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return 0, err
+	}
+	return st.Size(), f.Close()
+}
+
+// mysqlEscape escapes a string value as mysqldump does.
+var mysqlEscape = strings.NewReplacer(`\`, `\\`, `'`, `\'`, "\n", `\n`, "\r", `\r`, "\x00", `\0`, "\x1a", `\Z`)
+
+// BenchmarkVerifyDump runs BenchmarkVerify's data as a MySQL dump file
+// through dump.Open, so the dump reader's cost is in the number. It skips
+// until the io lane's dump reader lands.
+func BenchmarkVerifyDump(b *testing.B) {
+	if _, err := dump.Open(context.Background(), strings.NewReader(""), dump.Options{}); errors.Is(err, core.ErrNotBuilt) {
+		b.Skip("needs the io lane")
+	}
+	mb := benchMB
+	if s := os.Getenv("ROADIE_BENCH_MB"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			mb = n
+		}
+	}
+	benchOnce.Do(func() { benchBatches, benchBytes = wooData(mb) })
+	name := filepath.Join(b.TempDir(), "woo.sql")
+	size, err := writeDump(name, benchBatches)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.SetBytes(size)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		res, err := Run(context.Background(), Job{
+			Target:     core.Endpoint{Kind: core.DumpFile, Path: name, Display: "woo.sql"},
+			Production: []string{"millstreet-bakery-demo.co.uk"},
+			Opts:       Options{Jobs: 8},
+		})
+		if err != nil {
+			b.Fatal(err)
+		}
+		if res.Coverage.RowsScanned == 0 || find(res, core.FindingPIIEmail) == nil {
+			b.Fatalf("scanned %d rows, findings %v", res.Coverage.RowsScanned, ids(res))
+		}
+	}
+}
+
+// The dump BenchmarkVerifyDump reads is well formed: every batch is one
+// INSERT, values that need it are escaped.
+func TestWriteDump(t *testing.T) {
+	tb := table("wp_posts", "ID", "post_content")
+	name := filepath.Join(t.TempDir(), "d.sql")
+	if _, err := writeDump(name, []*core.Batch{batch(tb, []string{"1", "it's a\\b\nc"}), batch(tb, []string{"2", "x"})}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(name) // #nosec G304 -- the test's own file
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "CREATE TABLE `wp_posts` (\n  `ID` bigint unsigned,\n  `post_content` longtext,\n  PRIMARY KEY (`ID`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n" +
+		"INSERT INTO `wp_posts` VALUES (1,'it\\'s a\\\\b\\nc');\nINSERT INTO `wp_posts` VALUES (2,'x');\n"
+	if string(got) != want {
+		t.Errorf("dump\n got %q\nwant %q", got, want)
 	}
 }
