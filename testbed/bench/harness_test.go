@@ -309,6 +309,23 @@ func TestOracleGates(t *testing.T) {
 	if cr.res.Canaries != 1 || cr.res.LiveKeys != 1 {
 		t.Errorf("counted %d canaries and %d live keys", cr.res.Canaries, cr.res.LiveKeys)
 	}
+	if _, ok := got["links"]; ok {
+		t.Errorf("a links gate with no link: %+v", got["links"])
+	}
+
+	// A link in the output tree fails the case: what it points to went
+	// unread.
+	cr = &caseRun{st: st, c: manifest.Case{Expect: manifest.Expect{Canaries: intp(0)}}}
+	(&Harness{}).oracleGates(cr, oracle.Report{Links: []string{"wp-content/uploads/backup.sql"}}, in)
+	linked := false
+	for _, g := range cr.res.Gates {
+		if g.Name == "links" {
+			linked = !g.Pass && strings.Contains(g.Detail, "wp-content/uploads/backup.sql")
+		}
+	}
+	if !linked {
+		t.Errorf("no failing links gate: %+v", cr.res.Gates)
+	}
 	for _, g := range cr.res.Gates {
 		if strings.Contains(g.Detail, "@") {
 			t.Errorf("gate %s carries a value: %s", g.Name, g.Detail)

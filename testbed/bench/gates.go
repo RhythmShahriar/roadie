@@ -113,9 +113,6 @@ func (h *Harness) checkOutputs(ctx context.Context, cr *caseRun) {
 			cr.res.add("oracle", false, "%s", err)
 			return
 		}
-		if len(rep.Links) > 0 {
-			cr.run.Notes = append(cr.run.Notes, fmt.Sprintf("oracle: %d link(s) in the tree not followed: %s", len(rep.Links), strings.Join(rep.Links, ", ")))
-		}
 		h.oracleGates(cr, rep, input)
 	}
 	for _, j := range cr.st.s.Joins {
@@ -249,7 +246,8 @@ func fileExists(p string) bool {
 
 // oracleGates turns the oracle's report into gates 1 and 2. Only the
 // input's own tables count for rows: a site target keeps the tables of
-// its fresh install that the dump doesn't hold.
+// its fresh install that the dump doesn't hold. A link in an output tree
+// fails gate 1: the oracle never reads what it points to.
 func (h *Harness) oracleGates(cr *caseRun, rep oracle.Report, input string) {
 	e := cr.c.Expect
 	cr.res.Oracle = &rep
@@ -263,6 +261,11 @@ func (h *Harness) oracleGates(cr *caseRun, rep oracle.Report, input string) {
 		}
 	}
 	cr.res.Canaries, cr.res.LiveKeys = people, live
+	if len(rep.Links) > 0 {
+		// Whatever a link points to (a production backup, say) went
+		// unread, so the output can't pass gate 1 with one in it.
+		cr.res.add("links", false, "%d link(s) in the output tree not followed: %s", len(rep.Links), strings.Join(rep.Links, ", "))
+	}
 	if e.Canaries != nil {
 		ids, hits := survivorIDs(rep.Survivors)
 		var shown []string
