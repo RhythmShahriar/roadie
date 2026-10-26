@@ -4,6 +4,8 @@
 package oracle
 
 import (
+	"archive/zip"
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -58,6 +60,11 @@ type Report struct {
 	Integrity       *Integrity     `json:"integrity,omitempty"`
 	Rows            []TableRows    `json:"rows,omitempty"`
 	RowsDiffer      bool           `json:"rows_differ"`
+	// Links are the symbolic links in the tree, by path inside it. The
+	// oracle doesn't follow them (a link may point anywhere on this
+	// machine), so whatever they point to went unread: reported, never
+	// counted as clean or as a survivor.
+	Links []string `json:"links,omitempty"`
 }
 
 // Clean reports whether the output passed gates 1 and 2: no canary or
@@ -132,7 +139,8 @@ func (s *scanState) scanStream(m *matcher, r io.Reader, where string, tables boo
 	})
 }
 
-// scanFile scans one file, then its decompressed bytes when it is gzip.
+// scanFile scans one file, then its decompressed bytes when it is gzip,
+// or each compressed member when it is a zip archive.
 func (s *scanState) scanFile(m *matcher, path, where string, tables bool) error {
 	f, err := os.Open(path) // #nosec G304 -- output the operator names
 	if err != nil {
@@ -142,11 +150,10 @@ func (s *scanState) scanFile(m *matcher, path, where string, tables bool) error 
 	if err := s.scanStream(m, f, where, tables); err != nil {
 		return err
 	}
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	var magic [2]byte
-	if n, _ := io.ReadFull(f, magic[:]); n == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
+	var magic [4]byte
+	n, _ := f.ReadAt(magic[:], 0)
+	switch {
+	case n >= 2 && magic[0] == 0x1f && magic[1] == 0x8b:
 		if _, err := f.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
@@ -156,8 +163,50 @@ func (s *scanState) scanFile(m *matcher, path, where string, tables bool) error 
 		}
 		zr.Multistream(true)
 		return s.scanStream(m, zr, where, tables)
+	case n == 4 && string(magic[:]) == "PK\x03\x04":
+		fi, err := f.Stat()
+		if err != nil {
+			return err
+		}
+		zr, err := zip.NewReader(f, fi.Size())
+		if err != nil {
+			return nil // not really zip: the raw scan above covered it
+		}
+		for _, zf := range zr.File {
+			if zf.FileInfo().IsDir() {
+				continue
+			}
+			if err := s.scanMember(m, zf, where+"!"+zf.Name, tables || isDumpName(zf.Name)); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
+}
+
+// scanMember scans one zip member. A stored member's bytes are already
+// in the archive as they are, so the raw scan of the archive saw them:
+// it is read again only when it is gzip. A member that can't be opened
+// (encrypted, an unknown method) is skipped like any unreadable bytes.
+func (s *scanState) scanMember(m *matcher, zf *zip.File, where string, tables bool) error {
+	rc, err := zf.Open()
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = rc.Close() }()
+	br := bufio.NewReader(rc)
+	if magic, _ := br.Peek(2); len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
+		zr, err := gzip.NewReader(br)
+		if err != nil {
+			return nil
+		}
+		zr.Multistream(true)
+		return s.scanStream(m, zr, where, tables)
+	}
+	if zf.Method == zip.Store {
+		return nil
+	}
+	return s.scanStream(m, br, where, tables)
 }
 
 // Run judges one output.
@@ -181,6 +230,10 @@ func Run(ctx context.Context, o Options) (Report, error) {
 	}
 	if o.Tree != "" {
 		err := filepath.WalkDir(o.Tree, func(path string, d fs.DirEntry, err error) error {
+			if err == nil && d.Type()&fs.ModeSymlink != 0 {
+				rel, _ := filepath.Rel(o.Tree, path)
+				rep.Links = append(rep.Links, filepath.ToSlash(rel))
+			}
 			if err != nil || !d.Type().IsRegular() {
 				return err
 			}

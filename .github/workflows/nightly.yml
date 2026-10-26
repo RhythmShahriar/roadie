@@ -29,9 +29,9 @@ jobs:
         with:
           go-version-file: go.mod
       - run: make fuzz FUZZTIME=5m
-      # The testbed's own parsers (the oracle's dump reader, the sinkhole's
+      # The testbed's own parsers (the oracle's dump and archive reader, the sinkhole's
       # DNS parser, the generator's size flag), until FUZZ_TARGETS lists them.
-      - run: make fuzz FUZZTIME=5m FUZZ_TARGETS="testbed/oracle:FuzzReadDump testbed/sinkhole:FuzzParseQuery testbed/gen:FuzzParseSize"
+      - run: make fuzz FUZZTIME=5m FUZZ_TARGETS="testbed/oracle:FuzzReadDump testbed/oracle:FuzzScanFile testbed/sinkhole:FuzzParseQuery testbed/gen:FuzzParseSize"
       - name: Upload the failing inputs
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -4,6 +4,7 @@
 package oracle
 
 import (
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -35,7 +36,11 @@ func TestOracleImportsNoRoadie(t *testing.T) {
 			return
 		}
 		seen[path] = true
-		pkg, err := build.ImportDir(dir, build.ImportComment)
+		// Every file, whatever its build tags (testbed, docker): the
+		// default context would skip a tagged file's imports.
+		bc := build.Default
+		bc.UseAllFiles = true
+		pkg, err := bc.ImportDir(dir, build.ImportComment)
 		if err != nil {
 			t.Fatalf("%s: %v", path, err)
 		}
@@ -277,6 +282,92 @@ func TestOracleFindsEveryEncoding(t *testing.T) {
 	}
 }
 
+// A canary inside a zip backup is found, deflated or stored, plain or
+// gzip inside; a link in the tree is reported, not followed.
+func TestOracleReadsZipAndReportsLinks(t *testing.T) {
+	dir := t.TempDir()
+	tree := filepath.Join(dir, "tree")
+	if err := os.MkdirAll(filepath.Join(tree, "backups"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	cs := []Canary{
+		{ID: "z-email-1", Kind: "email", Scenario: "z", Value: "deflated.canary.z01@gmail.com"},
+		{ID: "z-email-2", Kind: "email", Scenario: "z", Value: "stored.canary.z02@gmail.com"},
+		{ID: "z-email-3", Kind: "email", Scenario: "z", Value: "gzipped.canary.z03@gmail.com"},
+	}
+	var gz bytes.Buffer
+	gw := gzip.NewWriter(&gz)
+	// Enough repetition that deflate compresses rather than stores it.
+	_, _ = gw.Write([]byte(strings.Repeat("-- padding padding\n", 40) + "INSERT INTO `wp_users` VALUES (1,'" + cs[2].Value + "');\n"))
+	_ = gw.Close()
+	var zb bytes.Buffer
+	zw := zip.NewWriter(&zb)
+	for _, m := range []struct {
+		name   string
+		method uint16
+		body   []byte
+	}{
+		{"site/debug.log", zip.Deflate, []byte(strings.Repeat("padding ", 50) + cs[0].Value)},
+		{"site/notes.txt", zip.Store, []byte("note " + cs[1].Value)},
+		{"db.sql.gz", zip.Store, gz.Bytes()},
+	} {
+		w, err := zw.CreateHeader(&zip.FileHeader{Name: m.name, Method: m.method})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = w.Write(m.body)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tree, "backups", "site.zip"), zb.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(dir, "outside.log")
+	if err := os.WriteFile(outside, []byte(cs[0].Value), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(tree, "backups", "latest.log")); err != nil {
+		t.Skip("no symlinks here:", err)
+	}
+	rep, err := Run(context.Background(), Options{Canaries: cs, Tree: tree})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, s := range rep.Survivors {
+		if prev, ok := got[s.ID]; ok {
+			t.Errorf("%s found twice: %s and %s (%s)", s.ID, prev, s.Where, s.Encoding)
+		}
+		got[s.ID] = s.Where
+	}
+	want := map[string]string{
+		"z-email-1": "file:backups/site.zip!site/debug.log",
+		"z-email-2": "file:backups/site.zip",
+		"z-email-3": "file:backups/site.zip!db.sql.gz:wp_users",
+	}
+	for id, w := range want {
+		if got[id] != w {
+			t.Errorf("%s: found in %q, want %q", id, got[id], w)
+		}
+	}
+	if len(rep.Links) != 1 || rep.Links[0] != "backups/latest.log" {
+		t.Errorf("links %q", rep.Links)
+	}
+
+	// No zip, no link: nothing reported.
+	if err := os.RemoveAll(filepath.Join(tree, "backups")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tree, "fake.zip"), []byte("PK\x03\x04 not a zip "+cs[1].Value[:5]), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = Run(context.Background(), Options{Canaries: cs, Tree: tree})
+	if err != nil || len(rep.Survivors) != 0 || len(rep.Links) != 0 || !rep.Clean() {
+		t.Errorf("clean tree: %+v %v", rep, err)
+	}
+}
+
 func TestKeys(t *testing.T) {
 	dir := t.TempDir()
 	live := "sk" + "_live_" + "Q3vX9mP2kL7wR4tY8nB6cD1f"
@@ -448,4 +539,31 @@ func BenchmarkScan(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+}
+
+// The tree scan never panics or hangs on a file of any bytes, archive
+// or not. A corrupt gzip stream is an error on purpose: unread bytes
+// can't be called clean.
+func FuzzScanFile(f *testing.F) {
+	var zb bytes.Buffer
+	zw := zip.NewWriter(&zb)
+	w, _ := zw.Create("a.sql")
+	_, _ = w.Write([]byte("INSERT INTO `t` VALUES ('fuzz.canary.f01@gmail.com');\n"))
+	_ = zw.Close()
+	var gz bytes.Buffer
+	gw := gzip.NewWriter(&gz)
+	_, _ = gw.Write([]byte("fuzz.canary.f01@gmail.com"))
+	_ = gw.Close()
+	f.Add(zb.Bytes())
+	f.Add(gz.Bytes())
+	f.Add([]byte("PK\x03\x04"))
+	f.Add([]byte{0x1f, 0x8b})
+	cs := []Canary{{ID: "f-email-1", Kind: "email", Scenario: "f", Value: "fuzz.canary.f01@gmail.com"}}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		tree := t.TempDir()
+		if err := os.WriteFile(filepath.Join(tree, "x.zip"), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, _ = Run(context.Background(), Options{Canaries: cs, Tree: tree})
+	})
 }
