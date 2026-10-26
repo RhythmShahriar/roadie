@@ -5,10 +5,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"flag"
 	"io"
 	"io/fs"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
@@ -642,6 +644,36 @@ func TestInlinePassword(t *testing.T) {
 	} {
 		if got := inlinePassword(in); got != want {
 			t.Errorf("inlinePassword(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// A run hands the engine the config's project folder for .roadie/key
+// and the basic-auth files; without a config the engine uses the
+// working folder.
+func TestRunProjectDir(t *testing.T) {
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{nil, filepath.FromSlash("/project")},
+		{[]string{"--config", filepath.FromSlash("ci/roadie.yaml")}, "ci"},
+		{[]string{"--no-config"}, ""},
+	} {
+		var got []string
+		testDeps(t, func(d *deps) {
+			d.defaultConfig = roadiecfg.Default
+			d.findConfig = func(string) (string, error) { return filepath.FromSlash("/project/.roadie/config.yaml"), nil }
+			d.loadConfig = func(string, func(string) (string, bool)) (*roadiecfg.Config, error) { return roadiecfg.Default(), nil }
+			d.run = func(_ context.Context, j engine.Job) (*core.Result, error) {
+				got = append(got, j.ProjectDir)
+				return planResult(), nil
+			}
+		})
+		args := append([]string{"--from", "prod.sql", "--to", "out.sql", "--url", "https://staging.shop.test"}, c.args...)
+		runCmd(t, "plan", args...)
+		if !slices.Equal(got, []string{c.want}) {
+			t.Errorf("%q: ProjectDir %q, want %q", c.args, got, c.want)
 		}
 	}
 }
