@@ -927,3 +927,31 @@ func FuzzLooksSerialized(f *testing.F) {
 		}
 	})
 }
+
+// A walk that fails after some leaves leaves the value to the plain-text
+// read; the leaves seen before the failure are not counted as well.
+func TestRunNestedFailsPartway(t *testing.T) {
+	defer func(f func([]byte) string, l func([]byte, func(string, []byte), nested.Options) error) {
+		formatOf, leavesOf = f, l
+	}(formatOf, leavesOf)
+	formatOf = func([]byte) string { return "serialized" }
+	leavesOf = func(b []byte, fn func(string, []byte), _ nested.Options) error {
+		fn("serialized:email", []byte("ada.kowalczyk@gmail.com"))
+		return errors.New("truncated")
+	}
+	broken := `a:2:{s:5:"email";s:23:"ada.kowalczyk@gmail.com";s:3:"bad`
+	res := runJob(t, Job{Source: source(options([]string{"1", "widget_contact", broken}))})
+	f := find(res, core.FindingPIIEmail)
+	if f == nil || f.Count != 1 || f.Locations[0].Path != "" {
+		t.Errorf("partial walk: %+v", res.Findings)
+	}
+	// The same walk that succeeds reports the leaf at its path.
+	leavesOf = func(b []byte, fn func(string, []byte), _ nested.Options) error {
+		fn("serialized:email", []byte("ada.kowalczyk@gmail.com"))
+		return nil
+	}
+	res = runJob(t, Job{Source: source(options([]string{"1", "widget_contact", broken}))})
+	if f := find(res, core.FindingPIIEmail); f == nil || f.Count != 1 || f.Locations[0].Path != "serialized:email" {
+		t.Errorf("whole walk: %+v", res.Findings)
+	}
+}

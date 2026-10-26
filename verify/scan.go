@@ -173,11 +173,23 @@ type field struct {
 	unparsed map[string]int64
 	emitFn   func(core.Hit)
 	leafFn   func(string, []byte)
+	// pending holds the leaves of the value being walked and arena their
+	// bytes. They are scanned only once the walk succeeds: a walk that
+	// fails partway leaves the value to be read as plain text, and leaves
+	// scanned before the failure would then be counted twice.
+	pending []pendingLeaf
+	arena   []byte
+}
+
+// pendingLeaf is one walked leaf: its path and its bytes in field.arena.
+type pendingLeaf struct {
+	path       string
+	start, end int
 }
 
 func newField(s *scanner, acc sink, hits *[]core.KeyHit) *field {
 	f := &field{s: s, acc: acc, hits: hits}
-	f.emitFn, f.leafFn = f.emit, f.leaf
+	f.emitFn, f.leafFn = f.emit, f.collect
 	return f
 }
 
@@ -198,7 +210,11 @@ func (f *field) value(v []byte, sc core.ScanContext, at core.Location) {
 	f.public = publicOption(sc)
 	switch formatOf(v) {
 	case "serialized", "json", "base64-serialized":
+		f.pending, f.arena = f.pending[:0], f.arena[:0]
 		if err := leavesOf(v, f.leafFn, nested.Options{}); err == nil {
+			for _, l := range f.pending {
+				f.leaf(l.path, f.arena[l.start:l.end])
+			}
 			return
 		}
 	}
@@ -209,6 +225,14 @@ func (f *field) value(v []byte, sc core.ScanContext, at core.Location) {
 		f.unparsed[sc.Table+"\x00"+sc.Column]++
 	}
 	f.leaf("", v)
+}
+
+// collect keeps one walked leaf until the walk ends. The bytes are
+// copied: the walker may reuse its buffer for the next leaf.
+func (f *field) collect(p string, l []byte) {
+	start := len(f.arena)
+	f.arena = append(f.arena, l...)
+	f.pending = append(f.pending, pendingLeaf{path: p, start: start, end: len(f.arena)})
 }
 
 // emit records one detector hit at the current leaf.
