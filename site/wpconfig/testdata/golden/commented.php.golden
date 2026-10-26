@@ -1,0 +1,20 @@
+<?php
+// define( 'WP_ENVIRONMENT_TYPE', 'production' );
+# define( 'DISABLE_WP_CRON', false );
+/*
+define( 'WP_HOME', 'https://old.example' );
+*/
+$note = 'define( "WP_SITEURL", "https://in-a-string.example" );';
+$doc = <<<'TXT'
+define( 'AUTOMATIC_UPDATER_DISABLED', true );
+TXT;
+define( 'DB_NAME', 'shop' );
+define( 'DB_USER', 'shop' );
+define( 'DB_PASSWORD', 'fixture-pass-6' );
+define( 'DB_HOST', 'localhost' );
+$table_prefix = 'wp_';
+define( 'WP_ENVIRONMENT_TYPE', 'staging' );
+define( 'DISABLE_WP_CRON', true );
+define( 'AUTH_KEY', 'new\'key\\with$"quotes' );
+/* That's all, stop editing! */
+require_once ABSPATH . 'wp-settings.php';

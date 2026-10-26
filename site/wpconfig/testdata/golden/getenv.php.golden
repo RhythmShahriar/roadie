@@ -1,0 +1,13 @@
+<?php
+define('DB_NAME', getenv('DB_NAME') ?: 'shop');
+define('DB_USER', $_ENV['DB_USER']);
+define('DB_PASSWORD', getenv('DB_PASS'));
+define('DB_HOST', $_SERVER['DB_HOST'] ?? "localhost");
+define("WP_HOME", "https://{$_SERVER['HTTP_HOST']}");
+define('WP_CACHE_KEY_SALT', DB_NAME . ':cache');
+$table_prefix = getenv('PREFIX');
+
+define( 'WP_ENVIRONMENT_TYPE', 'staging' );
+define( 'DISABLE_WP_CRON', true );
+define( 'AUTH_KEY', 'new\'key\\with$"quotes' );
+require_once ABSPATH . 'wp-settings.php';

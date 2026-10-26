@@ -1,0 +1,12 @@
+<?php
+define('DB_NAME', 'shop');
+define('DB_USER', 'shop');
+define('DB_PASSWORD', 'fixture-pass-4');
+define('DB_HOST', 'localhost');
+$table_prefix = 'wp_';
+if ( !defined('ABSPATH') )
+	define('ABSPATH', dirname(__FILE__) . '/');
+define( 'WP_ENVIRONMENT_TYPE', 'staging' );
+define( 'DISABLE_WP_CRON', true );
+define( 'AUTH_KEY', 'new\'key\\with$"quotes' );
+require_once(ABSPATH . 'wp-settings.php');

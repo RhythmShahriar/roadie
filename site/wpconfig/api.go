@@ -4,51 +4,130 @@
 // Package wpconfig reads and edits wp-config.php without running it: every
 // define() is found by a PHP tokenizer and an edit changes only its bytes.
 //
-// The exported names in this file are the frozen cross-lane API; the site
-// lane replaces the bodies, which return core.ErrNotBuilt until then.
+// The tokenizer knows PHP open and close tags, comments, single and
+// double quoted strings, heredoc and nowdoc plus enough nesting (blocks,
+// brace-less and alternative-syntax control structures) to tell a define
+// PHP always runs from a conditional one.
 package wpconfig
 
-import "github.com/RhythmShahriar/roadie/core"
+import (
+	"bytes"
+	"slices"
+
+	"github.com/RhythmShahriar/roadie/core"
+)
 
 // File is one parsed file.
-type File struct{} // its fields are unexported and added by the owning lane
+type File struct {
+	src []byte
+	p   *parsed
+}
 
-// Parse reads b.
+// Parse reads b. It fails only when a comment, string or heredoc runs to
+// the end of the file, since nothing in such a file can be edited safely.
 func Parse(b []byte) (*File, error) {
-	return nil, core.ErrNotBuilt
+	src := bytes.Clone(b)
+	p, err := parse(src)
+	if err != nil {
+		return nil, err
+	}
+	return &File{src: src, p: p}, nil
 }
 
-// Pairs returns every name and value in file order.
+// Pairs returns every define with a literal value (a string, true, false
+// or a number) in file order, conditional ones included. Defines built
+// from expressions are in Unresolved instead.
 func (f *File) Pairs() []core.Pair {
-	return nil
+	var out []core.Pair
+	for _, d := range f.p.defs {
+		if d.Literal {
+			out = append(out, core.Pair{Name: d.Name, Value: d.Value, Line: d.Line, Quoted: d.Quoted})
+		}
+	}
+	return out
 }
 
-// Get returns one pair by name.
+// Get returns the define PHP keeps for name (the first unconditional one,
+// else the first conditional one), when its value is a literal.
 func (f *File) Get(name string) (core.Pair, bool) {
-	return core.Pair{}, false
+	d := f.p.effective(name)
+	if d == nil || !d.Literal {
+		return core.Pair{}, false
+	}
+	return core.Pair{Name: d.Name, Value: d.Value, Line: d.Line, Quoted: d.Quoted}, true
 }
 
-// Set changes a define in place, or inserts it where PRD 13.1 says.
+// Lookup returns the define PHP keeps for name, literal or not.
+func (f *File) Lookup(name string) (Define, bool) {
+	d := f.p.effective(name)
+	if d == nil {
+		return Define{}, false
+	}
+	return d.Define, true
+}
+
+// Defines returns every define() call in file order.
+func (f *File) Defines() []Define {
+	out := make([]Define, len(f.p.defs))
+	for i, d := range f.p.defs {
+		out[i] = d.Define
+	}
+	return out
+}
+
+// Set makes name the string value. The first unconditional define before
+// wp-settings.php is changed in place, keeping its quote style and
+// spacing, along with any conditional define of name before it; with
+// none, define( 'NAME', 'value' ); goes on its own line before the
+// "That's all, stop editing!" comment, else before the require_once of
+// wp-settings.php, else before a closing ?> or at the end, never after
+// wp-settings.php. Line endings, a BOM and the trailing newline are kept.
 func (f *File) Set(name, value string) error {
-	return core.ErrNotBuilt
+	return f.set(name, func(q byte) string { return Quote(value, q) }, value, true)
+}
+
+// SetBool is Set for a true or false constant such as DISABLE_WP_CRON.
+func (f *File) SetBool(name string, v bool) error {
+	code := "false"
+	if v {
+		code = "true"
+	}
+	return f.set(name, func(byte) string { return code }, code, false)
 }
 
 // Bytes returns the file, byte-identical to the input when nothing changed.
 func (f *File) Bytes() []byte {
-	return nil
+	return bytes.Clone(f.src)
 }
 
-// Unresolved names the defines set from getenv(), $_ENV or expressions.
+// Unresolved names the defines set from getenv(), $_ENV, $_SERVER or any
+// other expression, in file order: the ones PHP keeps for their name
+// whose value Roadie can't know without running PHP.
 func (f *File) Unresolved() []string {
-	return nil
+	var out []string
+	for _, d := range f.p.defs {
+		if e := f.p.effective(d.Name); e != nil && !e.Literal && !slices.Contains(out, d.Name) {
+			out = append(out, d.Name)
+		}
+	}
+	return out
 }
 
-// TablePrefix returns $table_prefix.
+// TablePrefix returns $table_prefix when it is set to a literal string,
+// else "".
 func (f *File) TablePrefix() string {
-	return ""
+	return f.p.prefix
 }
 
 // DB returns the database settings when every one is a literal.
 func (f *File) DB() (name, user, password, host string, ok bool) {
-	return "", "", "", "", false
+	var vals [4]string
+	for i, n := range []string{"DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST"} {
+		p, found := f.Get(n)
+		if !found {
+			return "", "", "", "", false
+		}
+		vals[i] = p.Value
+	}
+	return vals[0], vals[1], vals[2], vals[3], true
 }
