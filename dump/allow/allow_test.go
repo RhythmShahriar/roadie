@@ -17,7 +17,7 @@ import (
 	"github.com/RhythmShahriar/roadie/dump/mysql"
 )
 
-// mustCheck judges one MySQL statement given as text.
+// check judges one MySQL statement given as text.
 func check(text string, o Options) (Decision, error) {
 	kind, _ := mysql.Classify([]byte(text), o.Mode)
 	if strings.HasPrefix(strings.TrimSpace(text), "\\") {
@@ -164,7 +164,11 @@ func TestRefused(t *testing.T) {
 		{"CALL p();", "holds a CALL statement, which isn't on the list of statements Roadie copies from a dump."},
 		{"INSTALL PLUGIN x SONAME 'x.so';", "holds an INSTALL PLUGIN statement"},
 		{"PREPARE s FROM @q;", "holds a PREPARE statement, which could run code"},
-		{"EXECUTE s;", "holds an EXECUTE statement"},
+		{"EXECUTE s;", "holds an EXECUTE statement, which could run code on the staging database. Leave it out of the export; rhythm-roadie explain dump-refused lists what Roadie keeps."},
+		{"EXECUTE IMMEDIATE 'GRANT ALL ON *.* TO x';", "holds an EXECUTE statement, which could run code on the staging database. Leave it out of the export;"},
+		{"XA START 'x';", "holds an XA statement, which isn't on the list"},
+		{"CREATE TABLE t (a text DEFAULT (`LOAD_FILE`('/etc/passwd')));", "holds a call to load_file()"},
+		{"CREATE TABLE t (a text DEFAULT (`sys_exec`('id')));", "holds a call to sys_exec()"},
 		{"BEGIN NOT ATOMIC SELECT 1; END;", "holds a BEGIN NOT statement"},
 		{"DO SLEEP(10);", "holds a DO statement"},
 		{"HANDLER t OPEN;", "holds a HANDLER statement"},

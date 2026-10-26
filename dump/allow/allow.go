@@ -118,7 +118,7 @@ const (
 )
 
 var (
-	whyRunsCode   = why{"could run code on the staging database", ""}
+	whyRunsCode   = why{"could run code on the staging database", adviceLeaveOut}
 	whyClient     = why{"would run on the machine that imports the dump", adviceClient}
 	whyOtherDB    = why{"would send the import to a database --to doesn't name", adviceOneDB}
 	whyDatabase   = why{"would make or remove a database --to doesn't name", adviceOneDB}
@@ -133,6 +133,8 @@ var (
 	whySetting    = why{"isn't a session setting dump tools write", adviceLeaveOut}
 	whyQuery      = why{"fills or sets something from a query instead of the dump's own rows", adviceLeaveOut}
 	whyUnknown    = why{"isn't on the list of statements Roadie copies from a dump", adviceLeaveOut}
+	whyHiddenSQL  = why{"could run a query hidden in a string on the staging database", adviceNever}
+	whyServer     = why{"could stop or reconfigure the staging server", adviceNever}
 	whyDropOther  = why{"removes something the dump doesn't create", adviceLeaveOut}
 	whyCascade    = why{"could remove objects the dump doesn't create", "Export without --clean, or with pg_dump --clean --if-exists, which never cascades."}
 )
@@ -173,8 +175,16 @@ func refusal(st core.Statement, o Options, d Decision) *core.Error {
 	return e
 }
 
-// article is "a" or "an" for a keyword label.
+// article is "a" or "an" for a keyword label, read as it is spoken:
+// "an XA", "a USE".
 func article(label string) string {
+	first, _, _ := strings.Cut(label, " ")
+	switch first {
+	case "XA":
+		return "an"
+	case "USE", "USER", "UNION", "UNIQUE":
+		return "a"
+	}
 	if label != "" && strings.ContainsRune("AEIOU", rune(label[0])) {
 		return "an"
 	}
@@ -248,6 +258,23 @@ func globalChecks(t toks) (Decision, bool) {
 		"lo_import", "lo_export", "dblink", "dblink_exec", "dblink_connect", "dblink_send_query"} {
 		if t.call(fn) {
 			return refuse("a call to "+fn+"()", whyFileCall), true
+		}
+	}
+	// These run a query given as a string, which no rule here reads.
+	for _, fn := range []string{"query_to_xml", "query_to_xml_and_xmlschema", "query_to_xmlschema",
+		"cursor_to_xml", "cursor_to_xmlschema", "table_to_xml", "table_to_xml_and_xmlschema",
+		"table_to_xmlschema", "schema_to_xml", "schema_to_xml_and_xmlschema", "schema_to_xmlschema",
+		"database_to_xml", "database_to_xml_and_xmlschema", "database_to_xmlschema"} {
+		if t.call(fn) {
+			return refuse("a call to "+fn+"()", whyHiddenSQL), true
+		}
+	}
+	// A CHECK constraint or column default runs these while rows import.
+	for _, fn := range []string{"pg_terminate_backend", "pg_cancel_backend", "pg_reload_conf",
+		"pg_rotate_logfile", "pg_promote", "pg_switch_wal", "pg_create_restore_point",
+		"pg_log_backend_memory_contexts"} {
+		if t.call(fn) {
+			return refuse("a call to "+fn+"()", whyServer), true
 		}
 	}
 	return Decision{}, false

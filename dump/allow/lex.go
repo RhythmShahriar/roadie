@@ -17,6 +17,10 @@ const (
 	noKind = 0
 )
 
+// unicodeEscape is the token lex gives the U& prefix of a PostgreSQL
+// name or string with Unicode escapes. No word can hold the '&'.
+const unicodeEscape = "u&"
+
 // tok is one token of a statement.
 type tok struct {
 	kind byte
@@ -72,10 +76,13 @@ func (t toks) seq(ws ...string) bool {
 	return false
 }
 
-// call reports whether the word fn is called anywhere, fn( or x.fn(.
+// call reports whether fn is called anywhere, fn( or x.fn(, also as a
+// quoted name in any case ("pg_read_file"( or `load_file`(), since a
+// quoted name can still reach the built-in function.
 func (t toks) call(fn string) bool {
 	for i := range t {
-		if t.w(i) == fn && t.p(i+1, '(') {
+		named := t.w(i) == fn || t.kind(i) == ident && strings.EqualFold(t[i].w, fn)
+		if named && t.p(i+1, '(') {
 			return true
 		}
 	}
@@ -156,6 +163,12 @@ func lex(b []byte, sx syntax) toks {
 			}
 			out = append(out, tok{str, string(b[i:j])})
 			i = j
+		case sx.pg && (c == 'u' || c == 'U') && i+2 < n && b[i+1] == '&' && (b[i+2] == '"' || b[i+2] == '\'') &&
+			(i == 0 || !isWordByte(b[i-1])):
+			// U&"..." spells a name with escapes such as \0070, which
+			// would hide a function name from call.
+			out = append(out, tok{word, unicodeEscape})
+			i += 2
 		case sx.pg && (c == 'e' || c == 'E') && i+1 < n && b[i+1] == '\'' && (i == 0 || !isWordByte(b[i-1])):
 			j := quoted(b, i+1, true)
 			out = append(out, tok{str, string(b[i:j])})

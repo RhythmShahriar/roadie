@@ -45,6 +45,14 @@ var pgRoutines = map[string]bool{
 	"conversion": true, "transform": true,
 }
 
+// whyUnicode is the refusal of U& escapes, which pg_dump never writes:
+// they could spell a name the rules here would refuse.
+var whyUnicode = why{"could spell a name Roadie can't read", "Export the dump again with pg_dump -Fp, which writes names and strings as plain UTF-8."}
+
+// whySchemaElems is the refusal of CREATE SCHEMA with elements.
+var whySchemaElems = why{"could create views, triggers or grants Roadie doesn't judge one by one",
+	"Export the dump again with pg_dump -Fp, which writes each object as its own statement."}
+
 // whyPGRoutine is the refusal of a PostgreSQL routine without --keep-routines.
 var whyPGRoutine = why{whyRunsCode.danger, "Pass --keep-routines to keep it, or leave it out of the export."}
 
@@ -63,7 +71,19 @@ func checkPG(st core.Statement, o Options) Decision {
 	if d, ok := globalChecks(t); ok {
 		return d
 	}
+	for i := range t {
+		if t.w(i) == unicodeEscape {
+			return refuse("a name or string with Unicode escapes (U&)", whyUnicode)
+		}
+	}
 	w0 := t.w(0)
+	if w0 != "select" && t.call("set_config") {
+		// pgSelect judges pg_dump's own top-level set_config. Anywhere
+		// else (a CHECK constraint, a column default) it runs while
+		// rows import and could turn standard_conforming_strings off
+		// under the reader.
+		return refuse("a call to set_config()", whySCS)
+	}
 	switch w0 {
 	case "set":
 		return pgSet(t, o)
@@ -306,7 +326,17 @@ modifiers:
 		return pgCreates(t, i+1, "table")
 	case "index":
 		return keep()
-	case "sequence", "type", "domain", "schema", "statistics":
+	case "schema":
+		// CREATE SCHEMA s CREATE VIEW ... makes its elements in the same
+		// statement, out of reach of the rules for each kind. pg_dump
+		// writes each object as its own statement.
+		for k := i + 1; k < len(t); k++ {
+			if t.w(k) == "create" || t.w(k) == "grant" {
+				return refuse("a CREATE SCHEMA statement that creates objects inside it", whySchemaElems)
+			}
+		}
+		return pgCreates(t, i+1, obj)
+	case "sequence", "type", "domain", "statistics":
 		return pgCreates(t, i+1, obj)
 	case "extension":
 		name, _ := t.objName(afterIfExists(t, i+1), true)
