@@ -1,0 +1,10 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  Scrubbed by a generic tool that only rewrites plain columns:
+  wp_users, wp_usermeta and wc_orders hold reserved-domain fakes while the
+  real values are still inside serialized session_tokens, Action
+  Scheduler JSON args and serialized woocommerce_sessions.
+stack: woocommerce
+canaries: true

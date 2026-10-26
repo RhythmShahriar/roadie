@@ -1,0 +1,20 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+v01: what wp search-replace leaves behind. */ -}}
+{{template "head"}}
+{{- template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://staging.shop.test','on'),(2,'home','https://staging.shop.test','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'blog_public','0','on'),(5,'woocommerce_stripe_settings','{{sql (include "stripe_live")}}','on');
+UNLOCK TABLES;
+{{template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+{{template "users" (dict "p" "wp_" "n" 60 "tag" "v" "base" 1)}}UNLOCK TABLES;
+{{template "wp_usermeta" "wp_"}}
+LOCK TABLES `wp_usermeta` WRITE;
+{{template "usermeta" (dict "p" "wp_" "n" 60 "tag" "v" "base" 1 "meta" 0)}}UNLOCK TABLES;
+{{template "wp_postmeta" "wp_"}}
+LOCK TABLES `wp_postmeta` WRITE;
+INSERT INTO `wp_postmeta` VALUES {{range $p := seq 10}}{{if gt $p 1}},{{end}}({{$p}},{{$p}},'_elementor_data','[{\"settings\":{\"image\":{\"url\":\"https:\\/\\/shop.example.com\\/wp-content\\/uploads\\/hero{{$p}}.jpg\"}}}]'){{end}};
+UNLOCK TABLES;
+{{template "tail"}}

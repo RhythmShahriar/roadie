@@ -1,0 +1,10 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  A clean database next to files that carry production data: a
+  debug.log with a customer's address, WooCommerce logs and an
+  UpdraftPlus backup of production. Verify lists each file; the backup
+  is critical.
+stack: woocommerce
+canaries: true

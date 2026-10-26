@@ -1,0 +1,4 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT */ -}}
+{{range $i := seq 20}}[01-Oct-2026 09:{{printf "%02d" $i}}:00 UTC] PHP Notice: checkout failed for {{canary "email" (printf "d%d" $i) "file.debug.log"}} ({{canary "street" (printf "d%d" $i) "file.debug.log"}}) in /var/www/html/wp-content/plugins/woocommerce/includes/class-wc-checkout.php on line 1286
+{{end -}}

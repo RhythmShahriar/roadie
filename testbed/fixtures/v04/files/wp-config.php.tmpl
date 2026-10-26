@@ -1,0 +1,7 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT */ -}}
+{{template "wpconfig_db"}}
+define( 'WP_ENVIRONMENT_TYPE', 'staging' );
+define( 'DISABLE_WP_CRON', true );
+define( 'WC_STRIPE_SECRET_KEY', '{{key "stripe_live_secret"}}' );
+{{template "wpconfig_tail"}}

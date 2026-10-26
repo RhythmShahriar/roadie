@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  Clean people but a staging that is indexable and wired to the world:
+  blog_public 1, a physical robots.txt allowing every crawler, Stripe in
+  live mode, an active webhook and WP-Cron running.
+stack: woocommerce
+canaries: false

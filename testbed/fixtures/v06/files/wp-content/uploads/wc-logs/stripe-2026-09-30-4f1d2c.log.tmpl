@@ -1,0 +1,4 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT */ -}}
+{{range $i := seq 20}}2026-09-30T10:{{printf "%02d" $i}}:00+00:00 INFO Charge for {{canary "full_name" (printf "s%d" $i) "file.wc-logs"}} <{{canary "email" (printf "s%d" $i) "file.wc-logs"}}> from {{canary "ip" (printf "s%d" $i) "file.wc-logs"}}
+{{end -}}

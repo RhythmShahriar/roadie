@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  A staging made with wp search-replace only: siteurl and home point at
+  staging while every customer is real, Stripe still holds its live key
+  and Elementor's JSON-escaped URLs still name production.
+stack: woocommerce
+canaries: true
