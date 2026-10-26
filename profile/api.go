@@ -94,6 +94,14 @@ func (c *Compiled) Rules(table string) []core.Rule {
 	return c.c.rulesFor(table)
 }
 
+// Kept reports whether a profile's keep list names the table: kept on
+// purpose, as opposed to a table no rule mentions (TableAction gives Keep
+// for both). The uncovered-column scan skips the first and reads the
+// second.
+func (c *Compiled) Kept(table string) bool {
+	return c.c.action(table) == core.Keep && matchAny(table, c.c.keep)
+}
+
 // TableAction returns Keep, Truncate, DropTable or Fake (has column rules).
 func (c *Compiled) TableAction(table string) core.Action {
 	return c.c.action(table)
