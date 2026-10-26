@@ -72,7 +72,7 @@ func TestSpoolRoundTripTwice(t *testing.T) {
 }
 
 // Two readers open at once each read the whole spool, in steps that
-// cross chunk boundaries, and reading reuses one ciphertext buffer.
+// cross chunk boundaries; reading reuses one ciphertext buffer.
 func TestSpoolTwoReaders(t *testing.T) {
 	data := make([]byte, 3*SpoolChunk+5)
 	if _, err := rand.Read(data); err != nil {
