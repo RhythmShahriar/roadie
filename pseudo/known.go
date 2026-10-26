@@ -252,8 +252,16 @@ func (kn *known) Add(kind core.FakeKind, original []byte) {
 	}
 	raw := func(b []byte, k byte) tok { return tok{0, kn.hash(b), maphash.Bytes(kn.seed, b), k} }
 	m, s := md5.Sum(n), sha256.Sum256(n) // #nosec G401 -- an encoding to look for
+	// A kind whose normal form keeps case (a login, a URL, a postcode) is
+	// stored lower-cased: Contains looks a token up in its text and its
+	// lower-case forms only, so "JaneDoe99" stored as it is would never
+	// be found, not even by itself.
+	whole := n
+	if !foldedKind(kind) {
+		whole = appendLower(nil, n)
+	}
 	toks := []tok{
-		raw(n, kb|wholeValue),
+		raw(whole, kb|wholeValue),
 		{1, kn.hash(hex.AppendEncode(nil, m[:])), 0, kb | wholeValue},
 		{2, kn.hash(hex.AppendEncode(nil, s[:])), 0, kb | wholeValue},
 	}
@@ -534,6 +542,17 @@ func (sc *scratch) candidates(token []byte) {
 	case 2 * sha256.Size:
 		sc.cands = append(sc.cands, candidate{2, 0, text})
 	}
+}
+
+// foldedKind reports whether normalise already case-folds kind: emails,
+// names and the address and company kinds. Phones and IPs have no case.
+func foldedKind(kind core.FakeKind) bool {
+	switch kind {
+	case core.KEmail, core.KPhone, core.KIP, core.KFirstName, core.KLastName, core.KFullName,
+		core.KStreet, core.KAddress, core.KCity, core.KCompany:
+		return true
+	}
+	return false
 }
 
 // appendLower appends b lower-cased as bytes.ToLower does.

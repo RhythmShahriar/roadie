@@ -88,6 +88,30 @@ func TestKnownMisses(t *testing.T) {
 	}
 }
 
+// Kinds whose normal form keeps case are found in any case, their own
+// spelling included; other values of those kinds are not.
+func TestKnownCaseKeptKinds(t *testing.T) {
+	k := sealedKnown(t, map[core.FakeKind][]string{
+		core.KUsername: {"JaneDoe99"}, core.KPostcode: {"SW1A 1AA"}, core.KURL: {"https://Jane.Example/Blog"},
+		core.KNicename: {"jane-doe"}, core.KDOB: {"1980-02-03"},
+	})
+	for token, want := range map[string]core.FakeKind{
+		"JaneDoe99": core.KUsername, "janedoe99": core.KUsername, " JANEDOE99 ": core.KUsername,
+		"SW1A 1AA": core.KPostcode, "sw1a 1aa": core.KPostcode,
+		"https://Jane.Example/Blog": core.KURL, "https://jane.example/blog": core.KURL,
+		"jane-doe": core.KNicename, "1980-02-03": core.KDOB,
+	} {
+		if kind, enc, ok := k.Contains([]byte(token)); !ok || kind != want || enc != EncodingRaw {
+			t.Errorf("Contains(%q) = %s %s %v, want %s raw", token, kind, enc, ok, want)
+		}
+	}
+	for _, token := range []string{"JaneDoe98", "SW1A 1AB", "https://jane.example/", "1980-02-04"} {
+		if kind, _, ok := k.Contains([]byte(token)); ok {
+			t.Errorf("Contains(%q) = %s, want not found", token, kind)
+		}
+	}
+}
+
 func TestKnownShortValuesIgnored(t *testing.T) {
 	k := NewKnown(testKey(4))
 	for _, v := range []string{"Ann", "a@b", "  12 ", "", "+1"} {
