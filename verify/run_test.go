@@ -404,6 +404,40 @@ func TestRunGatewayLiveModeAndKeys(t *testing.T) {
 	}
 }
 
+// WooPayments in dev (sandbox) mode only uses a test account, so its
+// test_mode setting no longer flags live mode.
+func TestRunWooPaymentsDevMode(t *testing.T) {
+	opt := func() *core.Batch {
+		return options([]string{"1", "woocommerce_woocommerce_payments_settings", ser("enabled", "yes", "test_mode", "no")})
+	}
+	if f := find(runJob(t, Job{Source: source(opt())}), core.FindingKeyLiveMode); f == nil || f.Title != "WooPayments is in live mode" {
+		t.Fatalf("no wp-config: want key.live-mode, got %+v", f)
+	}
+	for _, c := range []struct {
+		config string
+		live   bool
+	}{
+		{"define( 'WCPAY_DEV_MODE', true );", false},
+		{"define( 'WP_ENVIRONMENT_TYPE', 'staging' );", false},
+		{"define( 'WP_ENVIRONMENT_TYPE', 'development' );", false},
+		{"define( 'WP_DEVELOPMENT_MODE', 'plugin' );", false},
+		{"define( 'WP_ENVIRONMENT_TYPE', 'production' );", true},
+		{"define( 'WCPAY_DEV_MODE', false );", true},
+	} {
+		st := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\n" + c.config + "\n")})
+		res := runJob(t, Job{Site: st, Source: source(opt())})
+		if got := find(res, core.FindingKeyLiveMode) != nil; got != c.live {
+			t.Errorf("%s: live mode %v, want %v", c.config, got, c.live)
+		}
+	}
+	// Dev mode is WooPayments' own: Stripe still counts.
+	st := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\ndefine( 'WP_ENVIRONMENT_TYPE', 'staging' );\n")})
+	res := runJob(t, Job{Site: st, Source: source(options([]string{"1", "woocommerce_stripe_settings", ser("enabled", "yes", "testmode", "no")}))})
+	if find(res, core.FindingKeyLiveMode) == nil {
+		t.Errorf("stripe on a staging site: want key.live-mode, got %v", ids(res))
+	}
+}
+
 func TestRunEncrypted(t *testing.T) {
 	payload := base64.StdEncoding.EncodeToString([]byte(`{"iv":"abc","value":"def","mac":"0123","tag":""}`))
 	plain := base64.StdEncoding.EncodeToString([]byte(`{"iv":"abc","value":"def","other":"x"}`))

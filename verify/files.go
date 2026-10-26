@@ -62,7 +62,7 @@ var siteURLNames = []string{"WP_HOME", "WP_SITEURL", "APP_URL"}
 // runs the Steps' checks.
 func (r *run) siteChecks(ctx context.Context, s core.Site) {
 	for _, name := range configFiles {
-		r.configFile(ctx, s, name)
+		r.configFile(name)
 	}
 	if !r.skip.skips("key.") {
 		r.codeFiles(ctx, s)
@@ -73,22 +73,75 @@ func (r *run) siteChecks(ctx context.Context, s core.Site) {
 	r.steps(ctx, s)
 }
 
+// configRead is one config file as read before the scan: its pairs, or
+// why it couldn't be read. A missing file has neither.
+type configRead struct {
+	pairs []core.Pair
+	skip  *core.Skipped
+}
+
+// readConfigs reads and parses the site's config files once, before the
+// data scan, which needs a few of their switches (WCPAY_DEV_MODE).
+func readConfigs(ctx context.Context, s core.Site) map[string]configRead {
+	out := map[string]configRead{}
+	for _, name := range configFiles {
+		b, err := s.ReadFile(ctx, name)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			out[name] = configRead{skip: &core.Skipped{Table: name, Reason: err.Error()}}
+			continue
+		}
+		pairs, err := parsePairs(name, b)
+		if err != nil {
+			out[name] = configRead{skip: &core.Skipped{Table: name, Reason: "not parsed: " + err.Error()}}
+			continue
+		}
+		out[name] = configRead{pairs: pairs}
+	}
+	return out
+}
+
+// wcpayDevMode reports whether wp-config.php puts WooPayments in dev
+// (sandbox) mode: WCPAY_DEV_MODE on, WP_ENVIRONMENT_TYPE development or
+// staging, or any WP_DEVELOPMENT_MODE. WooPayments then only uses a test
+// account, which can't take live payments, so its test_mode setting
+// doesn't matter. Source:
+// https://woocommerce.com/document/woopayments/testing-and-troubleshooting/sandbox-mode/
+func wcpayDevMode(configs map[string]configRead) bool {
+	for _, p := range configs["wp-config.php"].pairs {
+		v := strings.ToLower(strings.TrimSpace(p.Value))
+		switch p.Name {
+		case "WCPAY_DEV_MODE":
+			if v == "true" || v == "1" {
+				return true
+			}
+		case "WP_ENVIRONMENT_TYPE":
+			if v == "development" || v == "staging" {
+				return true
+			}
+		case "WP_DEVELOPMENT_MODE":
+			if v != "" && v != "false" && v != "0" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // configFile checks one config file: keys, the site URL and the config
 // checks that compare with production.
-func (r *run) configFile(ctx context.Context, s core.Site, name string) {
-	b, err := s.ReadFile(ctx, name)
-	if errors.Is(err, fs.ErrNotExist) {
+func (r *run) configFile(name string) {
+	c, ok := r.configs[name]
+	if !ok {
 		return
 	}
-	if err != nil {
-		r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, core.Skipped{Table: name, Reason: err.Error()})
+	if c.skip != nil {
+		r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, *c.skip)
 		return
 	}
-	pairs, err := parsePairs(name, b)
-	if err != nil {
-		r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, core.Skipped{Table: name, Reason: "not parsed: " + err.Error()})
-		return
-	}
+	pairs := c.pairs
 	r.countConfig()
 	if !r.skip.skips("key.") {
 		for _, h := range keys.ScanPairs(name, pairs) {

@@ -26,6 +26,9 @@ type scanner struct {
 	noKeys, noLiveMode bool
 	findURL            func([]byte) []core.Span
 	filter             *filter
+	// wcpayDev is WCPAY_DEV_MODE from wp-config.php: WooPayments runs on
+	// a test account whatever its test_mode says.
+	wcpayDev bool
 }
 
 // detectorSkip names the --skip entry of each PII detector.
@@ -392,7 +395,7 @@ func (s *scanner) liveMode(v []byte, settings map[string]string, sc core.ScanCon
 		return
 	}
 	g, ok := keys.GatewayFor(string(name))
-	if !ok || g.TestValue == "" && g.LiveValue == "" {
+	if !ok || g.TestValue == "" && g.LiveValue == "" || g.ID == "woopayments" && s.wcpayDev {
 		return
 	}
 	if g.ModePath == "" {

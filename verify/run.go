@@ -75,6 +75,8 @@ type run struct {
 	why     map[string]string
 	// note is a check's detail when it passes, such as a narrower scope.
 	note map[string]string
+	// configs are the site's config files, read before the scan.
+	configs map[string]configRead
 }
 
 // add records a finding unless the baseline or an ignore entry hides it.
@@ -132,6 +134,9 @@ func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 	r.res.Coverage.Sample = max(0, j.Opts.Sample)
 	if j.Progress != nil {
 		j.Progress.Phase("verify", 0)
+	}
+	if st != nil {
+		r.configs = readConfigs(ctx, st)
 	}
 	samples, tables, err := r.stream(ctx, src)
 	if err != nil {
@@ -261,6 +266,7 @@ func (r *run) stream(ctx context.Context, src core.Source) (map[string]map[strin
 		jobs = runtime.GOMAXPROCS(0)
 	}
 	sc := newScanner(r.j, r.skip, r.filter)
+	sc.wcpayDev = wcpayDevMode(r.configs)
 	r.urls = sc.findURL != nil
 	in := make(chan work, jobs*2)
 	out := make(chan result, jobs*2)
