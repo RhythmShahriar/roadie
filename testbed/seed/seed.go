@@ -31,6 +31,11 @@ import (
 //	files/         the input file tree; files ending in .tmpl are rendered
 //	               and lose the suffix, the rest are copied as they are
 //
+// Templates in testbed/fixtures/_shared/*.tmpl are parsed with every
+// fixture's templates, so a {{define}} there (the CREATE TABLE of a
+// WordPress table, the mysqldump header) is one {{template}} away. A
+// directory whose name starts with _ is not a fixture.
+//
 // Seeding writes runtime/fixtures/<id>/db.sql (and the other dumps),
 // runtime/fixtures/<id>/files/,
 // runtime/fixtures/<id>/serialized.json (MySQL dumps, when PHP is given)
@@ -44,6 +49,10 @@ type Meta struct {
 	// Canaries says the fixture plants canaries. A clean (good) input
 	// plants none and a verify-only fixture may plant only keys.
 	Canaries bool `yaml:"canaries"`
+	// Generated names the program that writes the fixture's input at make
+	// up instead of a template (r17's large dump comes from testbed/gen);
+	// that program also adds the fixture's canaries to canaries.json.
+	Generated string `yaml:"generated"`
 }
 
 // Fixture is one directory under testbed/fixtures.
@@ -61,7 +70,7 @@ func Fixtures(dir string) ([]Fixture, error) {
 	}
 	var out []Fixture
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), "_") {
 			continue
 		}
 		f := Fixture{ID: e.Name(), Dir: filepath.Join(dir, e.Name())}
@@ -122,6 +131,10 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 		if len(o.Only) > 0 && !slices.Contains(o.Only, f.ID) {
 			continue
 		}
+		if f.Meta.Generated != "" {
+			res.PerFixture[f.ID] = 0
+			continue
+		}
 		cs, err := renderFixture(ctx, f, o)
 		if err != nil {
 			return nil, fmt.Errorf("fixture %s: %w", f.ID, err)
@@ -129,18 +142,28 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 		res.Canaries = append(res.Canaries, cs...)
 		res.PerFixture[f.ID] = len(cs)
 	}
-	if len(o.Only) > 0 {
-		for _, id := range o.Only {
-			if _, ok := res.PerFixture[id]; !ok {
-				return nil, fmt.Errorf("no fixture %q under %s", id, o.Fixtures)
-			}
+	for _, id := range o.Only {
+		if _, ok := res.PerFixture[id]; !ok {
+			return nil, fmt.Errorf("no fixture %q under %s", id, o.Fixtures)
 		}
-		kept, err := keepOthers(filepath.Join(o.Out, "canaries.json"), o.Only)
-		if err != nil {
-			return nil, err
-		}
-		res.Canaries = append(kept, res.Canaries...)
 	}
+	// Keep what this run didn't make: the other scenarios' canaries when
+	// seeding only some, plus a generated fixture's always (r17's come
+	// from testbed/gen, which is slow to rerun).
+	generated := map[string]bool{}
+	for _, f := range fixtures {
+		generated[f.ID] = f.Meta.Generated != ""
+	}
+	kept, err := keepCanaries(filepath.Join(o.Out, "canaries.json"), func(scenario string) bool {
+		if len(o.Only) > 0 {
+			return !slices.Contains(o.Only, scenario)
+		}
+		return generated[scenario]
+	})
+	if err != nil {
+		return nil, err
+	}
+	res.Canaries = append(kept, res.Canaries...)
 	sort.SliceStable(res.Canaries, func(i, j int) bool { return res.Canaries[i].Scenario < res.Canaries[j].Scenario })
 	b, err := json.MarshalIndent(canaryFile{Version: CanaryFileVersion, Seed: o.Seed, Canaries: res.Canaries}, "", " ")
 	if err != nil {
@@ -152,9 +175,9 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	return res, nil
 }
 
-// keepOthers reads the canaries of every scenario not in only from an
+// keepCanaries reads the canaries of every scenario keep accepts from an
 // existing canaries.json, so reseeding one scenario keeps the rest.
-func keepOthers(path string, only []string) ([]Canary, error) {
+func keepCanaries(path string, keep func(scenario string) bool) ([]Canary, error) {
 	b, err := os.ReadFile(path) // #nosec G304 -- the testbed's own runtime file
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -168,7 +191,7 @@ func keepOthers(path string, only []string) ([]Canary, error) {
 	}
 	var out []Canary
 	for _, c := range f.Canaries {
-		if !slices.Contains(only, c.Scenario) {
+		if keep(c.Scenario) {
 			out = append(out, c)
 		}
 	}
@@ -183,7 +206,12 @@ func writeFile(path string, b []byte) error {
 }
 
 func renderFixture(ctx context.Context, f Fixture, o Options) ([]Canary, error) {
-	r := &renderer{scenario: f.ID, gen: newGenerator(o.Seed, f.ID), byName: map[string]*Canary{}, counts: map[string]int{}, values: map[string]bool{}}
+	shared, err := filepath.Glob(filepath.Join(filepath.Dir(f.Dir), "_shared", "*.tmpl"))
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(shared)
+	r := &renderer{shared: shared, scenario: f.ID, gen: newGenerator(o.Seed, f.ID), byName: map[string]*Canary{}, counts: map[string]int{}, values: map[string]bool{}}
 	out := filepath.Join(o.Out, "fixtures", f.ID)
 	if err := os.RemoveAll(out); err != nil {
 		return nil, err
@@ -270,8 +298,30 @@ func (r *renderer) render(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	t, err := template.New(filepath.Base(path)).Funcs(r.funcs()).Option("missingkey=error").Parse(string(src))
-	if err != nil {
+	var t *template.Template
+	funcs := r.funcs()
+	// include runs a named template into a string, so its output can be
+	// an argument (escaped by sql, say), which {{template}} can't be.
+	funcs["include"] = func(name string, data ...any) (string, error) {
+		var b bytes.Buffer
+		var d any
+		if len(data) > 0 {
+			d = data[0]
+		}
+		err := t.ExecuteTemplate(&b, name, d)
+		return b.String(), err
+	}
+	t = template.New(filepath.Base(path)).Funcs(funcs).Option("missingkey=error")
+	for _, sh := range r.shared {
+		b, err := os.ReadFile(sh) // #nosec G304 -- the testbed's own fixtures
+		if err != nil {
+			return nil, err
+		}
+		if _, err := t.New(filepath.Base(sh)).Parse(string(b)); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := t.Parse(string(src)); err != nil {
 		return nil, err
 	}
 	var b bytes.Buffer

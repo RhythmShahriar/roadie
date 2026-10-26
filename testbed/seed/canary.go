@@ -39,7 +39,10 @@ type Canary struct {
 }
 
 // Kinds lists the canary kinds a template can ask for.
-var Kinds = []string{"email", "first_name", "last_name", "full_name", "phone", "street", "ip", "card", "user_agent"}
+// stripe_customer is a Stripe customer ID (cus_...), which links a fake
+// back to a real person at Stripe; token is a one-time secret such as a
+// password reset key in a mail log.
+var Kinds = []string{"email", "first_name", "last_name", "full_name", "phone", "street", "ip", "card", "user_agent", "stripe_customer", "token"}
 
 // generator makes canary values for one scenario. Values come from the
 // seed and the scenario ID, so adding a scenario leaves the others' values
@@ -123,6 +126,10 @@ func (g *generator) value(kind string) (string, error) {
 				return n, nil
 			}
 		}
+	case "stripe_customer":
+		return "cus_" + g.word(6) + g.digits(8), nil
+	case "token":
+		return g.word(6) + g.digits(4) + g.word(6) + g.digits(4), nil
 	case "user_agent":
 		return fmt.Sprintf("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.%s.%d Safari/537.36", g.digits(5), 10+g.r.IntN(90)), nil
 	}

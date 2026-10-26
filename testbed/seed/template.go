@@ -31,6 +31,12 @@ import (
 //	{{sql X}}                                      escape for a MySQL single-quoted string
 //	{{seq N}} {{add A B}} {{sub A B}} {{mul A B}} {{mod A B}}  1 to N for range; arithmetic for IDs
 //	{{repeat N S}}                                 S N times, to pad a value to a length
+//	{{cr}} {{bom}}                                 a carriage return and a UTF-8 byte order mark
+//	{{list A B ...}} {{dict "k" V ...}}             arguments for a shared {{template}}
+//	{{include "name" DATA}}                        a template's output as a string
+//
+// Git checks fixtures out with LF line endings, so a CRLF or BOM fixture
+// spells them with {{cr}} and {{bom}} instead of holding the bytes.
 //
 // An encoding function given a canary records the encoding on it (in the
 // oracle's names), so canaries.json says how each one was planted. A
@@ -45,6 +51,7 @@ func (v cval) String() string { return v.c.Value }
 
 // renderer fills one scenario's templates.
 type renderer struct {
+	shared   []string // testbed/fixtures/_shared/*.tmpl
 	scenario string
 	gen      *generator
 	byName   map[string]*Canary
@@ -242,6 +249,19 @@ func (r *renderer) funcs() template.FuncMap {
 		"mul":    func(a, b int) int { return a * b },
 		"repeat": func(n int, s string) string { return strings.Repeat(s, max(n, 0)) },
 		"mod":    func(a, b int) int { return a % b },
+		"cr":   func() string { return "\r" },
+		"bom":  func() string { return "\ufeff" },
+		"list": func(args ...any) []any { return args },
+		"dict": func(kv ...any) (map[string]any, error) {
+			if len(kv)%2 != 0 {
+				return nil, fmt.Errorf("dict needs key and value pairs, got %d arguments", len(kv))
+			}
+			m := map[string]any{}
+			for i := 0; i < len(kv); i += 2 {
+				m[fmt.Sprint(kv[i])] = kv[i+1]
+			}
+			return m, nil
+		},
 		"seq": func(n int) []int {
 			out := make([]int, n)
 			for i := range out {

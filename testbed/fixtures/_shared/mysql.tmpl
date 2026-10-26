@@ -1,0 +1,495 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+Shared parts of the MySQL fixtures: the mysqldump 8.4 header and
+trailer, then the CREATE TABLE of every WordPress, WooCommerce and plugin
+table a fixture uses, each called with the table prefix:
+
+  {{template "head"}}
+  {{template "wp_options" "wp_"}}
+  ...
+  {{template "tail"}}
+
+A fixture writes its own LOCK TABLES and INSERT lines after a CREATE. */ -}}
+
+{{- define "head" -}}
+-- MySQL dump 10.13  Distrib 8.4.3, for Linux (x86_64)
+--
+-- Host: localhost    Database: shop
+-- ------------------------------------------------------
+-- Server version	8.4.3
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!50503 SET NAMES utf8mb4 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+{{end -}}
+
+{{- define "tail" }}
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+
+-- Dump completed on 2026-10-01 12:00:00
+{{end -}}
+
+{{- define "wp_options" }}
+DROP TABLE IF EXISTS `{{.}}options`;
+CREATE TABLE `{{.}}options` (
+  `option_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `option_name` varchar(191) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `option_value` longtext COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `autoload` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT 'yes',
+  PRIMARY KEY (`option_id`),
+  UNIQUE KEY `option_name` (`option_name`),
+  KEY `autoload` (`autoload`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_users" }}
+DROP TABLE IF EXISTS `{{.}}users`;
+CREATE TABLE `{{.}}users` (
+  `ID` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_login` varchar(60) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_pass` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_nicename` varchar(50) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_email` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_url` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_registered` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `user_activation_key` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_status` int NOT NULL DEFAULT '0',
+  `display_name` varchar(250) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  PRIMARY KEY (`ID`),
+  KEY `user_login_key` (`user_login`),
+  KEY `user_nicename` (`user_nicename`),
+  KEY `user_email` (`user_email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_usermeta" }}
+DROP TABLE IF EXISTS `{{.}}usermeta`;
+CREATE TABLE `{{.}}usermeta` (
+  `umeta_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint unsigned NOT NULL DEFAULT '0',
+  `meta_key` varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `meta_value` longtext COLLATE utf8mb4_unicode_520_ci,
+  PRIMARY KEY (`umeta_id`),
+  KEY `user_id` (`user_id`),
+  KEY `meta_key` (`meta_key`(191))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_posts" }}
+DROP TABLE IF EXISTS `{{.}}posts`;
+CREATE TABLE `{{.}}posts` (
+  `ID` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `post_author` bigint unsigned NOT NULL DEFAULT '0',
+  `post_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `post_content` longtext COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `post_title` text COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `post_excerpt` text COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `post_status` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT 'publish',
+  `post_name` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `post_parent` bigint unsigned NOT NULL DEFAULT '0',
+  `guid` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `post_type` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT 'post',
+  `post_mime_type` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  PRIMARY KEY (`ID`),
+  KEY `post_name` (`post_name`(191)),
+  KEY `type_status_date` (`post_type`,`post_status`,`post_date`,`ID`),
+  KEY `post_parent` (`post_parent`),
+  KEY `post_author` (`post_author`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_postmeta" }}
+DROP TABLE IF EXISTS `{{.}}postmeta`;
+CREATE TABLE `{{.}}postmeta` (
+  `meta_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `post_id` bigint unsigned NOT NULL DEFAULT '0',
+  `meta_key` varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `meta_value` longtext COLLATE utf8mb4_unicode_520_ci,
+  PRIMARY KEY (`meta_id`),
+  KEY `post_id` (`post_id`),
+  KEY `meta_key` (`meta_key`(191))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_comments" }}
+DROP TABLE IF EXISTS `{{.}}comments`;
+CREATE TABLE `{{.}}comments` (
+  `comment_ID` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `comment_post_ID` bigint unsigned NOT NULL DEFAULT '0',
+  `comment_author` tinytext COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `comment_author_email` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `comment_author_IP` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `comment_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `comment_content` text COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `comment_approved` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '1',
+  `comment_type` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT 'comment',
+  `user_id` bigint unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`comment_ID`),
+  KEY `comment_post_ID` (`comment_post_ID`),
+  KEY `comment_type` (`comment_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_wc_orders" }}
+DROP TABLE IF EXISTS `{{.}}wc_orders`;
+CREATE TABLE `{{.}}wc_orders` (
+  `id` bigint unsigned NOT NULL,
+  `status` varchar(20) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `currency` varchar(10) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `type` varchar(20) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `total_amount` decimal(26,8) DEFAULT NULL,
+  `customer_id` bigint unsigned DEFAULT NULL,
+  `billing_email` varchar(320) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `date_created_gmt` datetime DEFAULT NULL,
+  `parent_order_id` bigint unsigned DEFAULT NULL,
+  `payment_method` varchar(100) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `transaction_id` varchar(100) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `ip_address` varchar(100) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `user_agent` text COLLATE utf8mb4_unicode_520_ci,
+  `customer_note` text COLLATE utf8mb4_unicode_520_ci,
+  PRIMARY KEY (`id`),
+  KEY `status` (`status`),
+  KEY `billing_email` (`billing_email`(191))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_wc_order_addresses" }}
+DROP TABLE IF EXISTS `{{.}}wc_order_addresses`;
+CREATE TABLE `{{.}}wc_order_addresses` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `order_id` bigint unsigned NOT NULL,
+  `address_type` varchar(20) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `first_name` text COLLATE utf8mb4_unicode_520_ci,
+  `last_name` text COLLATE utf8mb4_unicode_520_ci,
+  `address_1` text COLLATE utf8mb4_unicode_520_ci,
+  `city` text COLLATE utf8mb4_unicode_520_ci,
+  `postcode` text COLLATE utf8mb4_unicode_520_ci,
+  `country` text COLLATE utf8mb4_unicode_520_ci,
+  `email` varchar(320) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `phone` varchar(100) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `address_type_order_id` (`address_type`,`order_id`),
+  KEY `email` (`email`(191))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_wc_orders_meta" }}
+DROP TABLE IF EXISTS `{{.}}wc_orders_meta`;
+CREATE TABLE `{{.}}wc_orders_meta` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `order_id` bigint unsigned DEFAULT NULL,
+  `meta_key` varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `meta_value` text COLLATE utf8mb4_unicode_520_ci,
+  PRIMARY KEY (`id`),
+  KEY `meta_key_value` (`meta_key`(100),`meta_value`(82))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_wc_customer_lookup" }}
+DROP TABLE IF EXISTS `{{.}}wc_customer_lookup`;
+CREATE TABLE `{{.}}wc_customer_lookup` (
+  `customer_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint unsigned DEFAULT NULL,
+  `username` varchar(60) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `first_name` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `last_name` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `email` varchar(100) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `country` char(2) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `postcode` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `city` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  PRIMARY KEY (`customer_id`),
+  UNIQUE KEY `user_id` (`user_id`),
+  KEY `email` (`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_actionscheduler_actions" }}
+DROP TABLE IF EXISTS `{{.}}actionscheduler_actions`;
+CREATE TABLE `{{.}}actionscheduler_actions` (
+  `action_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `hook` varchar(191) COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `status` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `scheduled_date_gmt` datetime DEFAULT '0000-00-00 00:00:00',
+  `scheduled_date_local` datetime DEFAULT '0000-00-00 00:00:00',
+  `priority` tinyint unsigned NOT NULL DEFAULT '10',
+  `args` varchar(191) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `schedule` longtext COLLATE utf8mb4_unicode_520_ci,
+  `group_id` bigint unsigned NOT NULL DEFAULT '0',
+  `attempts` int NOT NULL DEFAULT '0',
+  `last_attempt_gmt` datetime DEFAULT '0000-00-00 00:00:00',
+  `last_attempt_local` datetime DEFAULT '0000-00-00 00:00:00',
+  `claim_id` bigint unsigned NOT NULL DEFAULT '0',
+  `extended_args` varchar(8000) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  PRIMARY KEY (`action_id`),
+  KEY `hook_status_scheduled_date_gmt` (`hook`(163),`status`,`scheduled_date_gmt`),
+  KEY `args` (`args`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_wc_webhooks" }}
+DROP TABLE IF EXISTS `{{.}}wc_webhooks`;
+CREATE TABLE `{{.}}wc_webhooks` (
+  `webhook_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `status` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `name` text COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `user_id` bigint unsigned NOT NULL,
+  `delivery_url` text COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `secret` text COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `topic` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `date_created` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `api_version` smallint NOT NULL,
+  `failure_count` smallint NOT NULL DEFAULT '0',
+  `pending_delivery` tinyint(1) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`webhook_id`),
+  KEY `user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_woocommerce_sessions" }}
+DROP TABLE IF EXISTS `{{.}}woocommerce_sessions`;
+CREATE TABLE `{{.}}woocommerce_sessions` (
+  `session_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `session_key` char(32) COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `session_value` longtext COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `session_expiry` bigint unsigned NOT NULL,
+  PRIMARY KEY (`session_id`),
+  UNIQUE KEY `session_key` (`session_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_woocommerce_payment_tokens" }}
+DROP TABLE IF EXISTS `{{.}}woocommerce_payment_tokens`;
+CREATE TABLE `{{.}}woocommerce_payment_tokens` (
+  `token_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `gateway_id` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `token` text COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `user_id` bigint unsigned NOT NULL DEFAULT '0',
+  `type` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `is_default` tinyint(1) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`token_id`),
+  KEY `user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+DROP TABLE IF EXISTS `{{.}}woocommerce_payment_tokenmeta`;
+CREATE TABLE `{{.}}woocommerce_payment_tokenmeta` (
+  `meta_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `payment_token_id` bigint unsigned NOT NULL,
+  `meta_key` varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `meta_value` longtext COLLATE utf8mb4_unicode_520_ci,
+  PRIMARY KEY (`meta_id`),
+  KEY `payment_token_id` (`payment_token_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_gf" }}
+DROP TABLE IF EXISTS `{{.}}gf_form`;
+CREATE TABLE `{{.}}gf_form` (
+  `id` mediumint unsigned NOT NULL AUTO_INCREMENT,
+  `title` varchar(150) COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `date_created` datetime NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `is_trash` tinyint(1) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+DROP TABLE IF EXISTS `{{.}}gf_form_meta`;
+CREATE TABLE `{{.}}gf_form_meta` (
+  `form_id` mediumint unsigned NOT NULL,
+  `display_meta` longtext COLLATE utf8mb4_unicode_520_ci,
+  `entries_grid_meta` longtext COLLATE utf8mb4_unicode_520_ci,
+  `confirmations` longtext COLLATE utf8mb4_unicode_520_ci,
+  `notifications` longtext COLLATE utf8mb4_unicode_520_ci,
+  PRIMARY KEY (`form_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+DROP TABLE IF EXISTS `{{.}}gf_entry`;
+CREATE TABLE `{{.}}gf_entry` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `form_id` mediumint unsigned NOT NULL,
+  `date_created` datetime NOT NULL,
+  `ip` varchar(45) COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `source_url` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_agent` varchar(250) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `status` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT 'active',
+  PRIMARY KEY (`id`),
+  KEY `form_id` (`form_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+DROP TABLE IF EXISTS `{{.}}gf_entry_meta`;
+CREATE TABLE `{{.}}gf_entry_meta` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `form_id` mediumint unsigned NOT NULL DEFAULT '0',
+  `entry_id` int unsigned NOT NULL,
+  `meta_key` varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `meta_value` longtext COLLATE utf8mb4_unicode_520_ci,
+  PRIMARY KEY (`id`),
+  KEY `entry_id` (`entry_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+DROP TABLE IF EXISTS `{{.}}gf_entry_notes`;
+CREATE TABLE `{{.}}gf_entry_notes` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `entry_id` int unsigned NOT NULL,
+  `user_name` varchar(250) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `user_id` bigint DEFAULT NULL,
+  `date_created` datetime NOT NULL,
+  `value` longtext COLLATE utf8mb4_unicode_520_ci,
+  `note_type` varchar(50) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `entry_id` (`entry_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_mail_logs" }}
+DROP TABLE IF EXISTS `{{.}}wpml_mails`;
+CREATE TABLE `{{.}}wpml_mails` (
+  `mail_id` int NOT NULL AUTO_INCREMENT,
+  `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `host` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '0',
+  `receiver` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '0',
+  `subject` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '0',
+  `message` text COLLATE utf8mb4_unicode_520_ci,
+  `headers` text COLLATE utf8mb4_unicode_520_ci,
+  `attachments` text COLLATE utf8mb4_unicode_520_ci,
+  `error` varchar(400) COLLATE utf8mb4_unicode_520_ci DEFAULT '',
+  `plugin_version` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '0',
+  PRIMARY KEY (`mail_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+DROP TABLE IF EXISTS `{{.}}fsmpt_email_logs`;
+CREATE TABLE `{{.}}fsmpt_email_logs` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `site_id` int unsigned DEFAULT NULL,
+  `to` varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `from` varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `subject` varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `body` longtext COLLATE utf8mb4_unicode_520_ci,
+  `headers` longtext COLLATE utf8mb4_unicode_520_ci,
+  `attachments` longtext COLLATE utf8mb4_unicode_520_ci,
+  `status` varchar(20) COLLATE utf8mb4_unicode_520_ci DEFAULT 'pending',
+  `response` text COLLATE utf8mb4_unicode_520_ci,
+  `extra` text COLLATE utf8mb4_unicode_520_ci,
+  `retries` int unsigned DEFAULT '0',
+  `resent_count` int unsigned DEFAULT '0',
+  `source` varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- define "wp_multisite" }}
+DROP TABLE IF EXISTS `{{.}}blogs`;
+CREATE TABLE `{{.}}blogs` (
+  `blog_id` bigint NOT NULL AUTO_INCREMENT,
+  `site_id` bigint NOT NULL DEFAULT '0',
+  `domain` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `path` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `registered` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `last_updated` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `public` tinyint NOT NULL DEFAULT '1',
+  `archived` tinyint NOT NULL DEFAULT '0',
+  `mature` tinyint NOT NULL DEFAULT '0',
+  `spam` tinyint NOT NULL DEFAULT '0',
+  `deleted` tinyint NOT NULL DEFAULT '0',
+  `lang_id` int NOT NULL DEFAULT '0',
+  PRIMARY KEY (`blog_id`),
+  KEY `domain` (`domain`(50),`path`(5))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+DROP TABLE IF EXISTS `{{.}}site`;
+CREATE TABLE `{{.}}site` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `domain` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `path` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+DROP TABLE IF EXISTS `{{.}}sitemeta`;
+CREATE TABLE `{{.}}sitemeta` (
+  `meta_id` bigint NOT NULL AUTO_INCREMENT,
+  `site_id` bigint NOT NULL DEFAULT '0',
+  `meta_key` varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `meta_value` longtext COLLATE utf8mb4_unicode_520_ci,
+  PRIMARY KEY (`meta_id`),
+  KEY `meta_key` (`meta_key`(191)),
+  KEY `site_id` (`site_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+{{end -}}
+
+{{- /* A block of customers: dict "p" prefix "n" count "tag" canary prefix
+"base" first user ID. wp_users rows only; the caller opens and closes the
+table. */ -}}
+{{- define "users" -}}
+{{- $p := .p}}{{$tag := .tag}}{{$base := .base -}}
+INSERT INTO `{{$p}}users` VALUES {{range $i := seq .n}}{{if gt $i 1}},{{end}}({{add $base $i}},'{{$tag}}{{$i}}','$wp$2y$10$testbedtestbedtestbedtestbedtestbedtestbedtestbedtes','{{$tag}}-{{$i}}','{{sql (canary "email" (printf "%s%d" $tag $i) (printf "%susers.user_email" $p))}}','','2026-06-02 10:00:00','',0,'{{sql (canary "full_name" (printf "%s%d" $tag $i) (printf "%susers.display_name" $p))}}'){{end}};
+{{end -}}
+
+{{- /* The usermeta of those customers: dict "p" "n" "tag" "base" "meta"
+(first umeta_id). */ -}}
+{{- define "usermeta" -}}
+{{- $p := .p}}{{$tag := .tag}}{{$base := .base}}{{$meta := .meta -}}
+INSERT INTO `{{$p}}usermeta` VALUES {{range $i := seq .n}}{{$n := printf "%s%d" $tag $i}}{{$m := add $meta (mul $i 5)}}{{if gt $i 1}},{{end}}({{$m}},{{add $base $i}},'first_name','{{sql (canary "first_name" $n (printf "%susermeta.meta_value" $p))}}'),({{add $m 1}},{{add $base $i}},'last_name','{{sql (canary "last_name" $n (printf "%susermeta.meta_value" $p))}}'),({{add $m 2}},{{add $base $i}},'billing_phone','{{sql (canary "phone" $n (printf "%susermeta.meta_value" $p))}}'),({{add $m 3}},{{add $base $i}},'billing_address_1','{{sql (canary "street" $n (printf "%susermeta.meta_value" $p))}}'),({{add $m 4}},{{add $base $i}},'billing_email','{{sql (canary "email" $n)}}'){{end}};
+{{end -}}
+
+{{- /* The live Stripe gateway settings: serialized, testmode no, live keys
+assembled at seed time. */ -}}
+{{- define "stripe_live" -}}
+{{sarr "enabled" "s:3:\"yes\";" "title" "s:11:\"Credit Card\";" "testmode" "s:2:\"no\";" "publishable_key" (ser (key "stripe_live_publishable")) "secret_key" (ser (key "stripe_live_secret")) "webhook_secret" (ser (key "stripe_webhook_secret")) "test_publishable_key" (ser (key "stripe_test_publishable")) "test_secret_key" (ser (key "stripe_test_secret"))}}
+{{- end -}}
+
+{{- /* One multisite blog's tables: dict "p" prefix "url" home URL "tag"
+canary prefix "n" customers "woo" bool. Users live in the network
+tables; a blog holds options, posts with comments and, with woo, orders. */ -}}
+{{- define "blog" -}}
+{{- $p := .p}}{{$tag := .tag}}{{$url := .url -}}
+{{template "wp_options" $p}}
+LOCK TABLES `{{$p}}options` WRITE;
+INSERT INTO `{{$p}}options` VALUES (1,'siteurl','{{$url}}','on'),(2,'home','{{$url}}','on'),(3,'blogname','Bean & Leaf {{$tag}}','on'),(4,'blog_public','1','on'),(5,'admin_email','{{sql (canary "email" (printf "%sadmin" $tag) (printf "%soptions.option_value" $p))}}','on');
+UNLOCK TABLES;
+{{template "wp_comments" $p}}
+LOCK TABLES `{{$p}}comments` WRITE;
+INSERT INTO `{{$p}}comments` VALUES {{range $i := seq .n}}{{$k := printf "%s%d" $tag $i}}{{if gt $i 1}},{{end}}({{$i}},1,'{{sql (canary "full_name" $k (printf "%scomments.comment_author" $p))}}','{{sql (canary "email" $k (printf "%scomments.comment_author_email" $p))}}','{{sql (canary "ip" $k (printf "%scomments.comment_author_IP" $p))}}','2026-05-01 10:00:00','{{sql "Lovely beans, see my blog " $url "/?p=1 and call " (canary "phone" $k (printf "%scomments.comment_content" $p))}}','1','comment',0){{end}};
+UNLOCK TABLES;
+{{- if .woo}}
+{{template "wp_wc_orders" $p}}
+LOCK TABLES `{{$p}}wc_orders` WRITE;
+INSERT INTO `{{$p}}wc_orders` VALUES {{range $i := seq .n}}{{$k := printf "%s%d" $tag $i}}{{if gt $i 1}},{{end}}({{add $i 100}},'wc-completed','EUR','shop_order',30.00000000,0,'{{sql (canary "email" $k)}}','2026-05-02 10:00:00',0,'cod','','{{sql (canary "ip" $k)}}','',''){{end}};
+UNLOCK TABLES;
+{{template "wp_wc_order_addresses" $p}}
+LOCK TABLES `{{$p}}wc_order_addresses` WRITE;
+INSERT INTO `{{$p}}wc_order_addresses` VALUES {{range $i := seq .n}}{{$k := printf "%s%d" $tag $i}}{{if gt $i 1}},{{end}}({{$i}},{{add $i 100}},'billing','{{sql (canary "first_name" $k (printf "%swc_order_addresses.first_name" $p))}}','{{sql (canary "last_name" $k (printf "%swc_order_addresses.last_name" $p))}}','{{sql (canary "street" $k (printf "%swc_order_addresses.address_1" $p))}}','Lyon','69001','FR','{{sql (canary "email" $k)}}','{{sql (canary "phone" $k)}}'){{end}};
+UNLOCK TABLES;
+{{- end}}
+{{end -}}
+
+{{- /* r18's rows, for every format: "ext" true writes extended INSERTs. */ -}}
+{{- define "r18_users" -}}
+{{- if .ext -}}
+INSERT INTO `wp_users` VALUES {{range $i := seq 40}}{{$n := printf "f%d" $i}}{{if gt $i 1}},{{end}}({{$i}},'f{{$i}}','$wp$2y$10$testbedtestbedtestbedtestbedtestbedtestbedtestbedtes','f-{{$i}}','{{sql (canary "email" $n "wp_users.user_email")}}','','2026-06-02 10:00:00','',0,'{{sql (canary "full_name" $n "wp_users.display_name")}}'){{end}};
+{{else -}}
+{{range $i := seq 40}}{{$n := printf "f%d" $i}}INSERT INTO `wp_users` VALUES ({{$i}},'f{{$i}}','$wp$2y$10$testbedtestbedtestbedtestbedtestbedtestbedtestbedtes','f-{{$i}}','{{sql (canary "email" $n "wp_users.user_email")}}','','2026-06-02 10:00:00','',0,'{{sql (canary "full_name" $n "wp_users.display_name")}}');
+{{end -}}
+{{end -}}
+{{end -}}
+
+{{- /* A clean staging WordPress database: reserved-domain fakes only,
+staging URLs, search engines off. dict "n" users "gw" gateway settings
+("test" or "live") "webhook" (an active one when true). */ -}}
+{{- define "clean_wp" -}}
+{{template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://staging.shop.test','on'),(2,'home','https://staging.shop.test','on'),(3,'blogname','Bean & Leaf Coffee (staging)','on'),(4,'blog_public','{{if eq .gw "live"}}1{{else}}0{{end}}','on'),(5,'admin_email','owner@staging.shop.test','on'),(6,'woocommerce_stripe_settings','{{if eq .gw "live"}}{{sql (include "stripe_live")}}{{else}}{{sql (sarr "enabled" "s:3:\"yes\";" "testmode" "s:3:\"yes\";" "test_publishable_key" (ser (key "stripe_test_publishable")) "test_secret_key" (ser (key "stripe_test_secret")) "publishable_key" "s:0:\"\";" "secret_key" "s:0:\"\";")}}{{end}}','on');
+UNLOCK TABLES;
+{{template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+INSERT INTO `wp_users` VALUES (1,'shopowner','$wp$2y$10$testbedtestbedtestbedtestbedtestbedtestbedtestbedtes','shopowner','owner@staging.shop.test','','2026-06-01 09:00:00','',0,'Shop Owner'){{range $i := seq .n}},({{add $i 1}},'u{{printf "%016x" $i}}','$wp$2y$10$testbedtestbedtestbedtestbedtestbedtestbedtestbedtes','u{{printf "%016x" $i}}','u{{printf "%016x" $i}}@example.invalid','','2026-06-02 10:00:00','',0,'Alex Example'){{end}};
+UNLOCK TABLES;
+{{template "wp_wc_webhooks" "wp_"}}
+{{- if .webhook}}
+LOCK TABLES `wp_wc_webhooks` WRITE;
+INSERT INTO `wp_wc_webhooks` VALUES (1,'active','Zapier order sync',1,'https://hooks.zapier.com/hooks/catch/123456/abcdef/','','order.created','2026-02-01 09:00:00',3,0,0);
+UNLOCK TABLES;
+{{- end}}
+{{end -}}

@@ -1,0 +1,6 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# The fixtures' .env templates are test data with placeholders and keys
+# made at seed time, never real secrets (the root .gitignore drops .env*).
+!fixtures/**/.env.tmpl

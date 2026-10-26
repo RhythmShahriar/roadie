@@ -75,6 +75,9 @@ func TestManifest(t *testing.T) {
 		if f.Meta.Dialect != "mysql" && f.Meta.Dialect != "postgres" {
 			t.Errorf("%s: dialect %q", f.ID, f.Meta.Dialect)
 		}
+		if f.Meta.Generated != "" {
+			continue // its input and canaries come from the generator
+		}
 		dumps, _ := filepath.Glob(filepath.Join(f.Dir, "*.sql.tmpl"))
 		if _, err := os.Stat(filepath.Join(f.Dir, "files")); len(dumps) == 0 && err != nil {
 			t.Errorf("%s: neither a *.sql.tmpl nor a files/ tree", f.ID)
@@ -425,5 +428,102 @@ func TestActionSchedulerEdge(t *testing.T) {
 	}
 	if edges != 10 || long != 30 {
 		t.Errorf("%d edge and %d long actions", edges, long)
+	}
+}
+
+// A generated fixture's canaries join canaries.json and survive a full
+// reseed; a merge for one scenario leaves the others alone.
+func TestMergeCanaries(t *testing.T) {
+	dir := t.TempDir()
+	seedTo(t, dir, Options{Seed: 1, Only: []string{"r04"}})
+	v := NewValues(1, "r17")
+	var cs []Canary
+	for range 3 {
+		c, err := v.Canary("email", "wp_users", "user_email")
+		if err != nil {
+			t.Fatal(err)
+		}
+		cs = append(cs, c)
+	}
+	if cs[0].ID != "r17-email-0001" || cs[2].ID != "r17-email-0003" || cs[0].Value == cs[1].Value {
+		t.Fatalf("ids %s %s, distinct values %v", cs[0].ID, cs[2].ID, cs[0].Value != cs[1].Value)
+	}
+	again, _ := NewValues(1, "r17").Canary("email", "wp_users", "user_email")
+	if again.Value != cs[0].Value {
+		t.Error("NewValues is not deterministic")
+	}
+	if err := MergeCanaries(dir, 1, "r17", cs); err != nil {
+		t.Fatal(err)
+	}
+	count := func() (r04, r17 int) {
+		for _, c := range readCanaries(t, dir) {
+			switch c.Scenario {
+			case "r04":
+				r04++
+			case "r17":
+				r17++
+			}
+		}
+		return
+	}
+	if r04, r17 := count(); r04 == 0 || r17 != 3 {
+		t.Fatalf("after the merge r04 %d, r17 %d", r04, r17)
+	}
+	seedTo(t, dir, Options{Seed: 1})
+	if _, r17 := count(); r17 != 3 {
+		t.Errorf("a full reseed dropped the generated canaries: r17 %d", r17)
+	}
+	if err := MergeCanaries(dir, 1, "r18", cs); err == nil {
+		t.Error("a canary of another scenario is merged")
+	}
+	if _, err := v.Canary("shoe_size", "t", "c"); err == nil {
+		t.Error("an unknown kind is accepted")
+	}
+}
+
+// Shared templates, include, dict, list, cr and bom work from a fixture;
+// a _ directory is never a fixture and a broken shared template fails.
+func TestSharedTemplatesAndHelpers(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, s string) {
+		t.Helper()
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(s), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("_shared/a.tmpl", `{{define "row"}}({{.id}},'{{sql (canary "email" .name "t.c")}}'){{end}}{{define "word"}}x{{.}}y{{end}}`)
+	write("f1/fixture.yaml", "description: d\nstack: sql\ncanaries: true\n")
+	write("f1/db.sql.tmpl", `{{bom}}a{{cr}}`+"\n"+`{{template "row" (dict "id" 1 "name" "n1")}} {{sql (include "word" "1'2")}} {{index (list "p" "q") 1}}`)
+	fx, err := Fixtures(root)
+	if err != nil || len(fx) != 1 || fx[0].ID != "f1" {
+		t.Fatalf("fixtures %v, %v", fx, err)
+	}
+	out := t.TempDir()
+	res, err := Run(context.Background(), Options{Fixtures: root, Out: out, Seed: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(out, "fixtures", "f1", "db.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "\ufeffa\r\n(1,'" + res.Canaries[0].Value + `') x1\'2y q`
+	if string(b) != want {
+		t.Errorf("rendered %q, want %q", b, want)
+	}
+	if c := res.Canaries[0]; c.Table != "t" || c.Column != "c" {
+		t.Errorf("canary at %s.%s", c.Table, c.Column)
+	}
+	write("_shared/a.tmpl", `{{define "row"}}{{end`)
+	if _, err := Run(context.Background(), Options{Fixtures: root, Out: out, Seed: 1}); err == nil {
+		t.Error("a broken shared template is accepted")
+	}
+	write("_shared/a.tmpl", `{{define "row"}}{{dict "odd"}}{{end}}`)
+	if _, err := Run(context.Background(), Options{Fixtures: root, Out: out, Seed: 1}); err == nil {
+		t.Error("dict with an odd argument count is accepted")
 	}
 }
