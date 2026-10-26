@@ -204,7 +204,7 @@ func (s *sshSite) Exists(ctx context.Context, rel string) (bool, error) {
 		return false, nil
 	}
 	if err != nil {
-		return false, err
+		return false, s.findErr(err)
 	}
 	return len(bytes.TrimSpace(out)) > 0, nil
 }
@@ -227,9 +227,21 @@ func (s *sshSite) List(ctx context.Context, rel string, depth int) ([]core.FileI
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, s.findErr(err)
 	}
 	return parseFind(out, r), nil
+}
+
+// findErr says so plainly when the host's find has no -printf: BSD,
+// macOS and busybox find lack it, and Roadie needs GNU find there.
+func (s *sshSite) findErr(err error) error {
+	var re *remote.RunError
+	if errors.As(err, &re) && bytes.Contains(re.Stderr, []byte("-printf")) {
+		return core.Errorf(core.ErrSSH, 3,
+			"ssh: find on %s has no -printf, so it isn't GNU find. Roadie lists remote files with GNU find; install findutils there.",
+			s.r.Dest())
+	}
+	return err
 }
 
 // parseFind reads find's "%y %s %P" lines; base is the listed folder

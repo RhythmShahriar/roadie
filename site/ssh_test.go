@@ -550,3 +550,26 @@ func TestParseLs(t *testing.T) {
 		}
 	}
 }
+
+// A host whose find lacks -printf (BSD, macOS, busybox) gets a clear
+// error, not a bare RunError; other find failures pass through.
+func TestSSHFindWithoutPrintf(t *testing.T) {
+	ctx := context.Background()
+	sh := remotetest.New(t)
+	s := openSSHT(t, sh, Options{})
+	for _, stderr := range []string{"find: -printf: unknown primary or operator\n", "find: unrecognized: -printf\n"} {
+		sh.Reply(nil, stderr, 1)
+		_, err := s.List(ctx, ".", 1)
+		var ce *core.Error
+		if !errors.As(err, &ce) || ce.Code != core.ErrSSH || ce.Exit != 3 ||
+			ce.Msg != "ssh: find on deploy@shop.example has no -printf, so it isn't GNU find. Roadie lists remote files with GNU find; install findutils there." {
+			t.Fatalf("List with %q: %v", stderr, err)
+		}
+	}
+	sh.Reply(nil, "find: '/srv/shop': Permission denied\n", 1)
+	_, err := s.List(ctx, ".", 1)
+	var re *remote.RunError
+	if !errors.As(err, &re) {
+		t.Fatalf("other find failure: %v", err)
+	}
+}
