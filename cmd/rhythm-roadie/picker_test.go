@@ -351,24 +351,41 @@ func TestUpdatePrompt(t *testing.T) {
 
 	cfg := t.TempDir()
 	env := []string{"RHYTHM_OFFLINE=", "CI=", "ROADIE_TEST_VERSION=1.0.0", "RHYTHM_GITHUB_API=http://" + ln.Addr().String(),
-		"RHYTHM_CONFIG_DIR=" + cfg, "RHYTHM_UPDATE_PROMPT=ask"}
-	// The first run asks the fixture and keeps the answer for a day, so
-	// the runs below read it at once.
+		"RHYTHM_CONFIG_DIR=" + cfg, "RHYTHM_UPDATE_PROMPT=ask", "ROADIE_TEST_STDERR_TTY=1"}
+	// Positive: with stderr on a terminal the first run asks the fixture
+	// and keeps the answer for a day, so the notice shows at once after.
 	runEnv(t, env, "explain", "uncovered-column")
 	if hits.Load() == 0 {
 		t.Fatal("the release check didn't reach the fixture")
 	}
-	out, errOut, _ := runEnv(t, env, "explain", "uncovered-column", "--json")
-	if strings.Contains(errOut, "Update now?") || strings.Contains(out, "9.9.9") {
-		t.Errorf("--json: stdout %q stderr %q", out, errOut)
+	_, errOut, _ := runEnv(t, env, "explain", "uncovered-column")
+	if !strings.Contains(errOut, "9.9.9") {
+		t.Errorf("no release notice on a terminal: %q", errOut)
 	}
-	_, errOut, _ = runEnv(t, env, "explain", "uncovered-column")
 	if strings.Contains(errOut, "Update now?") {
-		t.Errorf("asked without a terminal: %q", errOut)
+		t.Errorf("asked without a terminal on stdin: %q", errOut)
 	}
-	before := hits.Load()
-	_, errOut, _ = runEnv(t, append(env, "CI=1", "RHYTHM_CONFIG_DIR="+t.TempDir()), "explain", "uncovered-column")
-	if strings.Contains(errOut, "9.9.9") || hits.Load() != before {
-		t.Errorf("CI=1 checked for updates: %q (%d requests)", errOut, hits.Load()-before)
+
+	// Negative: machine-read, quiet, CI and piped runs never see it, even
+	// with the answer cached; they never ask the fixture either.
+	for _, tc := range []struct {
+		name string
+		env  []string
+		args []string
+	}{
+		{"--json", nil, []string{"explain", "uncovered-column", "--json"}},
+		{"-q", nil, []string{"explain", "uncovered-column", "-q"}},
+		{"--quiet", nil, []string{"explain", "uncovered-column", "--quiet"}},
+		{"CI=1", []string{"CI=1"}, []string{"explain", "uncovered-column"}},
+		{"stderr piped", []string{"ROADIE_TEST_STDERR_TTY="}, []string{"explain", "uncovered-column"}},
+	} {
+		before := hits.Load()
+		out, errOut, _ := runEnv(t, append(append([]string{}, env...), tc.env...), tc.args...)
+		if strings.Contains(errOut, "9.9.9") || strings.Contains(out, "9.9.9") || strings.Contains(errOut, "Update now?") {
+			t.Errorf("%s: stdout %q stderr %q", tc.name, out, errOut)
+		}
+		if hits.Load() != before {
+			t.Errorf("%s: checked for updates (%d requests)", tc.name, hits.Load()-before)
+		}
 	}
 }

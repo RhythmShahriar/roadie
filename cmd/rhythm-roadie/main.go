@@ -69,10 +69,26 @@ func tool() cli.Tool {
 		},
 		Update:       profile.Update,
 		UpdatePinned: profile.UpdatePinned,
-		// --offline keeps the release check off the network too; it runs
-		// before the command parses its flags, so it reads them directly.
-		Offline: func() bool { return cli.HasFlag(os.Args[1:], "offline") },
+		// The release check runs before the command parses its flags, so
+		// it reads them directly.
+		Offline: func() bool { return skipReleaseCheck(os.Args[1:]) },
 	}
+}
+
+// skipReleaseCheck reports whether the background release check must not
+// start: --offline keeps it off the network; --json, -q, --quiet, CI or
+// a stderr that isn't a terminal get no release notice. kit v0.8.0
+// still prints the notice for --json, -q and a piped stderr once the
+// check ran, so not starting it is the only way to keep machine-read and
+// piped output clean.
+func skipReleaseCheck(args []string) bool {
+	if cli.HasFlag(args, "offline") || cli.QuietRun(args) {
+		return true
+	}
+	if v, _ := dep.env("CI"); v != "" {
+		return true
+	}
+	return !dep.stderrTerminal()
 }
 
 // runFunc is a command's work once its flags are parsed.

@@ -23,6 +23,11 @@ func TestMain(m *testing.M) {
 	if os.Getenv("ROADIE_TEST_MAIN") == "1" {
 		os.Args = append([]string{"rhythm-roadie"}, os.Args[1:]...)
 		version = os.Getenv("ROADIE_TEST_VERSION")
+		// ROADIE_TEST_STDERR_TTY=1 stands in for a terminal on stderr, so
+		// the release notice can be tested on a pipe.
+		if os.Getenv("ROADIE_TEST_STDERR_TTY") == "1" {
+			dep.stderrTerminal = func() bool { return true }
+		}
 		main()
 		return
 	}

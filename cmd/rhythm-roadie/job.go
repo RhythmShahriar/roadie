@@ -64,6 +64,9 @@ type deps struct {
 	// stdoutTerminal reports whether stdout alone is a terminal: the
 	// live view, color and the progress line need one.
 	stdoutTerminal func() bool
+	// stderrTerminal reports whether stderr is a terminal: the release
+	// notice is only for a person reading one.
+	stderrTerminal func() bool
 }
 
 // dep is what the commands use; tests swap it.
@@ -100,6 +103,7 @@ func realDeps() deps {
 		stdin:          os.Stdin,
 		terminal:       func() bool { return cli.IsTerminal(os.Stdout) && isTerminalReader(os.Stdin) },
 		stdoutTerminal: func() bool { return cli.IsTerminal(os.Stdout) },
+		stderrTerminal: func() bool { return cli.IsTerminal(os.Stderr) },
 	}
 }
 
