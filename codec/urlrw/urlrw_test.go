@@ -172,6 +172,36 @@ func TestNewMapErrors(t *testing.T) {
 	}
 }
 
+// TestErrorsMaskUserinfo checks that a password in a refused entry never
+// reaches the error text.
+func TestErrorsMaskUserinfo(t *testing.T) {
+	pass := "hun" + "ter2"
+	entries := []string{
+		"https://stage:" + pass + "@staging.shop.com",
+		"stage:" + pass + "@staging.shop.com",
+		"https://ops:" + pass + "@shop.com/path",
+		"https://ops:a/" + pass + "@shop.com",
+		"https://ops:" + pass + "#x@shop.com",
+		"https://" + pass + "@shop.com",
+	}
+	for _, e := range entries {
+		_, err := NewMap([]Pair{{From: "https://shop.com", To: e}})
+		_, err2 := NewMap([]Pair{{From: e, To: "staging.shop.com"}})
+		_, err3 := Hosts([]string{e})
+		for _, err := range []error{err, err2, err3} {
+			if err == nil {
+				t.Fatalf("%q accepted", e)
+			}
+			if strings.Contains(err.Error(), pass) || !strings.Contains(err.Error(), "user info") || !strings.Contains(err.Error(), "***") {
+				t.Errorf("error for %q: %v", e, err)
+			}
+		}
+	}
+	if _, err := Hosts([]string{"ftp://shop.com"}); err == nil || strings.Contains(err.Error(), "***") {
+		t.Errorf("entry without user info: %v", err)
+	}
+}
+
 func TestRewriteHost(t *testing.T) {
 	m := mustMap(t, Pair{"https://shop.com", "https://staging.shop.test"}, Pair{"fr.shop.com", "fr.staging.shop.test:8080"})
 	cases := []struct {

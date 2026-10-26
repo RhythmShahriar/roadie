@@ -32,8 +32,31 @@ func (s site) authority() string {
 	return s.host + ":" + s.port
 }
 
+// errURL is the config error for a bad entry. User info may hold a
+// password (https://user:pass@staging.shop.com), so it is masked and
+// never quoted back.
 func errURL(what, entry string) error {
-	return core.Errorf(core.ErrConfig, 2, "url map: %q isn't %s like shop.com or https://shop.com/path", entry, what)
+	masked, user := maskUserinfo(entry)
+	if user {
+		return core.Errorf(core.ErrConfig, 2, "url map: %q has user info, which isn't allowed; write %s like shop.com or https://shop.com/path", masked, what)
+	}
+	return core.Errorf(core.ErrConfig, 2, "url map: %q isn't %s like shop.com or https://shop.com/path", masked, what)
+}
+
+// maskUserinfo replaces everything between the scheme and the last @ of
+// entry with ***, and reports whether there was an @. It looks past the
+// authority on purpose: a password may hold / ? or #, and an entry with
+// an @ is refused anyway.
+func maskUserinfo(entry string) (string, bool) {
+	start := 0
+	if i := strings.Index(entry, "://"); i >= 0 {
+		start = i + 3
+	}
+	at := strings.LastIndexByte(entry[start:], '@')
+	if at < 0 {
+		return entry, false
+	}
+	return entry[:start] + "***" + entry[start+at:], true
 }
 
 // parseSite reads a URL with an http or https scheme, or a bare host with
