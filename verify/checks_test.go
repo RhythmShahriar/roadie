@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -322,7 +323,12 @@ func fakeSoundcheck(t *testing.T, exit string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "rhythm-soundcheck"), b, 0o700); err != nil {
+	name := "rhythm-soundcheck"
+	if runtime.GOOS == "windows" {
+		// exec.LookPath only finds a name with a PATHEXT extension there.
+		name += ".exe"
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), b, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir)
