@@ -1,0 +1,102 @@
+# Lane io: dump and database I/O
+
+What a user sees from `dump/` and `db/`: the inputs Roadie reads, the outputs it writes, the statements it keeps, drops or refuses, every error code and message, the flags that reach these packages and what was measured. The lane's working notes with the reasons behind each choice are kept with the release review.
+
+## Dump formats Roadie reads
+
+- MySQL 5.7 and later and MariaDB 10.3 and later: mysqldump, mariadb-dump (with or without the sandbox line `/*M!999999\- enable the sandbox mode */`), `wp db export`, phpMyAdmin 5.2 and Adminer 4.8 exports, including `--complete-insert`, `--skip-extended-insert`, `--hex-blob`, `--compact`, NO_BACKSLASH_ESCAPES, ANSI_QUOTES, DELIMITER blocks and CRLF line ends.
+- PostgreSQL 12 and later as plain SQL: `pg_dump -Fp`, also `--inserts`, `--column-inserts` and `--rows-per-insert`; `COPY ... FROM stdin` blocks; the `\restrict` and `\unrestrict` lines of pg_dump 17.6, 16.10, 15.14, 14.19, 13.22 and later.
+- Raw, gzip, zstd or bzip2 (bzip2 is read only), told apart by their first bytes, never by the extension. A dump on stdin works the same way.
+- The dialect comes from the head (`-- MySQL dump`, `-- MariaDB dump`, `/*M!999999`, `-- phpMyAdmin SQL Dump`, `-- Adminer`, mysqldump SET lines; `-- PostgreSQL database dump` or `SET standard_conforming_strings`). A dump with no marker is read as MySQL.
+- The fingerprint of a dump is `sha256-file`: the SHA-256 of the file as stored (what sha256sum prints) and its size.
+- Lines in messages have thousands separators ("line 4,120"); sizes are decimal with one decimal place ("1.7 GB"); `--max-value` is named in binary units ("256 MiB").
+
+## Inputs Roadie refuses (dump-format, exit 2)
+
+- `dump-format: <name> is a pg_dump custom-format archive. Roadie reads plain SQL: pg_dump -Fp, mysqldump, mariadb-dump or wp db export.`
+- `dump-format: <name> is a tar archive (Roadie doesn't read inside archives). Roadie reads plain SQL: pg_dump -Fp, mysqldump, mariadb-dump or wp db export.`
+- `dump-format: <name> is a zip archive (Roadie doesn't read inside archives). Roadie reads plain SQL: pg_dump -Fp, mysqldump, mariadb-dump or wp db export.`
+- `dump-format: <name> is a folder (pg_dump -Fd or mydumper output). Roadie reads plain SQL: pg_dump -Fp, mysqldump, mariadb-dump or wp db export.`
+- `dump-format: <name> is an unknown binary file (.wpress, Duplicator or another backup format). Roadie reads plain SQL: pg_dump -Fp, mysqldump, mariadb-dump or wp db export.` A file is binary when more than 1% of its first 4 KiB (after decompression, outside quoted strings) are control bytes other than tab, line feed, vertical tab, form feed and carriage return.
+- `dump-format: <name>: table wp_x has no CREATE TABLE before line 4,120; pass --schema.`
+- `dump-format: <name> line N: the INSERT into t names column zz, which its CREATE TABLE doesn't have.` (PostgreSQL: `the rows of t name column zz, ...`)
+- `dump-format: <name> line N: a row of t has 1 values for 2 columns.`
+- `dump-format: <name> line N: a row of the INSERT doesn't start with '('.` and `... ends without ')'.`
+- `dump-format: <name> line N: a COPY ... FROM stdin with options; Roadie reads the text format pg_dump writes.` and `dump-format: <name> line N: text follows COPY ... FROM stdin on its line.`
+
+## Limits
+
+- `--max-output-ratio N` (default 20): past the first 64 MiB of decompressed output, more than N times the compressed bytes read so far stops the run. Code dump-bomb, exit 3: `dump-bomb: <name> grew past 20 times its size (67.1 MB) while reading. If it's real, pass --max-output-ratio 50; the target is untouched.` Plain input is never capped. A zstd frame asking for a window over 128 MiB is refused by the decoder.
+- `--max-value SIZE` (default 256 MiB): the largest single value or statement. Code value-too-large, exit 3: `value-too-large: a value in wp_options at line 88 is over 256 MiB. Pass --max-value 1 GiB if it's real; the target is untouched.` (`a statement at line N` for a statement).
+
+## Cut and damaged dumps (dump-truncated, exit 3)
+
+- mysqldump, mariadb-dump and `wp db export` must end with `-- Dump completed`: `dump-truncated: prod.sql.gz ends inside table wp_postmeta at 1.7 GB, with no "Dump completed" line. Export it again; the target is untouched.` pg_dump must end with `-- PostgreSQL database dump complete` (the message names that line).
+- phpMyAdmin, Adminer and dumps without a tool line end cleanly after a COMMIT, a complete INSERT or REPLACE, an ALTER TABLE, UNLOCK TABLES or Adminer's closing date line: otherwise `..., with no closing COMMIT or complete INSERT. ...`, or `..., in the middle of a statement. ...`.
+- A gzip, zstd or bzip2 stream that is cut or damaged: `dump-truncated: <name> ends inside table wp_options at 1.7 GB: the gzip stream is cut or damaged. Export it again; the target is untouched.` (`ends early` before any table).
+- The error comes from the last read, before any output is committed: a dump file is only renamed into place on success.
+
+## The statement allowlist
+
+Every statement that isn't row data is kept, dropped with a plan line or refused before it leaves the reader. Versioned comments are judged by their body; keywords in any case.
+
+- MySQL and MariaDB, kept: CREATE TABLE (no `... SELECT`, no DATA/INDEX DIRECTORY, no CONNECTION=, a local engine), CREATE INDEX, CREATE SEQUENCE with SETVAL of literals, DROP TABLE and DROP INDEX of objects the dump creates, LOCK/UNLOCK TABLES, ALTER TABLE that changes columns, keys or table options, transactions, comments, the sandbox line, DELIMITER lines, SET NAMES and SET of the session variables dump tools write (character sets, collation_connection, time_zone, sql_mode, foreign_key_checks, unique_checks, sql_notes, autocommit, note_verbosity, sql_quote_show_create, check_constraint_checks) and user variables.
+- MySQL and MariaDB, dropped with a plan line: GRANT, REVOKE, user and role statements, SET PASSWORD, SET ROLE, FLUSH PRIVILEGES ("the staging database keeps its own users and privileges"); events ("scheduled events would run on the staging database"); ALTER DATABASE; USE of the dump's own database; SQL_LOG_BIN and GTID_PURGED; Percona's rocksdb_bulk_load probe.
+- MySQL and MariaDB, refused: client commands (`\!`, `\.`, `system`, `source` and the rest), USE of another database, CREATE or DROP DATABASE, LOAD DATA and LOAD XML, INTO OUTFILE or DUMPFILE, LOAD_FILE(), sys_exec(), sys_eval(), CREATE FUNCTION ... SONAME, triggers, procedures, functions, views and packages without `--keep-routines`, INSERT that isn't a VALUES list, UPDATE, DELETE, SET GLOBAL, other session variables, PREPARE, CALL, INSTALL PLUGIN, HANDLER and any statement kind not listed. Also new in this release: a row value that calls a function or names a column or variable (see below).
+- PostgreSQL, kept: the SET and set_config lines pg_dump writes, setval of literals, CREATE TABLE, INDEX, SEQUENCE, TYPE, DOMAIN, SCHEMA and STATISTICS, CREATE EXTENSION of a fixed list of common extensions, ALTER TABLE and the other ALTERs pg_dump writes, COMMENT ON, COPY ... FROM stdin, transactions, DROP of objects the dump creates, `\restrict` and `\unrestrict`.
+- PostgreSQL, dropped: ALTER ... OWNER TO, SET SESSION AUTHORIZATION, SET ROLE ("objects belong to the user that imports the dump"); GRANT, REVOKE, default privileges, security labels, roles; publications; ALTER DATABASE.
+- PostgreSQL, refused: psql meta-commands, COPY with PROGRAM or a server file, DO blocks, routines, views, rules and the like without `--keep-routines`, untrusted languages, CREATE LANGUAGE, subscriptions, servers and foreign tables, other extensions, databases and tablespaces, DROP ... CASCADE, CREATE TABLE ... AS, UPDATE, DELETE, MERGE, other SELECTs, file and large-object functions, CALL and any kind not listed; a row value that calls a function or runs a query.
+- `--keep-routines`: keeps triggers, procedures, functions, views and packages with every DEFINER replaced by DEFINER=CURRENT_USER, each listed in the plan (`line 12: kept CREATE TRIGGER keep_email with DEFINER=CURRENT_USER (--keep-routines)`). Events stay dropped; SONAME and untrusted languages stay refused.
+- Plan lines for drops: `line N: dropped GRANT: the staging database keeps its own users and privileges`, or `dropped 41 ALTER ... OWNER TO statements (first at line 25): objects belong to the user that imports the dump`.
+- Refusals are `dump-refused: <name> line <N> holds <kind>, which <danger>. <advice>` (exit 3) and never quote data. The trigger message is `dump-refused: prod.sql line 4,120 holds a CREATE TRIGGER statement, which could run code on the staging database. Export with --skip-triggers, or pass --keep-routines to keep it without its DEFINER.`
+- Row values: `dump-refused: prod.sql line 6 holds a function call or a name in a row of wp_users, which could run code on the staging database. Export the table with mysqldump, which writes plain values.` (MySQL, new) and `dump-refused: app.sql line 2 holds a function call in a row of t, which could run code on the staging database. Export the table with pg_dump -Fp, which writes plain values.` (PostgreSQL). Literals, TRUE, FALSE, NULL, DEFAULT, CURRENT_TIMESTAMP and its kin without parentheses, operators and casts pass.
+
+## Dumps Roadie writes
+
+- Untouched rows are copied byte for byte; changed rows are encoded by the one encoder per dialect. A dropped row leaves no stray comma; an INSERT whose rows are all dropped is left out.
+- A MariaDB target always starts with the sandbox line, once; a MySQL target never holds it.
+- `--fix-collation`: every utf8mb4_0900_* collation in CREATE TABLE and SET statements becomes utf8mb4_unicode_520_ci, in dump output and in a live MySQL or MariaDB import. Data is never changed.
+- A dump file is written to `<target>.roadie-tmp-<16 hex>` (mode 0600) in the target folder and renamed into place on success; any failure or Ctrl-C removes it. gzip (level 6) for `.gz`, zstd (level 3) for `.zst`.
+- Free disk is checked before writing and every 64 MiB. Code disk-full, exit 3: `disk-full: not enough free disk space: need about 2.1 GB, 1.0 GB free in /srv/out. Free some space or write the copy to another disk; the target is untouched.`
+- dialect-mismatch, exit 2: `dialect-mismatch: prod.sql is a MySQL dump and --to is a PostgreSQL database. Roadie copies MySQL to MySQL or MariaDB and PostgreSQL to PostgreSQL.` and `dialect-mismatch: Roadie writes MySQL, MariaDB and PostgreSQL dumps, not SQLite ones.`
+- A dump of a live MySQL or MariaDB source starts with `-- MySQL dump of a live database, written by Roadie` (or `-- MariaDB dump ...`), turns foreign key checks off, writes DROP TABLE IF EXISTS and the server's CREATE TABLE before each table and ends with `-- Dump completed`, so it reads back through Roadie and loads into an empty database. A dump of a live PostgreSQL source holds the rows only (see Limits of live databases).
+
+## The encrypted spool
+
+A streamed source (ssh, stdin, alias) read twice goes through `<16 hex>.spool` (0600, folder 0700): AES-256-GCM in 1 MiB chunks under a key that lives only in the process. A changed, reordered or cut file fails with `dump: the spool file is damaged or was changed; run again`. The file is removed on success, error and Ctrl-C.
+
+## Live databases
+
+- DSNs: `mysql://`, `mariadb://`, `postgres://`, `postgresql://` and `sqlite:///absolute/path.sqlite`. A mysql:// server that says it is MariaDB is treated as MariaDB. The password comes from the DSN or `ROADIE_FROM_PASSWORD`/`ROADIE_TO_PASSWORD` only: PGPASSWORD and .pgpass are never read. MySQL DSNs take `socket` and `tls` (true, false, skip-verify, preferred); PostgreSQL DSNs take `sslmode`, `sslrootcert`, `application_name` and `search_path`. Connecting gives up after 15 seconds.
+- MySQL and MariaDB connections never allow LOAD DATA LOCAL INFILE, multi-statements or client-side value interpolation, whatever the DSN says. The driver's own log lines are not printed.
+- A source is read-only in code: MySQL runs `SET SESSION TRANSACTION READ ONLY` and `START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY`; PostgreSQL `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY` with default_transaction_read_only on; SQLite opens the file with mode=ro and query_only. A SELECT-only user is enough. Every read is one consistent snapshot.
+- Tables are read in primary key order, 10,000 rows per query; a table without a primary key is read in one streamed query. Generated columns are left out. The fingerprint is `db-tables`: SHA-256 of the sorted `table<TAB>rows` lines.
+- The WordPress prefix of a live database is the most common prefix ending in `_` of a table ending in `options`.
+- An import replaces each table in the stream: DROP TABLE IF EXISTS and the stream's CREATE TABLE (PostgreSQL with CASCADE, so other tables' foreign keys to it go too; a pg_dump adds them back after the data), then the rows: MySQL, MariaDB and SQLite through multi-row INSERTs with placeholders of about 1 MiB each, PostgreSQL through COPY. Rows of a table the stream doesn't create replace the rows of the existing table (DELETE, or TRUNCATE on PostgreSQL). Each table is one transaction; on PostgreSQL and SQLite that includes its DROP and CREATE. A CREATE TABLE naming a collation the server doesn't know is refused before the table is dropped.
+- Import errors (exit 3), with the target state:
+  - `import: MariaDB 10.6 doesn't know collation utf8mb4_0900_ai_ci (MySQL 8). Run again with --fix-collation. The target is untouched.` (a uca1400 collation names `(MariaDB 10.10 and later)` and says `Change it in the dump to one the server knows.`)
+  - `import: the connection to staging@localhost was lost after 37 of 61 tables. The target is in a mixed state: some tables are pseudonymised, the rest still hold the earlier copy. Run the same command again.` (code import-mixed; `after 37 tables` when the count isn't known; `before any table was replaced. The target is untouched. Run the same command again.` with code import when nothing changed)
+  - any other failure: `import: table wp_users: MySQL error 1062 (23000): Duplicate entry '•••' for key '•••'. The target is untouched.` Quoted parts of a server message are masked, as they can hold row data. After some tables: `The target is in a mixed state after 3 of 61 tables: some tables are pseudonymised, the rest still hold the earlier copy. Fix the cause and run the same command again.` (code import-mixed).
+  - a value written as an expression (other than TRUE, FALSE and NULL): `a value is written as an expression, which Roadie loads into a database only as plain data; load this dump with the database's own client`.
+- Limits of live databases: a live PostgreSQL source sends rows only (PostgreSQL has no CREATE TABLE of its own to copy), so a PostgreSQL to PostgreSQL copy fills tables that already exist on the target; a PostgreSQL dump file brings its own schema.
+
+## Measurements
+
+Intel Core i9-9900K, Go 1.27.3, linux/amd64, one goroutine, 32 MB WooCommerce-shaped dump (wp_postmeta 30% with serialized values, 1 MB extended INSERTs). The machine ran other builds at the same time (load average 41 to 75 on 16 threads), so the reading figures are lower bounds:
+
+| Benchmark | Throughput | Allocations |
+| --- | --- | --- |
+| BenchmarkTokenize (statements and row decode) | 151 MB/s | 742 per 32 MB |
+| BenchmarkScan (the MySQL source: tokenize, schema, batches) | 77 MB/s | |
+| BenchmarkRoundTrip (read, write back untouched) | 90 MB/s | 1,417 per 32 MB |
+| BenchmarkWrite (writer alone, untouched rows) | 825 MB/s | 56 per 32 MB |
+| BenchmarkCopy (PostgreSQL COPY, read and write back) | 55 MB/s | 1,085 per 32 MB |
+
+- Untouched rows cost 0.024 allocations per row through the MySQL source and writer and 0.021 through the PostgreSQL ones (target: under 4).
+- A 600 MB single INSERT drains with a peak HeapInuse of 31 MiB (target: under 64 MiB).
+- A gzip bomb stops just past 64 MiB of output in well under 5 seconds.
+- The writer target of 400 MB/s is met. The 300 MB/s reading target was not confirmed on this busy machine; the nightly benchmark on an idle runner records it.
+
+## SQLite
+
+modernc.org/sqlite (pure Go, no cgo) adds 3.6 MiB (3,821,568 bytes) to a stripped linux/amd64 binary, under the 15 MB the plan allowed. SQLite stays in v1, as PRD 5 says.
