@@ -92,7 +92,7 @@ What it replaces in a text value (order notes, comments, form messages):
 
 - Every span the detector finds (emails, phones, IPs and the other fake kinds) becomes the fake of that kind, the same fake the structured column got. Cards, IBANs and any span of a kind without a fake become `XXXX`.
 - Email addresses found by their `@` and read as Unicode, so `maría.lópez@correo.example`, `jöhn.dœ@exämple-shop.de` and `user+tag@例え.jp` are replaced whole. A trailing `.` or `-` stays outside the address.
-- Names seen in a structured column of the same run: a known word pair becomes a two-word fake full name; a pair joined by an apostrophe or hyphen (`O'Sullivan`, `Jean-Luc`) counts as one word and gets a one-word fake; a single known word of 3 or more letters becomes a one-word fake.
+- Names seen in a structured column of the same run: a known word pair becomes a two-word fake full name; a pair joined by an apostrophe or hyphen (`O'Sullivan`, `Jean-Luc`) counts as one word and gets a one-word fake; a single known word of 3 or more letters becomes a one-word fake when it starts with a capital letter (`Will`, `MARK`). A pair matches in any case (`mark green`).
 - A span that already holds a Roadie fake stays, so scrubbing twice changes nothing more.
 - Text outside the replaced parts is kept byte for byte.
 
@@ -100,6 +100,7 @@ What it can't do:
 
 - A name Roadie never saw in a structured column (a neighbour named in a note) stays. Free text holds names no pattern can find; `free_text: blank` empties such fields instead.
 - A known word under 3 letters on its own stays.
+- A known name written in lower case on its own stays, so a customer named Will, Mark or Green leaves "we will mark the green box" alone. The cost: "ask bartholomew" keeps the name. A capitalised common word that is a known name ("Will you call?") is still replaced.
 - Addresses, streets and postcodes typed into free text are not recognised unless the detector reports them as spans.
 
 ## Production URLs
@@ -131,9 +132,11 @@ Read with PHP 8's grammar, checked against PHP's own unserialize (8.1 and 8.3) o
 
 Nested values (a serialized array inside JSON inside a column, say) are opened up to 16 format levels deep and within 64 times the value's size of work; a value past either limit is handled as text.
 
+Only string values are rewritten. JSON object keys and serialized array keys are kept as they are, so an email used as a key (`{"jane@shop.com": {...}}`) stays in the copy unless the caller handles it.
+
 ## Speed
 
-Measured on an i9-9900K shared with other work (load average 40 to 55 on 16 threads), one CPU per benchmark, best of three; a quiet machine is faster.
+Measured on an i9-9900K shared with other work (load average 30 to 55 on 16 threads), one CPU per benchmark, best of three; a quiet machine is faster.
 
 | Benchmark | Measured | Target |
 |---|---|---|
@@ -142,10 +145,12 @@ Measured on an i9-9900K shared with other work (load average 40 to 55 on 16 thre
 | BenchmarkNested (JSON rows holding serialized data) | 54 MB/s (77 MB/s at load 8) | |
 | BenchmarkURLRewrite, prose with no match | 1,590 MB/s (2,830 MB/s at load 8) | 300 MB/s |
 | BenchmarkURLRewrite, text dense with URLs | 185 MB/s (228 MB/s at load 8) | |
-| BenchmarkFake, cached | 180 to 290 ns (ip 460 ns) | |
-| BenchmarkFake, uncached email | 2.2 us (1.46 us at load 8) | 1.5 us |
-| BenchmarkFake, uncached name, phone, postcode, ip | 1.5 to 3.0 us | |
+| BenchmarkFake, cached email | 120 to 150 ns at load 30 | 300 ns |
+| BenchmarkFake, cached other kinds | 95 to 310 ns | |
+| BenchmarkFake, uncached email (first sight, cache still growing) | 1.08 us at load 30, 600 bytes and 3 allocations | 1.5 us |
+| BenchmarkFake, email miss in a full cache | 0.76 to 1.1 us at load 30, one 48-byte allocation | |
+| BenchmarkFake, uncached name, phone, postcode, ip | 1.0 to 1.6 us | |
 | BenchmarkScrub, notes with nothing to replace | 13 MB/s | |
 | BenchmarkScrub, notes with a name and an email per sentence | 8.4 MB/s | |
 
-Guards that run with every test: no `regexp` in any non-test source of `codec` or `pseudo`; checking a PHP serialized value and rewriting text with no production URL allocate nothing; a rewrite that changes nothing allocates only for leaf paths; a cached fake allocates only its result; scrubbing text with nothing to replace costs the same few allocations at any length. CI runs every benchmark once (`-benchtime 1x`) so a broken one fails the build.
+Guards that run with every test: no `regexp` in any non-test source of `codec` or `pseudo`; checking a PHP serialized value and rewriting text with no production URL allocate nothing; a rewrite that changes nothing allocates only for leaf paths; a cached fake or a miss in a full cache allocates only its result; scrubbing text with nothing to replace costs the same few allocations at any length. Known, the set of values seen in structured columns that the scrubber checks words against, holds 2 million emails in 58 MB. 2 million full names take 94 MB while they are added and 59 MB once sealed (repeated name words are stored once), measured with 2,000 first names and 100,003 last names. CI runs every benchmark once (`-benchtime 1x`) so a broken one fails the build.
