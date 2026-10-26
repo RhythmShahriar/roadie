@@ -126,6 +126,7 @@ type Control struct {
 type RunInfo struct {
 	Meta      Meta                   `json:"meta"`
 	Scenarios map[string]ScenarioRun `json:"scenarios"`
+	Perf      *Perf                  `json:"perf,omitempty"`
 }
 
 // ScenarioRun is what one scenario's run took.

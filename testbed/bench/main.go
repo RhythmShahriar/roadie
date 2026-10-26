@@ -56,6 +56,7 @@ type options struct {
 	rounds                                        int
 	drillFor                                      time.Duration
 	perRun                                        bool
+	baseline                                      string
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -73,6 +74,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fl.IntVar(&o.rounds, "rounds", 5, "control rounds on each good input")
 	fl.DurationVar(&o.drillFor, "drill-for", 5*time.Minute, "how long the side-effect drill runs after each prepare and copy")
 	fl.BoolVar(&o.perRun, "per-run", false, "leave the consistency key per run (outputs then differ between runs)")
+	fl.StringVar(&o.baseline, "baseline", "", "an earlier results.json: fail when r17's MB/s drops more than 20% below it")
 	diff := fl.Bool("diff", false, "compare the scored parts of two results.json files (the arguments)")
 	drill := fl.Bool("drill", false, "run only the side-effect drill on the running staging and print gate 3")
 	fl.DurationVar(&o.drillFor, "for", 5*time.Minute, "with -drill: how long the drill runs")
@@ -141,6 +143,12 @@ func runBench(ctx context.Context, o options, stdout, stderr io.Writer) int {
 		return 3
 	}
 	res := h.RunAll(ctx, f, only)
+	if o.baseline != "" {
+		if err := CompareBaseline(res.Run.Perf, abs(o.baseline)); err != nil {
+			fmt.Fprintln(stderr, "bench: -baseline:", err)
+			return 3
+		}
+	}
 	path := filepath.Join(h.Work, "results.json")
 	if err := WriteResults(path, res); err != nil {
 		fmt.Fprintln(stderr, "bench:", err)
@@ -151,8 +159,16 @@ func runBench(ctx context.Context, o options, stdout, stderr io.Writer) int {
 		s.Scenarios, s.Outcomes[Caught], s.Outcomes[Missed], s.Outcomes[Errored], s.Outcomes[Pending])
 	fmt.Fprintf(stdout, "Roadie left %d of %d seeded personal values and %d of %d live keys; verify caught %d of %d unsafe stagings with %d false alarms in %d checks of clean ones.\n",
 		s.CanarySurvivors, s.Canaries, s.LiveKeysSurvived, s.LiveKeys, s.VerifyRecall, s.VerifyBad, s.FalseAlarms, s.ControlChecks)
+	if p := res.Run.Perf; p != nil {
+		for _, r := range p.Runs {
+			fmt.Fprintf(stdout, "r17 %s: %d MB of SQL in %.1f s, %.1f MB/s, peak RSS %d MB\n", r.Input, r.InputBytes/1e6, float64(r.WallMS)/1000, r.MBps, r.MaxRSSKB/1024)
+		}
+		for _, n := range p.Notes {
+			fmt.Fprintln(stdout, "r17:", n)
+		}
+	}
 	fmt.Fprintln(stdout, "results:", path)
-	if s.Outcomes[Missed] > 0 || s.Outcomes[Errored] > 0 || s.FalseAlarms > 0 {
+	if s.Outcomes[Missed] > 0 || s.Outcomes[Errored] > 0 || s.FalseAlarms > 0 || res.Run.Perf != nil && !res.Run.Perf.Pass {
 		return 1
 	}
 	return 0

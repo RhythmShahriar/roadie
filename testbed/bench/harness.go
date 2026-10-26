@@ -62,6 +62,7 @@ type Harness struct {
 	control  Control
 	kept     []keptOutput
 	manifest map[string]manifest.Scenario
+	perf     *Perf
 }
 
 // keptOutput is an r-scenario's output dump g05 verifies again.
@@ -172,6 +173,7 @@ func (h *Harness) RunAll(ctx context.Context, f *manifest.File, only []string) R
 	slices.Sort(h.control.IDs)
 	h.control.IDs = slices.Compact(h.control.IDs)
 	res.Scored.Control = h.control
+	res.Run.Perf = h.perf
 	summarize(&res.Scored, h.manifest)
 	res.Run.Meta = collectMeta(ctx, h.Bin, h.Work)
 	res.Run.Meta.WallMS = time.Since(start).Milliseconds()

@@ -8,6 +8,7 @@
 #   make up                build, start, install the sites, seed the canaries and keys
 #   make down              stop and delete everything, volumes included
 #   make reset ID=r01      reseed one scenario and load its input, clear the logs
+#   make gen [GEN_SIZE=20GB]  r17's large dumps (make up writes 2GB)
 #   make formats           r18's shop dumped by the real mysqldump, mariadb-dump
 #                          and wp db export (make up runs it)
 #   make seal              TestNetworkIsSealed against the running testbed
@@ -46,9 +47,9 @@ PHP_IMAGE := php:8.3-cli@sha256:98d555ff97b3865140ad31032508c3ca089fa97a8944b14c
 PHP       := docker run --rm -i --network none $(PHP_IMAGE) php
 SEED      ?= 1
 
-.PHONY: up down reset seal oracle bench reproduce drill roadie-bin binaries keys seed install load formats status logs
+.PHONY: up down reset seal oracle bench reproduce drill roadie-bin binaries keys seed gen install load formats status logs
 
-up: binaries keys seed ## build, start and seed everything
+up: binaries keys seed gen ## build, start and seed everything
 	$(COMPOSE) build -q sinkhole prod-wp laravel sshd
 	$(COMPOSE) up -d --wait
 	$(MAKE) --no-print-directory install formats load ID=r01
@@ -90,6 +91,19 @@ keys:
 
 seed: ## fill every scenario template: runtime/fixtures/, runtime/canaries.json
 	cd $(ROOT) && $(GO) run ./testbed/seed/cmd/seed -fixtures testbed/fixtures -out testbed/$(RUNTIME) -seed $(SEED) -php "$(PHP)"
+
+# r17's large dumps (testbed/gen): GEN_SIZE of SQL in db.sql.gz (2GB here,
+# 20GB in the nightly) and 200MB in db-small.sql.gz for the memory
+# comparison. A stamp keeps make up from writing them again at one size.
+GEN_SIZE ?= 2GB
+GEN_DIR  := $(RUNTIME)/fixtures/r17
+gen: ## r17: the large generated dumps (GEN_SIZE=2GB)
+	@if [ -f $(GEN_DIR)/.size-$(GEN_SIZE)-$(SEED) ] && grep -q '"r17' $(RUNTIME)/canaries.json; then \
+		echo "gen: $(GEN_DIR) already holds $(GEN_SIZE)"; \
+	else \
+		rm -rf $(GEN_DIR) && cd $(ROOT) && $(GO) run ./testbed/gen/cmd/gen -size $(GEN_SIZE) -small 200MB -out testbed/$(GEN_DIR) -runtime testbed/$(RUNTIME) -seed $(SEED) \
+		&& touch testbed/$(GEN_DIR)/.size-$(GEN_SIZE)-$(SEED); \
+	fi
 
 install: ## install WordPress and the plugins on both sites
 	docker exec -u www-data roadie-testbed-prod-wp-1 testbed-seed

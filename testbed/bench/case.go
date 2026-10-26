@@ -98,6 +98,9 @@ func (h *Harness) runCase(ctx context.Context, st *scenarioState, c manifest.Cas
 		cr.run.Notes = append(cr.run.Notes, "collect: "+err.Error())
 	}
 	h.checkRun(cr, run, env, perr)
+	if st.s.Perf {
+		h.measure(ctx, cr, run, env)
+	}
 	h.checkOutputs(ctx, cr)
 	h.checkStaging(ctx, cr)
 	h.checkVerify(ctx, cr)

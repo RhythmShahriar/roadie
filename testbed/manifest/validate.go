@@ -55,8 +55,9 @@ func ReadFixtures(dir string) (map[string]Fixture, error) {
 			return nil, err
 		}
 		if fx.Generated {
-			// testbed/gen writes the large dump as db.sql.gz.
-			fx.Files["db.sql.gz"] = true
+			// testbed/gen writes the large dump as db.sql.gz and the one for
+			// the memory comparison as db-small.sql.gz.
+			fx.Files["db.sql.gz"], fx.Files["db-small.sql.gz"] = true, true
 		}
 		out[f.ID] = fx
 	}
