@@ -12,8 +12,12 @@
 # notes) is redacted.
 #
 # The benchmark runs, with no network:
-#   replibyte -c conf.yaml dump create -s mysql -i < db.sql
-#   replibyte -c conf.yaml dump restore local -v latest -o > out.sql
+#   replibyte -n -c conf.yaml dump create -s mysql -i < in.sql
+#   replibyte -n -c conf.yaml dump restore local -v latest -o > out.sql
+# in.sql is the input with one INSERT per row naming its columns
+# (mysqldump --complete-insert --skip-extended-insert): 0.10.0 panics on
+# an INSERT without column names and keeps only the first row of one
+# that holds several.
 # @@DATASTORE@@ is the work folder's datastore. connection_uri is never
 # dialled: the dump comes from stdin.
 source:

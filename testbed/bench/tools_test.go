@@ -364,10 +364,13 @@ func TestRunReplibyte(t *testing.T) {
 		t.Errorf("detail must not hold a value: %q", ti.Detail)
 	}
 	joined := strings.Join(argv, " ")
-	for _, want := range []string{"--network none", "/opt/replibyte:/usr/local/bin/replibyte:ro", in + ":/in:ro", runnerImage, "dump create -s mysql -i < /in/db.sql", "dump restore local -v latest -o"} {
+	for _, want := range []string{"--network none", "/opt/replibyte:/usr/local/bin/replibyte:ro", work + ":/work", runnerImage, "replibyte -n -c", "dump create -s mysql -i < /work/in.sql", "dump restore local -v latest -o"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("docker run %q lacks %q", joined, want)
 		}
+	}
+	if b, err := os.ReadFile(filepath.Join(work, "in.sql")); err != nil || !bytes.Contains(b, []byte(email)) { // #nosec G304 -- the test's own file
+		t.Errorf("the input wasn't handed over: %v", err)
 	}
 	conf, _ := os.ReadFile(filepath.Join(work, "conf.yaml"))
 	if !bytes.Contains(conf, []byte(`dir: "/work/datastore"`)) {
@@ -389,6 +392,75 @@ func TestRunReplibyte(t *testing.T) {
 	if ti.score(); ti.Outcome != Errored || !strings.Contains(ti.Detail, "unknown flag") {
 		t.Errorf("failing run: %+v", ti)
 	}
+}
+
+// Each row becomes an INSERT naming its table's columns; everything
+// else, an INSERT for an unknown table included, is copied byte for byte.
+func TestRowInserts(t *testing.T) {
+	dir := t.TempDir()
+	in := "-- MySQL dump\n" +
+		"CREATE TABLE `wp_options` (\n  `option_id` bigint unsigned NOT NULL AUTO_INCREMENT,\n  `option_name` varchar(191) NOT NULL DEFAULT '',\n" +
+		"  `autoload` varchar(20) NOT NULL DEFAULT 'yes',\n  PRIMARY KEY (`option_id`),\n  KEY `autoload` (`autoload`)\n) ENGINE=InnoDB;\n" +
+		"INSERT INTO `wp_options` VALUES (1,'a VALUES (2)','on'),(2,'b','off');\n" +
+		"INSERT INTO `wp_other` VALUES (1);\n" +
+		"INSERT INTO `wp_options` (`option_id`) VALUES (3);"
+	want := "-- MySQL dump\n" +
+		"CREATE TABLE `wp_options` (\n  `option_id` bigint unsigned NOT NULL AUTO_INCREMENT,\n  `option_name` varchar(191) NOT NULL DEFAULT '',\n" +
+		"  `autoload` varchar(20) NOT NULL DEFAULT 'yes',\n  PRIMARY KEY (`option_id`),\n  KEY `autoload` (`autoload`)\n) ENGINE=InnoDB;\n" +
+		"INSERT INTO `wp_options` (`option_id`, `option_name`, `autoload`) VALUES (1,'a VALUES (2)','on');\n" +
+		"INSERT INTO `wp_options` (`option_id`, `option_name`, `autoload`) VALUES (2,'b','off');\n" +
+		"INSERT INTO `wp_other` VALUES (1);\n" +
+		"INSERT INTO `wp_options` (`option_id`) VALUES (3);"
+	src, dst := filepath.Join(dir, "in.sql"), filepath.Join(dir, "out.sql")
+	if err := os.WriteFile(src, []byte(in), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := rowInserts(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(dst); string(got) != want { // #nosec G304 -- the test's own file
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+	if err := rowInserts(filepath.Join(dir, "missing.sql"), dst); err == nil {
+		t.Error("a missing input gave no error")
+	}
+}
+
+func TestSplitRows(t *testing.T) {
+	for in, want := range map[string][]string{
+		`(1,'a'),(2,'b');`:                  {`(1,'a')`, `(2,'b')`},
+		`(1,'it\'s (x)),(y'),(2,"q\\")`:     {`(1,'it\'s (x)),(y')`, `(2,"q\\")`},
+		`(1,'a:1:{s:1:\"k\";s:1:\"v\";}');`: {`(1,'a:1:{s:1:\"k\";s:1:\"v\";}')`},
+	} {
+		if got, ok := splitRows(in); !ok || !slices.Equal(got, want) {
+			t.Errorf("%s: %q %v, want %q", in, got, ok, want)
+		}
+	}
+	for _, in := range []string{"", "(1,'a'", "(1),x(2)", "1),(2", "(1,'a)"} {
+		if got, ok := splitRows(in); ok {
+			t.Errorf("%q split into %q", in, got)
+		}
+	}
+}
+
+func FuzzSplitRows(f *testing.F) {
+	f.Add(`(1,'a'),(2,'b');`)
+	f.Add(`(1,'it\'s'),(2,"x")`)
+	f.Fuzz(func(t *testing.T, v string) {
+		rows, ok := splitRows(v)
+		if !ok {
+			return
+		}
+		// Each row is a piece of the input, in order, bracketed.
+		rest := v
+		for _, r := range rows {
+			i := strings.Index(rest, r)
+			if i < 0 || r[0] != '(' || r[len(r)-1] != ')' {
+				t.Fatalf("%q: row %q isn't the next bracketed piece", v, r)
+			}
+			rest = rest[i+len(r):]
+		}
+	})
 }
 
 func TestUnpackRelease(t *testing.T) {

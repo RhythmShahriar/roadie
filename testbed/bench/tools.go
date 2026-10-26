@@ -5,6 +5,7 @@ package main
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -470,15 +471,138 @@ func (h *Harness) runReplibyte(ctx context.Context, st *scenarioState, bin strin
 		ti.fail("%s", err)
 		return ti
 	}
-	script := "replibyte -c /work/conf.yaml dump create -s mysql -i < /in/db.sql && replibyte -c /work/conf.yaml dump restore local -v latest -o > /work/out.sql"
+	// Replibyte 0.10.0 panics on an INSERT that doesn't name its columns
+	// ("Column names do not match values") and keeps only the first row
+	// of one that holds several: mysqldump's default style does both.
+	// It gets the same rows one INSERT each with their columns named
+	// (mysqldump --complete-insert --skip-extended-insert) instead, so it
+	// is judged on its masking, not on the dump's style.
+	if err := rowInserts(filepath.Join(st.in, "db.sql"), filepath.Join(st.work, "in.sql")); err != nil {
+		ti.fail("%s", err)
+		return ti
+	}
+	// -n: no telemetry. There is no network either; the flag says so in
+	// the command anyone copies from here.
+	script := "replibyte -n -c /work/conf.yaml dump create -s mysql -i < /work/in.sql && replibyte -n -c /work/conf.yaml dump restore local -v latest -o > /work/out.sql"
 	if _, err := dockerRun(ctx, "run", "--rm", "--network", "none", "--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
-		"-v", bin+":/usr/local/bin/replibyte:ro", "-v", st.in+":/in:ro", "-v", st.work+":/work", "-w", "/work",
+		"-v", bin+":/usr/local/bin/replibyte:ro", "-v", st.work+":/work", "-w", "/work",
 		runnerImage, "sh", "-c", script); err != nil {
 		ti.fail("replibyte: %s", firstLine(err.Error()))
 		return ti
 	}
 	h.judgeDump(ctx, st, filepath.Join(st.work, "out.sql"), &ti)
 	return ti
+}
+
+// rowInserts copies the mysqldump at src to dst with each
+// "INSERT INTO `t` VALUES (...),(...);" written as one INSERT per row
+// that names the table's columns, read from its CREATE TABLE: what
+// mysqldump --complete-insert --skip-extended-insert writes. Other lines
+// are copied as they are, as is an INSERT for a table with no CREATE
+// TABLE before it or one whose rows can't be split.
+func rowInserts(src, dst string) error {
+	in, err := os.Open(src) // #nosec G304 -- the seeded input
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) // #nosec G304 -- the harness's own work folder
+	if err != nil {
+		return err
+	}
+	r, w := bufio.NewReaderSize(in, 1<<20), bufio.NewWriterSize(out, 1<<20)
+	cols := map[string]string{}
+	var table string
+	var names []string
+	for {
+		line, rerr := r.ReadString('\n')
+		switch {
+		case strings.HasPrefix(line, "CREATE TABLE `"):
+			table, names = backquoted(line[len("CREATE TABLE "):]), nil
+		case table != "" && strings.HasPrefix(line, ")"):
+			cols[table] = "(`" + strings.Join(names, "`, `") + "`)"
+			table = ""
+		case table != "" && strings.HasPrefix(strings.TrimSpace(line), "`"):
+			names = append(names, backquoted(strings.TrimSpace(line)))
+		case strings.HasPrefix(line, "INSERT INTO `"):
+			t := backquoted(line[len("INSERT INTO "):])
+			prefix := "INSERT INTO `" + t + "` VALUES "
+			if c, ok := cols[t]; ok && strings.HasPrefix(line, prefix) {
+				if rows, ok := splitRows(strings.TrimRight(line[len(prefix):], "\r\n")); ok {
+					var b strings.Builder
+					for _, row := range rows {
+						b.WriteString("INSERT INTO `" + t + "` " + c + " VALUES " + row + ";\n")
+					}
+					line = b.String()
+				}
+			}
+		}
+		if _, err := w.WriteString(line); err != nil {
+			_ = out.Close()
+			return err
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			_ = out.Close()
+			return rerr
+		}
+	}
+	if err := w.Flush(); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+// splitRows splits "(1,'a'),(2,'b');" into "(1,'a')" and "(2,'b')",
+// minding quotes and backslash escapes. It reports false for anything
+// else, so the caller keeps the line as it was.
+func splitRows(v string) ([]string, bool) {
+	v = strings.TrimSuffix(v, ";")
+	var rows []string
+	depth, start := 0, -1
+	var quote byte
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		switch {
+		case quote != 0:
+			if c == '\\' {
+				i++
+			} else if c == quote {
+				quote = 0
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '(':
+			if depth == 0 {
+				start = i
+			}
+			depth++
+		case c == ')':
+			depth--
+			if depth < 0 {
+				return nil, false
+			}
+			if depth == 0 {
+				rows = append(rows, v[start:i+1])
+			}
+		case depth == 0 && c != ',':
+			return nil, false
+		}
+	}
+	return rows, depth == 0 && quote == 0 && len(rows) > 0
+}
+
+// backquoted returns the name between the first pair of backquotes in s.
+func backquoted(s string) string {
+	_, rest, ok := strings.Cut(s, "`")
+	if !ok {
+		return ""
+	}
+	name, _, _ := strings.Cut(rest, "`")
+	return name
 }
 
 // judgeDump runs the oracle on a tool's output dump: canaries, live keys
