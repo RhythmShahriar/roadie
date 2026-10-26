@@ -97,3 +97,26 @@ func TestVerifyReportNamesItsInput(t *testing.T) {
 		t.Errorf("check --input another dump: exit %d %s", code, stderr)
 	}
 }
+
+// A copy of an app's own schema (stack sql) has no site URL to rewrite
+// to, so it runs without --url; a WordPress copy still needs one.
+func TestCopyURLOnlyForSites(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	in := filepath.Join(dir, "crm.sql")
+	if err := os.WriteFile(in, []byte("CREATE TABLE `contacts` (`id` int, `email` varchar(100));\nINSERT INTO `contacts` VALUES (1,'u1@example.invalid');\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(dir, "roadie.yaml")
+	if err := os.WriteFile(cfg, []byte("stack: sql\ncolumns:\n  - {table: contacts, column: email, rule: email}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, stderr, code := runEnv(t, nil, "copy", "--from", in, "--to", filepath.Join(dir, "out.sql"), "--config", cfg)
+	if code != 0 || strings.Contains(stderr, "needs --url") {
+		t.Errorf("stack sql: exit %d %s", code, stderr)
+	}
+	_, stderr, code = runEnv(t, nil, "copy", "--from", in, "--to", filepath.Join(dir, "out2.sql"))
+	if code != 2 || !strings.Contains(stderr, "copy needs --url") {
+		t.Errorf("no stack: exit %d %s", code, stderr)
+	}
+}
