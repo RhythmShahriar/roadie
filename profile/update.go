@@ -45,6 +45,7 @@ const (
 	bundleAsset = "checksums.txt.sigstore.json"
 	// maxEntry caps one profile file; maxArchive the whole download.
 	maxEntry   = 1 << 20
+	maxTotal   = 16 << 20 // every profile file of a pack together
 	maxArchive = 32 << 20
 	maxSmall   = 1 << 20 // checksums.txt and the bundle
 	maxEntries = 256
@@ -275,6 +276,11 @@ func (d packDeps) install(ctx context.Context, w io.Writer, version string) ([]c
 	if err != nil {
 		return nil, fmt.Errorf("profile pack: %w", err)
 	}
+	// The version names the cache folder; it comes from the release API
+	// before anything is verified, so it must be a plain version.
+	if !update.IsRelease(rel.Version) || strings.ContainsAny(rel.Version, `/\`) {
+		return nil, fmt.Errorf("profile pack: the release's version %q isn't a release version, so nothing was installed", rel.Version)
+	}
 	if version == "" && !update.Newer(Version(), rel.Version) {
 		_, _ = fmt.Fprintf(w, "The built-in profiles (%s) are the newest; nothing to download.\n", Version())
 		return []cli.DataPack{{Name: PackName, Version: Version()}}, nil
@@ -376,6 +382,7 @@ func extract(archive []byte) (map[string][]byte, error) {
 	defer func() { _ = zr.Close() }()
 	tr := tar.NewReader(zr)
 	out := map[string][]byte{}
+	var total int
 	for {
 		h, err := tr.Next()
 		if errors.Is(err, io.EOF) {
@@ -406,6 +413,9 @@ func extract(archive []byte) (map[string][]byte, error) {
 		}
 		if len(b) > maxEntry {
 			return nil, fmt.Errorf("%s in %s is over 1 MiB", name, packAsset)
+		}
+		if total += len(b); total > maxTotal {
+			return nil, fmt.Errorf("%s holds over 16 MiB of profiles", packAsset)
 		}
 		if _, err := parsePackFile(name, b); err != nil {
 			return nil, fmt.Errorf("%s doesn't parse (it may need a newer rhythm-roadie): %w", name, err)
