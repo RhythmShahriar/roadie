@@ -4,8 +4,7 @@
 // Package roadiecfg loads, validates and prints .roadie/config.yaml and
 // keeps the consistency key that makes fakes stable across refreshes.
 //
-// The exported names in this file are the frozen cross-lane API; the
-// engine lane replaces the bodies, which return core.ErrNotBuilt until then.
+// The exported names in this file are the frozen cross-lane API.
 package roadiecfg
 
 import "github.com/RhythmShahriar/roadie/pseudo"
