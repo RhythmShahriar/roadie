@@ -1032,3 +1032,36 @@ func TestRunDatabaseOnlySteps(t *testing.T) {
 		t.Error("a site step ran without a site")
 	}
 }
+
+// keyStep is the kill switch's key step after a copy that left a live
+// key: its check reports the line the key scan of the file reports too.
+type keyStep struct{ line int }
+
+func (s keyStep) ID() string    { return core.FindingKeyGeneric }
+func (s keyStep) Phase() string { return "files" }
+func (s keyStep) Plan(context.Context, core.Site) ([]core.PlannedEdit, error) {
+	return nil, nil
+}
+func (s keyStep) Apply(context.Context, core.Site) error { return nil }
+func (s keyStep) Check(context.Context, core.Site) (core.SideEffect, []core.Finding, error) {
+	return core.SideEffect{ID: core.FindingKeyGeneric, Status: "on"}, []core.Finding{{ID: "key.stripe-live", Severity: core.SeverityCritical,
+		Title: "a live key is set in .env", Locations: []core.LocationCount{{Location: core.Location{File: ".env", Line: s.line}}}}}, nil
+}
+
+// One live key on one line of .env is one finding with a count of 1,
+// though both the key scan and the key step's check report it; a step
+// finding for another line still counts.
+func TestRunFileKeyOnce(t *testing.T) {
+	env := "APP_ENV=staging\nSTRIPE_SECRET=" + testutil.J("sk_", "live_", "51Hq", "Zx0aTq2wN8eLm3VbYp") + "\n"
+	st := testutil.FakeSite(map[string][]byte{".env": []byte(env)})
+	st.StackName = core.StackLaravel
+	res := runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"})), Steps: []core.Step{keyStep{line: 2}}})
+	f := find(res, "key.stripe-live")
+	if f == nil || f.Count != 1 || len(f.Locations) != 1 {
+		t.Fatalf("one .env line: %+v", f)
+	}
+	res = runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"})), Steps: []core.Step{keyStep{line: 7}}})
+	if f := find(res, "key.stripe-live"); f == nil || f.Count != 2 {
+		t.Errorf("two lines: %+v", f)
+	}
+}

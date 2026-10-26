@@ -580,7 +580,20 @@ func (r *run) runSteps(ctx context.Context, s core.Site, steps []core.Step) {
 		}
 		r.res.SideEffects = append(r.res.SideEffects, se)
 		for _, f := range found {
+			if r.fileKeySeen(f) {
+				continue
+			}
 			r.add(f)
 		}
 	}
+}
+
+// fileKeySeen reports a step's key finding for a line of a config file
+// that the key scan of that file found already: one .env line is one
+// finding, not one from the scan and one from the key step's check.
+func (r *run) fileKeySeen(f core.Finding) bool {
+	if !strings.HasPrefix(f.ID, "key.") || len(f.Locations) != 1 || f.Locations[0].File == "" {
+		return false
+	}
+	return r.keySeen[keySeenID(f.ID, f.Locations[0].Location)]
 }

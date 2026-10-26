@@ -435,14 +435,19 @@ const maxKeys = 1000
 // addKey records a key once per finding ID and location (a column, a
 // path or a file line), whatever row it is on.
 func (r *run) addKey(k core.KeyHit) {
-	at := k.At
-	at.Row = ""
-	id := k.ID + "\x00" + at.String() + "\x00" + fmt.Sprint(at.Line)
+	id := keySeenID(k.ID, k.At)
 	if r.keySeen[id] || len(r.res.Keys) >= maxKeys {
 		return
 	}
 	r.keySeen[id] = true
 	r.res.Keys = append(r.res.Keys, k)
+}
+
+// keySeenID is the key of keySeen: the finding ID and the location
+// without its row.
+func keySeenID(id string, at core.Location) string {
+	at.Row = ""
+	return id + "\x00" + at.String() + "\x00" + fmt.Sprint(at.Line)
 }
 
 // columnKinds returns the fake kind and coverage of each column of t from
