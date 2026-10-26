@@ -43,8 +43,8 @@ func openSSH(ctx context.Context, e core.Endpoint, o Options) (core.Site, error)
 	if err := remote.CheckUser(e.User); err != nil {
 		return nil, err
 	}
-	if e.Path == "" || !strings.HasPrefix(e.Path, "/") && !strings.HasPrefix(e.Path, "~") {
-		return nil, fmt.Errorf("site: %s needs an absolute site folder on the host", e.Display)
+	if !strings.HasPrefix(e.Path, "/") {
+		return nil, fmt.Errorf("site: %s needs the absolute site folder on the host, such as /home/deploy/www; Roadie doesn't expand '~'", e.Display)
 	}
 	r := &remote.Runner{User: e.User, Host: e.Host, Port: e.Port, Root: e.Path, WP: o.WP, BatchMode: o.BatchMode, ReadOnly: o.ReadOnly}
 	s := &sshSite{ep: e, r: r, ro: o.ReadOnly, o: o}

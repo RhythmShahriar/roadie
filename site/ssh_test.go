@@ -383,3 +383,20 @@ func TestParseFindDropsEscapes(t *testing.T) {
 		}
 	}
 }
+
+// TestSSHRefusedPaths: every remote command single-quotes the site folder,
+// so a path that relies on ~ or is relative never reaches ssh.
+func TestSSHRefusedPaths(t *testing.T) {
+	sh := remotetest.New(t)
+	for _, p := range []string{"~/www", "~deploy/www", "~", "www", ""} {
+		e := sshEP()
+		e.Path = p
+		_, err := Open(context.Background(), e, Options{})
+		if err == nil || !strings.Contains(err.Error(), "needs the absolute site folder on the host") {
+			t.Errorf("%q: %v", p, err)
+		}
+	}
+	if len(sh.Calls()) != 0 {
+		t.Fatalf("ssh ran for a refused path: %v", sh.Calls())
+	}
+}

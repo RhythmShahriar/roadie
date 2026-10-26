@@ -279,6 +279,11 @@ func sshEndpoint(raw, user, host string, port int, path string) (core.Endpoint, 
 	if path == "" {
 		return core.Endpoint{}, cli.Usagef("endpoint: %s needs the site's folder on the host, such as ssh://deploy@shop.com/var/www/shop", raw)
 	}
+	// Every remote command single-quotes the site folder, so a leading ~
+	// would never expand: refuse it rather than look in a folder named ~.
+	if strings.HasPrefix(path, "~") || strings.HasPrefix(path, "/~") && strings.HasPrefix(raw, "ssh://") {
+		return core.Endpoint{}, cli.Usagef("endpoint: %s: give the absolute folder on the host, such as /home/deploy/www; Roadie doesn't expand '~'", raw)
+	}
 	for _, c := range path {
 		if c < ' ' || c == 0x7f {
 			return core.Endpoint{}, cli.Usagef("endpoint: the remote path in %q holds a control character", raw)
