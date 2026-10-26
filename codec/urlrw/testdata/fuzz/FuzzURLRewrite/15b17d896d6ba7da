@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("%2F%5C%5C%2Fshop.Com")

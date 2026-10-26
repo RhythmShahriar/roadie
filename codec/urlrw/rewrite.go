@@ -95,7 +95,7 @@ func sepBefore(text []byte, i int, c byte, pct, named string) int {
 		return n
 	}
 	if i >= 3 && equalFold(text[i-3:i], []byte(pct)) {
-		return 3
+		return 3 + escapesBefore(text, i-3)
 	}
 	if text[i-1] != ';' {
 		return 0
@@ -141,6 +141,24 @@ func sepBefore(text []byte, i int, c byte, pct, named string) int {
 	return i - (j - 2)
 }
 
+// escapesBefore is the length of the JSON escapes that end at i before a
+// URL-encoded separator: a JSON string URL-encoded whole writes \/ as
+// %5C%2F, and text decoded once can hold \%2F. Either spelling, any
+// number of times.
+func escapesBefore(text []byte, i int) int {
+	n := 0
+	for {
+		switch {
+		case i-n >= 3 && equalFold(text[i-n-3:i-n], []byte("%5c")):
+			n += 3
+		case i-n >= 1 && text[i-n-1] == '\\':
+			n++
+		default:
+			return n
+		}
+	}
+}
+
 // slashAt is the forward form of slashBefore, for the slashes of a path.
 func slashAt(text []byte, i int) int {
 	if i >= len(text) {
@@ -153,11 +171,17 @@ func slashAt(text []byte, i int) int {
 	if j < len(text) && text[j] == '/' {
 		return j + 1 - i
 	}
+	for j+3 <= len(text) && equalFold(text[j:j+3], []byte("%5c")) {
+		j += 3
+	}
+	for j < len(text) && text[j] == '\\' {
+		j++
+	}
+	if j+3 <= len(text) && equalFold(text[j:j+3], []byte("%2f")) {
+		return j + 3 - i
+	}
 	if j != i {
 		return 0
-	}
-	if i+3 <= len(text) && equalFold(text[i:i+3], []byte("%2f")) {
-		return 3
 	}
 	if text[i] != '&' {
 		return 0

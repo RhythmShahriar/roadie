@@ -6,6 +6,7 @@ package urlrw
 import (
 	"bytes"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -51,6 +52,11 @@ func TestRewriteForms(t *testing.T) {
 		{"https://shop.com:8443/a?u=x@y", "https://staging.shop.test:8443/a?u=x@y", 1},
 		{"https://shop.com mail jane@x.example", "https://staging.shop.test mail jane@x.example", 1},
 		{"https%3A%2F%2Fshop.com%2Fa%40b", "https%3A%2F%2Fstaging.shop.test%2Fa%40b", 1},
+		// a JSON string URL-encoded whole, and one decoded once
+		{"u=https%3A%5C%2F%5C%2Fshop.com%5C%2Fcart", "u=https%3A%5C%2F%5C%2Fstaging.shop.test%5C%2Fcart", 1},
+		{`/\%2fSHOP.Com`, `/\%2fstaging.shop.test`, 1},
+		{`https:\%2F\%2Fshop.com`, `https:\%2F\%2Fstaging.shop.test`, 1},
+		{"https%3A%5C%2Fshop.com", "https%3A%5C%2Fshop.com", 0}, // one slash is no URL
 		// left alone
 		{"jane@shop.com", "jane@shop.com", 0},
 		{"mailto:jane@shop.com", "mailto:jane@shop.com", 0},
@@ -326,13 +332,19 @@ func TestPunycode(t *testing.T) {
 	}
 }
 
+// escapedSlash is a run of JSON escapes, URL-encoded or not, before %2F.
+var escapedSlash = regexp.MustCompile(`(?i)(?:%5c|\\)+%2f`)
+
 // decodeAll spells every separator form plainly, so a URL that survived in
 // any spelling shows as //host: JSON's \/ (escaped any number of times),
 // %2F and %3A in either case and HTML's numeric and named entities.
 func decodeAll(b []byte) []byte {
 	s := string(b)
 	for {
-		n := strings.NewReplacer(`\/`, "/", "%2F", "/", "%2f", "/", "%3A", ":", "%3a", ":", "&sol;", "/", "&colon;", ":").Replace(s)
+		// JSON escapes before an encoded slash, in any spelling and any
+		// number, as the matcher reads them: %5C%2F, \%2F, %5C%5C%2F.
+		n := escapedSlash.ReplaceAllString(s, `\/`)
+		n = strings.NewReplacer(`\/`, "/", "%2F", "/", "%2f", "/", "%3A", ":", "%3a", ":", "&sol;", "/", "&colon;", ":").Replace(n)
 		n = decodeEntities(n)
 		if n == s {
 			return []byte(s)
@@ -410,6 +422,7 @@ func FuzzURLRewrite(f *testing.F) {
 		"//www.shop.com", "jane@shop.com", "https://shop.com@other.example", "https%3A%2F%2Fshop.com%40x", "https://myshop.com", "https://shop.com.au", "https://shop.community",
 		`/\/shop.com`, "&#0047;/shop.com", "%2f/SHOP.com:80", "https://staging.shop.test",
 		"https://shop.com%2Eau", "https://shop.com&#46;au", "https://shop.com&#x2e;au", "https://shop.com&period;au",
+		"https%3A%5C%2F%5C%2Fshop.com%5C%2Fcart", `/\%2fSHOP.Com`, `https:\%2F\%2Fshop.com`,
 	} {
 		f.Add([]byte(s))
 	}
