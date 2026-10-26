@@ -24,6 +24,9 @@ rules:
   "multisite.sitemeta.meta_value.siteurl":
     positive: {table: wp_sitemeta, row: {meta_value: "https://shop.example.com", meta_key: "siteurl"}}
     negative: {table: wp_sitemeta, row: {meta_value: "https://shop.example.com", meta_key: "xsiteurl"}}
+  "multisite.sitemeta.meta_value.*domain*":
+    positive: {table: wp_sitemeta, row: {meta_value: "shop.example.com", meta_key: "dm_domain"}}
+    negative: {table: wp_sitemeta, row: {meta_value: "shop.example.com", meta_key: "site_name"}}
   "multisite.signups.user_email":
     positive: {table: wp_signups, row: {user_email: "anna.lee@example.com"}}
     negative: {table: wp_2_signups, row: {user_email: "anna.lee@example.com"}}

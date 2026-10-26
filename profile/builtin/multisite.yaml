@@ -17,6 +17,7 @@ rules:
   - {table: "{prefix}sitemeta", where: {meta_key: admin_email}, column: meta_value, rule: email, explain: "the network admin's email"}
   - {table: "{prefix}sitemeta", where: {meta_key: site_admins}, column: meta_value, rule: "serialized:*=username", explain: "the logins of the super admins, a serialized list"}
   - {table: "{prefix}sitemeta", where: {meta_key: siteurl}, column: meta_value, rule: rewrite-url, explain: "the network URL"}
+  - {table: "{prefix}sitemeta", where: {meta_key: "*domain*"}, column: meta_value, rule: rewrite-url, explain: "a network setting named for a domain (a domain-mapping plugin's, for example); a bare host is rewritten to its staging host"}
   - {table: "{prefix}signups", column: user_email, rule: email, explain: "the email of a pending sign-up"}
   - {table: "{prefix}signups", column: user_login, rule: username, explain: "the login a sign-up asked for"}
   - {table: "{prefix}signups", column: meta, rule: text, explain: "sign-up details, a serialized array"}
