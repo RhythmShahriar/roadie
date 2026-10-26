@@ -193,17 +193,20 @@ at_or_above() {
 		| [$all[0:$i + 1][] as $s | .summary[$s] // 0] | add' "$1"
 }
 
-# word ENVELOPE prints the summary's verdict word.
+# word ENVELOPE prints the summary's verdict word. A verify that couldn't
+# read part of its input (coverage lists "(input ...)") is INCOMPLETE.
 word() {
-	local result kind sample
+	local result kind sample unread
 	result=$(jq -r '.data.result // "error"' "$1")
 	kind=$(jq -r '.kind // ""' "$1")
 	sample=$(jq -r '.data.coverage.sample // 0' "$1")
+	unread=$(jq -r '[.data.coverage.skipped // [] | .[] | select(.table | startswith("(input"))] | length' "$1")
 	case "$kind:$result" in
 	plan:pass) echo "PLAN, ready" ;;
 	plan:fail) echo "PLAN, copy would stop" ;;
 	*:pass) if [ "$sample" != 0 ]; then echo "PASS (sample)"; else echo PASS; fi ;;
 	*:fail) echo FAIL ;;
+	*:error) if [ "$unread" != 0 ]; then echo INCOMPLETE; else echo ERROR; fi ;;
 	*) echo ERROR ;;
 	esac
 }

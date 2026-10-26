@@ -1,0 +1,34 @@
+{
+  "schema": "rhythm-roadie/v1",
+  "kind": "verify",
+  "tool": "rhythm-roadie",
+  "version": "1.0.0",
+  "complete": false,
+  "summary": {
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "info": 0,
+    "keys_found": 0
+  },
+  "verdict": "error",
+  "data": {
+    "result": "error",
+    "fail_on": "high",
+    "coverage": {
+      "tables_scanned": 7,
+      "tables_total": 12,
+      "rows_scanned": 1200,
+      "bytes_scanned": 9000,
+      "skipped": [
+        {
+          "table": "(input after wp_users)",
+          "reason": "dump-truncated: staging.sql ends inside table wp_users; the tables after it weren't read"
+        }
+      ],
+      "sample": 0
+    },
+    "not_covered": []
+  }
+}

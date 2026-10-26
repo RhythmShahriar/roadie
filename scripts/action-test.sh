@@ -248,6 +248,12 @@ else bad "a sampled verify counts as failed"; fi
 act action-run.sh run MODE=verify ALLOW_SAMPLE=true FAKE_REPORT="$fixtures/report-verify-sample.json"
 check "allow-sample accepts it" bash -c 'grep -qx exit-code=0 "$1" && grep -qx verdict=pass "$1"' _ "$work/runner/output"
 
+# A verify that couldn't read part of its input: exit 3, INCOMPLETE.
+act action-run.sh run MODE=verify FAKE_EXIT=3 FAKE_REPORT="$fixtures/report-verify-incomplete.json"
+if [ "$code" = 3 ] && out exit-code=3 && out verdict=error && contains "$work/runner/summary" "## Roadie: INCOMPLETE (verify)"; then
+	ok "a verify that read part of its input is incomplete"
+else bad "a verify that read part of its input is incomplete"; fi
+
 # Roadie stopped: its message, or its last lines without a report.
 act action-run.sh run MODE=copy SOURCE=prod.sql TARGET=/var/www/shop FAKE_EXIT=3 FAKE_REPORT="$fixtures/report-copy-error.json"
 if [ "$code" = 3 ] && out exit-code=3 && out verdict=error && contains "$work/runner/summary" "Roadie stopped:" &&
