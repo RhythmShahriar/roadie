@@ -278,6 +278,23 @@ func TestSARIFValid(t *testing.T) {
 	}
 }
 
+func TestFileURI(t *testing.T) {
+	for in, want := range map[string]string{
+		"staging.sql.gz":            "staging.sql.gz",
+		"dumps/a b.sql":             "dumps/a%20b.sql",
+		`wp-content\themes\x.php`:   "wp-content/themes/x.php",
+		"/srv/dumps/staging #1.sql": "file:///srv/dumps/staging%20%231.sql",
+		`C:\dumps\staging.sql`:      "file:///C:/dumps/staging.sql",
+		"d:/x.sql":                  "file:///d:/x.sql",
+		`\\nas\share\staging.sql`:   "file://nas/share/staging.sql",
+		"ab:c.sql":                  "./ab:c.sql",
+	} {
+		if got := fileURI(in); got != want {
+			t.Errorf("fileURI(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestJUnit(t *testing.T) {
 	b, err := JUnit(signedEnvelope(t, verifyFail()))
 	if err != nil {
