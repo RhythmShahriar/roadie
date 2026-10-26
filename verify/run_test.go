@@ -484,6 +484,20 @@ func TestRunURLs(t *testing.T) {
 	if f := find(res, core.FindingURLProduction); f == nil || f.Count != 1 {
 		t.Errorf("url: %+v", res.Findings)
 	}
+	// Subscriptions keeps production's URL on purpose; the same URL in
+	// another option is still reported.
+	res = runJob(t, Job{Production: []string{"shop.com"}, Source: source(
+		options([]string{"1", "wc_subscriptions_siteurl", "https://shop.com"}),
+	)})
+	if len(res.Findings) != 0 {
+		t.Errorf("wc_subscriptions_siteurl: %v", ids(res))
+	}
+	res = runJob(t, Job{Production: []string{"shop.com"}, Source: source(
+		options([]string{"1", "wc_subscriptions_siteurl_backup", "https://shop.com"}),
+	)})
+	if find(res, core.FindingURLProduction) == nil {
+		t.Errorf("other option: %v", ids(res))
+	}
 	res = runJob(t, Job{Production: []string{"shop.com"}, Opts: Options{Skip: []string{"urls"}},
 		Source: source(options([]string{"1", "siteurl", "https://shop.com"}))})
 	if len(res.Findings) != 0 {

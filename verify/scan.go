@@ -260,7 +260,10 @@ func (f *field) leaf(p string, l []byte) {
 			addKeyHit(h, f.acc, f.hits)
 		}
 	}
-	if s.findURL != nil {
+	if s.findURL != nil && !optionNamed(f.sc, "wc_subscriptions_siteurl") {
+		// WooCommerce Subscriptions keeps production's URL there on
+		// purpose: a copy whose URL differs from it stays in staging
+		// mode. Roadie never rewrites it, so it is no finding (PRD 15.2).
 		for range s.findURL(l) {
 			id := core.FindingURLProduction
 			if siteURLOption(f.sc) {
@@ -313,11 +316,17 @@ func urlSeverity(id string) core.Severity {
 
 // siteURLOption reports whether the value is the siteurl or home option.
 func siteURLOption(sc core.ScanContext) bool {
+	return optionNamed(sc, "siteurl", "home")
+}
+
+// optionNamed reports whether sc is the option_value of an options row
+// named one of names.
+func optionNamed(sc core.ScanContext, names ...string) bool {
 	if !strings.HasSuffix(sc.Table, "options") || !strings.EqualFold(sc.Column, "option_value") || sc.Row == nil {
 		return false
 	}
 	name, ok := sc.Row("option_name")
-	return ok && (string(name) == "siteurl" || string(name) == "home")
+	return ok && slices.Contains(names, string(name))
 }
 
 // publicOptionPrefixes are the option names under which WordPress caches
