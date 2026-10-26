@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -35,6 +36,21 @@ var nameRules = []struct {
 	{regexp.MustCompile(`(^|_)mail($|_)`), "email"},
 }
 
+// plainName is a table or column name YAML reads as written.
+var plainName = regexp.MustCompile(`^[A-Za-z0-9_$][A-Za-z0-9_$.-]*$`)
+
+// yamlName writes a table or column name for a suggestion line. The
+// names come from the source's schema, which a dump can set to anything:
+// a newline in one would end the comment and turn the rest of the name
+// into an active setting. Anything but a plain name is written as a
+// double-quoted YAML string, whose escapes Go's quoting shares.
+func yamlName(s string) string {
+	if plainName.MatchString(s) {
+		return s
+	}
+	return strconv.Quote(s)
+}
+
 // RuleForColumn guesses the rule a PII-looking column needs from its
 // name; text (scrub) when the name says nothing.
 func RuleForColumn(column string) string {
@@ -59,7 +75,7 @@ func Suggest(uncovered []core.Uncovered) []byte {
 	b.WriteString("# config init --from found these columns that look personal and no profile\n")
 	b.WriteString("# covers. Check each rule, then uncomment the entries to keep.\n")
 	for _, u := range uncovered {
-		fmt.Fprintf(&b, "#  - table: %s\n#    column: %s\n", u.Table, u.Column)
+		fmt.Fprintf(&b, "#  - table: %s\n#    column: %s\n", yamlName(u.Table), yamlName(u.Column))
 		rule := "rule: " + RuleForColumn(u.Column)
 		why := fmt.Sprintf("%d%% of sampled values look personal", u.Rate)
 		if u.Rate == 0 {

@@ -94,6 +94,41 @@ func TestSuggest(t *testing.T) {
 	}
 }
 
+// A schema name with a newline can't turn into an active setting: names
+// that aren't plain are quoted; uncommenting the entry gives the name
+// back exactly.
+func TestSuggestQuotesOddNames(t *testing.T) {
+	odd := "notes\nsource: ssh://deploy@shop.com/var/www"
+	block := Suggest([]core.Uncovered{
+		{Table: "crm contacts", Column: odd, Rate: 50},
+		{Table: "wp_loyalty$v2", Column: "e-mail", Rate: 98},
+	})
+	want := "#  - table: \"crm contacts\"\n#    column: \"notes\\nsource: ssh://deploy@shop.com/var/www\"\n"
+	if !strings.Contains(string(block), want) {
+		t.Fatalf("block:\n%s", block)
+	}
+	if !strings.Contains(string(block), "#  - table: wp_loyalty$v2\n#    column: e-mail\n") {
+		t.Errorf("a plain name was quoted:\n%s", block)
+	}
+	full := WithSuggestions(InitTemplate("sql"), block)
+	c, err := Load(writeConfig(t, string(full)), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Source != "" {
+		t.Fatalf("a schema name set source: %q", c.Source)
+	}
+	on := strings.Replace(string(full), "#  - table: \"crm contacts\"\n#    column: ", "  - table: \"crm contacts\"\n    column: ", 1)
+	on = strings.Replace(on, "#    rule: text", "    rule: text", 1)
+	c, err = Load(writeConfig(t, on), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(c.Columns); n == 0 || c.Columns[n-1].Column != odd || c.Columns[n-1].Table != "crm contacts" {
+		t.Errorf("uncommented entry: %+v", c.Columns)
+	}
+}
+
 func TestRuleForColumn(t *testing.T) {
 	for col, want := range map[string]string{
 		"email": "email", "EmailAddress": "email", "e_mail": "email", "mail": "email", "phone_number": "phone", "tel": "phone",
