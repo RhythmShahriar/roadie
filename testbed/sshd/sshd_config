@@ -1,0 +1,15 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+Port 22
+HostKey /keys/ssh_host_ed25519_key
+AuthorizedKeysFile /keys/authorized_keys
+# The keys are bind mounts owned by the host user, not by roadie.
+StrictModes no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+AllowUsers roadie
+AllowTcpForwarding no
+X11Forwarding no
+PermitTunnel no

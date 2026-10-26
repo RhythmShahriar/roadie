@@ -1,0 +1,11 @@
+{
+    "name": "testbed/laravel-shop",
+    "description": "A Laravel-shaped fixture app for the Roadie testbed: the files Roadie reads to detect Laravel, a .env written per scenario and a page that answers.",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "laravel/framework": "^12.0",
+        "laravel/cashier": "^15.0"
+    }
+}
