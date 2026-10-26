@@ -75,6 +75,12 @@ func (t *transformer) transform(ctx context.Context, b *core.Batch, c *profile.C
 			}
 		}
 	}
+	sets := make([]*ruleSet, len(b.Columns))
+	for i, rs := range byPos {
+		if len(rs) > 0 {
+			sets[i] = newRuleSet(rs)
+		}
+	}
 	prefix := t.prefix
 	_, isOptions := blogOf(tb.Name, prefix, "options")
 	asFix := slices.Contains(c.RowFixes(), "action-scheduler-args")
@@ -124,7 +130,7 @@ func (t *transformer) transform(ctx context.Context, b *core.Batch, c *profile.C
 			if i >= len(cols) {
 				break
 			}
-			drop, err := t.value(out, rc, cols[i], &row.Values[i], byPos[i])
+			drop, err := t.value(out, rc, cols[i], &row.Values[i], sets[i])
 			if err != nil {
 				return nil, err
 			}
@@ -190,23 +196,6 @@ func rowLocation(tb *core.Table, get func(string) ([]byte, bool)) core.Location 
 	return core.Location{Table: tb.Name, Row: core.MaskRow(tb.Name, pk)}
 }
 
-// match picks the rules that apply to a value of this row: the first
-// whole-value rule (the most specific, as Rules sorts them) and every
-// path rule.
-func match(rules []core.Rule, get func(string) ([]byte, bool)) (whole *core.Rule, paths []core.Rule) {
-	for i := range rules {
-		if !profile.MatchWhereBytes(rules[i], get) {
-			continue
-		}
-		if rules[i].Path != "" {
-			paths = append(paths, rules[i])
-		} else if whole == nil {
-			whole = &rules[i]
-		}
-	}
-	return whole, paths
-}
-
 // counter counts one value's changes per rule: a rule that changed
 // several leaves of one value changed one row.
 type counter struct {
@@ -229,11 +218,11 @@ func (c *counter) changed(r *core.Rule, n int64) {
 func (c *counter) kept(r *core.Rule) { c.out.change(r.ID, c.table, c.col, r.Action).Kept++ }
 
 // value changes one value. It reports whether the row is to be deleted.
-func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.Value, rules []core.Rule) (bool, error) {
+func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.Value, rules *ruleSet) (bool, error) {
 	if v.Kind != core.String && v.Kind != core.BinaryString {
 		return false, nil
 	}
-	whole, paths := match(rules, rc.get)
+	whole, paths := rules.match(rc.get)
 	cnt := &counter{out: out, table: rc.table, col: col.Name}
 	if whole != nil && whole.Action == core.DeleteRow {
 		cnt.changed(whole, 1)

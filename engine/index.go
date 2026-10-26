@@ -473,8 +473,9 @@ func (x *indexer) rules(b *core.Batch, pos map[string]int) {
 			}
 		}
 		if len(rs) > 0 {
+			set := newRuleSet(rs)
 			for ri := range b.Rows {
-				x.addKnown(b, pos, &b.Rows[ri], rs)
+				x.addKnown(b, pos, &b.Rows[ri], set)
 			}
 		}
 	}
@@ -534,7 +535,7 @@ func keptRow(kept *keptUsers, table, prefix string, get func(string) ([]byte, bo
 }
 
 // addKnown adds one row's structured values to Known.
-func (x *indexer) addKnown(b *core.Batch, pos map[string]int, r *core.Row, rs []core.Rule) {
+func (x *indexer) addKnown(b *core.Batch, pos map[string]int, r *core.Row, rs *ruleSet) {
 	get := rowGet(b, pos, r)
 	if keptRow(x.kept, b.Table.Name, x.prefix, get) {
 		return
@@ -544,21 +545,21 @@ func (x *indexer) addKnown(b *core.Batch, pos map[string]int, r *core.Row, rs []
 			return
 		}
 	}
-	for _, rule := range rs {
+	rs.each(get, func(rule *core.Rule) {
 		v, ok := get(rule.Column)
-		if !ok || len(bytes.TrimSpace(v)) == 0 || !profile.MatchWhereBytes(rule, get) {
-			continue
+		if !ok || len(bytes.TrimSpace(v)) == 0 {
+			return
 		}
 		if rule.Path == "" {
 			x.known.Add(rule.Fake, v)
-			continue
+			return
 		}
 		_ = nestedLeaves(v, func(p string, leaf []byte) {
 			if ok, _ := path.Match(rule.Path, p); ok && len(bytes.TrimSpace(leaf)) > 0 {
 				x.known.Add(rule.Fake, leaf)
 			}
 		}, nested.Options{})
-	}
+	})
 }
 
 // wouldKeep reports whether keep_users names this users row: a glob on
