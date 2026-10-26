@@ -294,6 +294,11 @@ func TestImportError(t *testing.T) {
 			"import: table users: PostgreSQL error 22P02: invalid input syntax for type integer: '•••'. The target is in a mixed state after 1 of 4 tables: some tables are pseudonymised, the rest still hold the earlier copy. Fix the cause and run the same command again."},
 		{"unknown total", driver.ErrBadConn, importState{target: "app@db", committed: 5, changed: true}, core.ErrImportMixed, core.Mixed,
 			"import: the connection to app@db was lost after 5 tables. The target is in a mixed state: some tables are pseudonymised, the rest still hold the earlier copy. Run the same command again."},
+		{"one table, unknown total", &mysql.MySQLError{Number: 1064, SQLState: [5]byte{'4', '2', '0', '0', '0'}, Message: "You have an error in your SQL syntax"},
+			importState{engine: core.MySQL, target: "app@db", committed: 1, changed: true}, core.ErrImportMixed, core.Mixed,
+			"import: MySQL error 1064 (42000): You have an error in your SQL syntax. The target is in a mixed state after 1 table: some tables are pseudonymised, the rest still hold the earlier copy. Fix the cause and run the same command again."},
+		{"one of one", driver.ErrBadConn, importState{target: "app@db", committed: 1, total: 1, changed: true}, core.ErrImportMixed, core.Mixed,
+			"import: the connection to app@db was lost after 1 of 1 table. The target is in a mixed state: some tables are pseudonymised, the rest still hold the earlier copy. Run the same command again."},
 		{"first table broke", driver.ErrBadConn, importState{target: "app@db", current: "wp_posts", changed: true}, core.ErrImportMixed, core.Mixed,
 			"import: the connection to app@db was lost during table wp_posts. The target is in a mixed state: some tables are pseudonymised, the rest still hold the earlier copy. Run the same command again."},
 	}

@@ -109,15 +109,23 @@ func stateSentence(st importState, again bool) string {
 
 // progress is "after 37 of 61 tables", "after 37 tables" when the total
 // is unknown, or "during table wp_users" when the first table broke
-// after it was dropped.
+// after it was dropped. One table reads "after 1 table".
 func progress(st importState) string {
 	if st.committed == 0 && st.current != "" {
 		return "during table " + st.current
 	}
 	if st.total >= st.committed && st.total > 0 {
-		return fmt.Sprintf("after %d of %d tables", st.committed, st.total)
+		return fmt.Sprintf("after %d of %d %s", st.committed, st.total, tables(st.total))
 	}
-	return fmt.Sprintf("after %d tables", st.committed)
+	return fmt.Sprintf("after %d %s", st.committed, tables(st.committed))
+}
+
+// tables is "table" for one and "tables" for any other count.
+func tables(n int) string {
+	if n == 1 {
+		return "table"
+	}
+	return "tables"
 }
 
 // serverLabel is "MariaDB 10.6" or "MySQL 8.0": the engine and the major
