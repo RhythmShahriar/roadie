@@ -385,7 +385,7 @@ func (m *Map) rewrite(text []byte) ([]byte, int) {
 
 // rewriteHost is RewriteHost.
 func (m *Map) rewriteHost(host []byte) ([]byte, bool) {
-	h, port, _ := splitPort(string(host))
+	h, port := splitPort(string(host))
 	for i := range m.rules {
 		r := &m.rules[i]
 		if r.from.path != "" || !equalFold([]byte(h), r.host) {

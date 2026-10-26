@@ -246,9 +246,7 @@ func hosts(urls []string) ([]string, error) {
 // matchHost is MatchHost.
 func matchHost(hosts []string, host string) bool {
 	host = strings.TrimSuffix(strings.TrimSpace(host), ".")
-	if h, _, err := splitPort(host); err == nil {
-		host = h
-	}
+	host, _ = splitPort(host)
 	ascii, _, ok := asciiHost(host)
 	if !ok {
 		ascii = strings.ToLower(host)
@@ -266,15 +264,15 @@ func matchHost(hosts []string, host string) bool {
 }
 
 // splitPort splits "host:port"; a host without a port comes back whole.
-func splitPort(hp string) (host, port string, err error) {
+func splitPort(hp string) (host, port string) {
 	if strings.HasPrefix(hp, "[") {
 		if i := strings.Index(hp, "]"); i > 0 {
-			return hp[:i+1], strings.TrimPrefix(hp[i+1:], ":"), nil
+			return hp[:i+1], strings.TrimPrefix(hp[i+1:], ":")
 		}
-		return hp, "", nil
+		return hp, ""
 	}
 	if i := strings.LastIndexByte(hp, ':'); i >= 0 && strings.Count(hp, ":") == 1 {
-		return hp[:i], hp[i+1:], nil
+		return hp[:i], hp[i+1:]
 	}
-	return hp, "", nil
+	return hp, ""
 }

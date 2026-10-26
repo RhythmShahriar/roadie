@@ -263,9 +263,13 @@ func decodeEntities(s string) string {
 		if j < len(s) && (s[j] == 'x' || s[j] == 'X') {
 			j, hex = j+1, true
 		}
+		base := 10
+		if hex {
+			base = 16
+		}
 		v, k := 0, j
 		for k < len(s) && (s[k] >= '0' && s[k] <= '9' || hex && isHex(s[k])) && v <= 0x10ffff {
-			v = v*map[bool]int{false: 10, true: 16}[hex] + hexVal(s[k])
+			v = v*base + hexVal(s[k])
 			k++
 		}
 		if k == j || k >= len(s) || s[k] != ';' || (v != '/' && v != ':') {
