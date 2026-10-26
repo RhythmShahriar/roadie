@@ -207,13 +207,25 @@ func onlyWords(t toks, ws ...string) bool {
 	return true
 }
 
-// clientRefusal refuses a mysql client command, naming it.
+// clientRefusal refuses a mysql client command, naming it: the named
+// command the statement starts with, or the backslash command in it. A
+// statement such as "CREATE TABLE t (a int) \! id" is named by its \!,
+// never by its first word, which isn't the command.
 func clientRefusal(text []byte) Decision {
 	what := "a mysql client command"
 	if len(text) >= 2 && text[0] == '\\' && text[1] > ' ' && text[1] < 0x7f {
-		what += " (\\" + string(text[1]) + ")"
-	} else if t := lex(text, syntax{}); safeName(t.w(0)) != "" && len(t.w(0)) <= 24 {
-		what += " (" + t.w(0) + ")"
+		return refuse(what+" (\\"+string(text[1])+")", whyClient)
+	}
+	t := lex(text, syntax{})
+	if w := t.w(0); clientWords[w] && len(w) <= 24 {
+		return refuse(what+" ("+w+")", whyClient)
+	}
+	for i := range t {
+		// A backslash word command (\G, \g) lost its case in the
+		// lexer, so only punctuation commands (\!, \.) are named.
+		if t.p(i, '\\') && t.kind(i+1) == punct {
+			return refuse(what+" (\\"+t[i+1].w+")", whyClient)
+		}
 	}
 	return refuse(what, whyClient)
 }
