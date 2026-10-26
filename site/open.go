@@ -285,7 +285,7 @@ func backupDir(dir string) (string, func(), error) {
 
 // sqliteBackup copies a SQLite database file, with its write-ahead log
 // when there is one, into the backup folder (0600): Roadie writes no
-// SQLite dumps, and the file itself is the most faithful backup. It
+// SQLite dumps; the file itself is the most faithful backup. It
 // returns the copy and the command that puts it back.
 func sqliteBackup(dir string, e core.Endpoint) (string, string, error) {
 	dir, made, err := backupDir(dir)

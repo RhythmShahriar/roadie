@@ -186,7 +186,7 @@ func asCoreError(err error) *core.Error {
 	}
 	if unreachable(err) {
 		return core.Errorf(core.ErrUnreachable, cli.ExitUnavailable,
-			"unreachable: %s. Check that the database or host is running and reachable from here, and the host and port you gave.", err)
+			"unreachable: %s. Check that the database or host is running and reachable from here; then check the host and port you gave.", err)
 	}
 	return &core.Error{Exit: cli.ExitUnavailable, Msg: err.Error()}
 }

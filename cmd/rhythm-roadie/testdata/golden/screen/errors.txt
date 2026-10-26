@@ -416,7 +416,7 @@ Target: /var/www/staging
 
 STOPPED   unreachable; the target is untouched
 
-unreachable: db: connect to mysql://127.0.0.1:3306/shop: dial tcp 127.0.0.1:3306: connect: connection refused. Check that the database or host is running and reachable from here, and the host and port you gave.
+unreachable: db: connect to mysql://127.0.0.1:3306/shop: dial tcp 127.0.0.1:3306: connect: connection refused. Check that the database or host is running and reachable from here; then check the host and port you gave.
 
 rhythm-roadie explain unreachable
 --- exit 3

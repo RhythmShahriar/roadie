@@ -828,7 +828,7 @@ func TestFixedScalars(t *testing.T) {
 }
 
 // A leaf no rule covers gets fakes for what it plainly holds: a phone or
-// a name by its key in a nested value, a known name under "name", and
+// a name by its key in a nested value, a known name under "name" and
 // personal emails (a URL's %40 too), phones and IPs anywhere. A
 // product's name, a short code under "phone", a reserved address and
 // production's own host stay.

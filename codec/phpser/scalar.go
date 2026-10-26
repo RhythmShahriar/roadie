@@ -6,8 +6,8 @@ package phpser
 // RewriteScalars returns b with the boolean and integer values fn
 // changed, verbatim otherwise.
 //
-// fn sees each b: and i: value as written ("b:0;", "i:-3;") at its path,
-// named as Rewrite names them, and returns the value to write in its
+// fn sees each b: and i: value as written ("b:0;", "i:-3;") at its path
+// (named as Rewrite names them) and returns the value to write in its
 // place, which must itself be one serialized value. Rewrite only sees
 // strings, yet a setting such as PayPal's sandbox_on is stored as a
 // boolean. When nothing changed, out is b itself.

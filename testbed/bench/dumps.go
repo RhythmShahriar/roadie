@@ -24,7 +24,7 @@ const dumpTarget = "${work}/out.sql"
 
 // DumpScenarios returns the scenarios of f that read a seeded dump and
 // can run on this machine without the testbed: copies to a dump file
-// (a copy to the staging site is turned into one), and verify of a dump.
+// (a copy to the staging site is turned into one) and verify of a dump.
 // The gates that need the testbed (the sinkhole, the boot check, WP-CLI
 // checks, imports into its databases) are left out; the exit and error
 // codes, the oracle (gates 1 and 2), the joins and the fresh verify
@@ -95,9 +95,9 @@ func dumpLevel(s manifest.Scenario) bool {
 	return true
 }
 
-// readsDump reports whether a command reads a dump of the seeded input:
-// copy --from ${in}/..., or verify ${in}/... (with --from ${in}/... if
-// any), and names no host or database of the testbed.
+// readsDump reports whether a command reads a dump of the seeded input
+// (copy --from ${in}/..., or verify ${in}/... with any --from there too)
+// and names no host or database of the testbed.
 func readsDump(args []string) bool {
 	if len(args) < 2 {
 		return false

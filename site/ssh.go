@@ -36,8 +36,8 @@ type sshSite struct {
 	mu  sync.Mutex
 	cfg *dbConfig
 	// exists caches Exists for the run: profile detection asks for the
-	// same plugin files each time pass 1 sees new tables, and each ask
-	// is an ssh round trip. Anything that may change the files clears it.
+	// same plugin files each time pass 1 sees new tables; each ask is an
+	// ssh round trip. Anything that may change the files clears it.
 	exists map[string]bool
 }
 
@@ -432,8 +432,8 @@ func (s *sshSite) Source(ctx context.Context, tables []string) (core.Source, err
 // Export hands over the whole remote export as a dump stream, so a
 // two-pass run reads production once and keeps the dump in its
 // encrypted spool for pass 2 (PRD 10.3): two exports would be two
-// transactions that may not hold the same rows, and twice the load on
-// production. A failed export is the stream's read error.
+// transactions that may not hold the same rows (with twice the load on
+// production). A failed export is the stream's read error.
 func (s *sshSite) Export(ctx context.Context) (io.ReadCloser, error) {
 	ex, err := s.export(ctx, nil)
 	if err != nil {

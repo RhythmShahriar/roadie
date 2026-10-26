@@ -742,8 +742,8 @@ func (t *transformer) keyedLeaf(table, p string, leaf []byte) ([]byte, bool, err
 // uncoveredLeaf gives a leaf no rule covers the fakes of what it plainly
 // holds: keyedLeaf's fakes, then for any leaf fakes for its personal
 // emails (with any at sign: a URL's %40 too), strong-format phones,
-// public IPs and streets written as a number and a street name, and
-// XXXX for a card number: what verify reports, so a copy doesn't fail
+// public IPs and streets written as a number and a street name; XXXX
+// for a card number: what verify reports, so a copy doesn't fail
 // its own verify on a plugin's settings, a cron job's arguments or a
 // URL with an address in its query. A street in an options or settings
 // table is the business's own and stays.

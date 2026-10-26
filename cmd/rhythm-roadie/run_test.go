@@ -126,7 +126,7 @@ var prdErrors = map[string]string{
 	core.ErrReportUnsigned:        "report check: report.json has no signature (it was written with --sign=off).",
 	core.ErrDiskFull:              "not enough free disk space: need about 2.4 GB, 1.1 GB free in /var/tmp",
 	core.ErrNotFound:              "not-found: shop.sql doesn't exist. Check the path you gave.",
-	core.ErrUnreachable:           "unreachable: db: connect to mysql://127.0.0.1:3306/shop: dial tcp 127.0.0.1:3306: connect: connection refused. Check that the database or host is running and reachable from here, and the host and port you gave.",
+	core.ErrUnreachable:           "unreachable: db: connect to mysql://127.0.0.1:3306/shop: dial tcp 127.0.0.1:3306: connect: connection refused. Check that the database or host is running and reachable from here; then check the host and port you gave.",
 	core.ErrCodeNotBuilt:          "not built yet",
 }
 

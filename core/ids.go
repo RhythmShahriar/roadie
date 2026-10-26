@@ -87,8 +87,8 @@ const (
 	// and testbed scenario r20 need.
 	ErrDiskFull = "disk-full"
 	// ErrNotFound (exit 2) and ErrUnreachable (exit 3) are added at
-	// integration so every stop has a code (PRD 17): a dump or folder the
-	// command names that doesn't exist, and a database or host that
+	// integration so every stop has a code (PRD 17): a dump or folder
+	// the command names that doesn't exist; a database or host that
 	// doesn't answer.
 	ErrNotFound    = "not-found"
 	ErrUnreachable = "unreachable"
