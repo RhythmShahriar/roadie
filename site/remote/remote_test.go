@@ -209,11 +209,20 @@ func TestArgvAndQuotedPath(t *testing.T) {
 	if err := r3.Run(context.Background(), nil, nil, CoreVersion); err != nil {
 		t.Fatal(err)
 	}
+	// An IPv6 host reaches ssh without its brackets.
+	r4 := &Runner{User: "deploy", Host: "[2001:db8::1]", Port: 22}
+	if err := r4.Run(context.Background(), nil, nil, CoreVersion); err != nil {
+		t.Fatal(err)
+	}
+	if got := r4.Dest(); got != "deploy@[2001:db8::1]" {
+		t.Errorf("Dest %q keeps the brackets for messages", got)
+	}
 	calls := s.Calls()
 	want := [][]string{
 		{"-p", "2222", "-o", "BatchMode=yes", "--", "deploy@shop.example", "cat -- '/srv/$(id)/wp-config.php'"},
 		{"--", "shop.example", "wp core version --skip-plugins --skip-themes"},
 		{"-o", "BatchMode=yes", "--", "shop.example", "wp core version --skip-plugins --skip-themes"},
+		{"-p", "22", "--", "deploy@2001:db8::1", "wp core version --skip-plugins --skip-themes"},
 	}
 	if len(calls) != len(want) {
 		t.Fatalf("calls %q", calls)

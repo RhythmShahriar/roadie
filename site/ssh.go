@@ -539,7 +539,7 @@ func (s *sshSite) Backup(ctx context.Context) (string, string, error) {
 	if s.ep.Port != 0 {
 		ssh += "-p " + strconv.Itoa(s.ep.Port) + " "
 	}
-	return p, ssh + s.r.Dest() + " " + remote.Quote(inner), nil
+	return p, ssh + s.r.SSHDest() + " " + remote.Quote(inner), nil
 }
 
 func (s *sshSite) Close() error { return nil }

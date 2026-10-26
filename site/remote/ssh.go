@@ -50,6 +50,20 @@ func (r *Runner) Dest() string {
 	return r.User + "@" + r.Host
 }
 
+// SSHDest is Dest as the ssh command line takes it: an IPv6 host loses
+// its brackets, which ssh would pass to getaddrinfo as part of the name.
+// Messages keep Dest, brackets and all.
+func (r *Runner) SSHDest() string {
+	h := r.Host
+	if strings.HasPrefix(h, "[") && strings.HasSuffix(h, "]") {
+		h = h[1 : len(h)-1]
+	}
+	if r.User == "" {
+		return h
+	}
+	return r.User + "@" + h
+}
+
 // Command builds the remote command string for t, checking it against
 // the allowlist and the runner's read-only rule.
 func (r *Runner) Command(t Template, args ...string) (string, error) {
@@ -95,7 +109,7 @@ func (r *Runner) Argv(cmd string) ([]string, error) {
 	if r.BatchMode || !stdinIsTerminal() {
 		argv = append(argv, "-o", "BatchMode=yes")
 	}
-	return append(argv, "--", r.Dest(), cmd), nil
+	return append(argv, "--", r.SSHDest(), cmd), nil
 }
 
 // Run runs template t with stdin (nil for none), streaming its output to
