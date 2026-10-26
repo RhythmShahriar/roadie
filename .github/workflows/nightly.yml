@@ -75,7 +75,13 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # The pinned WordPress plugin zips the site Docker tests install;
+      # without them those tests skip.
+      - name: Fetch the plugin zips
+        run: site/testdata/fetch-plugin-zips.sh "$RUNNER_TEMP/plugin-zips"
       - run: go test -tags docker -timeout 40m ./...
+        env:
+          ROADIE_PLUGIN_ZIPS: ${{ runner.temp }}/plugin-zips
 
   # The sealed testbed: the seal check, the benchmark with 5-minute drills
   # (results.json and docs/benchmark.md as artifacts) and make reproduce,
@@ -90,6 +96,9 @@ jobs:
           go-version-file: go.mod
       - run: make testbed
       - run: make -C testbed seal
+      # The control pass: every good input verified five times, no false
+      # alarm at or above low.
+      - run: go test -tags testbed -run TestGoodInputsAreClean ./testbed/bench/
       - run: make -C testbed bench DRILL=5m
       # The score must not depend on the drill's length, so the two runs
       # that check it use a short one.
