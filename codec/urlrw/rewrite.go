@@ -324,18 +324,26 @@ func schemeByte(c byte) bool {
 func (m *Map) matches(text []byte) []match {
 	var out []match
 	for _, g := range m.groups {
+		// An all-letter host such as localhost is searched for in either
+		// case. Each case's next position is remembered and searched for
+		// again only once i has passed it, so text with many hits of one
+		// case is scanned once, not once per hit.
+		letter := g.anchor >= 'a' && g.anchor <= 'z'
+		nextLo, nextUp := -1, -1
 		for i := 0; i < len(text); {
-			j := bytes.IndexByte(text[i:], g.anchor)
-			if g.anchor >= 'a' && g.anchor <= 'z' {
-				// an all-letter host such as localhost: either case
-				if k := bytes.IndexByte(text[i:], g.anchor-('a'-'A')); k >= 0 && (j < 0 || k < j) {
-					j = k
-				}
+			if nextLo < i {
+				nextLo = nextIndex(text, i, g.anchor)
 			}
-			if j < 0 {
+			p := nextLo
+			if letter {
+				if nextUp < i {
+					nextUp = nextIndex(text, i, g.anchor-('a'-'A'))
+				}
+				p = min(p, nextUp)
+			}
+			if p >= len(text) {
 				break
 			}
-			p := i + j
 			for _, ar := range g.rules {
 				h := p - ar.offset
 				if h < 0 || h+len(ar.rule.host) > len(text) || !equalFold(text[h:h+len(ar.rule.host)], ar.rule.host) {
@@ -365,6 +373,15 @@ func (m *Map) matches(text []byte) []match {
 		}
 	}
 	return kept
+}
+
+// nextIndex is the position of the first c in text at or after i, or
+// len(text) when there is none.
+func nextIndex(text []byte, i int, c byte) int {
+	if j := bytes.IndexByte(text[i:], c); j >= 0 {
+		return i + j
+	}
+	return len(text)
 }
 
 // rewrite is Rewrite.

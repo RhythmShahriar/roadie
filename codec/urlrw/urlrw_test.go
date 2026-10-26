@@ -8,6 +8,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/RhythmShahriar/roadie/core"
 )
@@ -107,6 +108,23 @@ func TestAllLetterHost(t *testing.T) {
 	got, n := m.Rewrite([]byte("LOCALHOST http://Localhost/a http://localhost:3000"))
 	if string(got) != "LOCALHOST http://staging/a http://staging:3000" || n != 2 {
 		t.Errorf("got %q %d", got, n)
+	}
+}
+
+// TestAllLetterHostScales guards against the all-letter anchor search
+// going quadratic: every byte of the text is an anchor hit in one case or
+// the other. 4 MB took minutes when each hit re-scanned the rest of the
+// text; a linear scan takes well under a second even under -race.
+func TestAllLetterHostScales(t *testing.T) {
+	m := mustMap(t, Pair{"http://localhost", "http://staging"})
+	text := bytes.Repeat([]byte("lLlLLllL"), 512<<10)
+	start := time.Now()
+	got, n := m.Rewrite(text)
+	if n != 0 || !bytes.Equal(got, text) {
+		t.Fatalf("changed %d", n)
+	}
+	if d := time.Since(start); d > 10*time.Second {
+		t.Errorf("4 MB of anchor hits took %v", d)
 	}
 }
 
