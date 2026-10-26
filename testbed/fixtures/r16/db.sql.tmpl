@@ -1,0 +1,44 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r16: 100 contacts, 200 deals and 150 tickets joined by email. */ -}}
+{{template "head"}}
+DROP TABLE IF EXISTS `contacts`;
+CREATE TABLE `contacts` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `email` varchar(255) NOT NULL,
+  `full_name` varchar(255) NOT NULL,
+  `phone` varchar(40) DEFAULT NULL,
+  `company` varchar(255) DEFAULT NULL,
+  `notes` text,
+  `emergency_contact` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `contacts_email` (`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+LOCK TABLES `contacts` WRITE;
+INSERT INTO `contacts` VALUES {{range $i := seq 100}}{{$n := printf "k%d" $i}}{{if gt $i 1}},{{end}}({{$i}},'{{sql (canary "email" $n "contacts.email")}}','{{sql (canary "full_name" $n "contacts.full_name")}}','{{sql (canary "phone" $n "contacts.phone")}}','Acme Roasters','{{sql "Met at the trade fair, prefers calls on " (canary "phone" $n)}}','{{sql (canary "full_name" (printf "ice%d" $i) "contacts.emergency_contact") " " (canary "phone" (printf "ice%d" $i) "contacts.emergency_contact")}}'){{end}};
+UNLOCK TABLES;
+DROP TABLE IF EXISTS `deals`;
+CREATE TABLE `deals` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `contact_email` varchar(255) NOT NULL,
+  `amount_cents` int NOT NULL,
+  `stage` varchar(20) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `deals_contact_email` (`contact_email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+LOCK TABLES `deals` WRITE;
+INSERT INTO `deals` VALUES {{range $d := seq 200}}{{if gt $d 1}},{{end}}({{$d}},'{{sql (canary "email" (printf "k%d" (add (mod $d 100) 1)))}}',{{mul $d 1000}},'won'){{end}};
+UNLOCK TABLES;
+DROP TABLE IF EXISTS `tickets`;
+CREATE TABLE `tickets` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `requester_email` varchar(255) NOT NULL,
+  `body` text NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `tickets_requester_email` (`requester_email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+LOCK TABLES `tickets` WRITE;
+INSERT INTO `tickets` VALUES {{range $t := seq 150}}{{$n := printf "k%d" (add (mod $t 100) 1)}}{{if gt $t 1}},{{end}}({{$t}},'{{sql (canary "email" $n)}}','{{sql "Please send the invoice again, " (canary "full_name" $n) " here."}}'){{end}};
+UNLOCK TABLES;
+{{template "tail"}}

@@ -1,0 +1,28 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# r28: every personal column of the Prisma schema.
+stack: sql
+production: ["app.shop.example.com"]
+columns:
+  - table: User
+    column: email
+    rule: email
+  - table: User
+    column: name
+    rule: full_name
+  - table: User
+    column: phone
+    rule: phone
+  - table: Address
+    column: line1
+    rule: street
+  - table: Session
+    column: ipAddress
+    rule: ip
+  - table: Session
+    column: data
+    rule: json:$.email=email
+  - table: Order
+    column: note
+    rule: text

@@ -1,0 +1,10 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  A Laravel app on MySQL: users with an encrypted cast column, orders,
+  queued jobs and failed jobs whose payloads hold serialized commands with
+  emails, notifications as JSON, sessions as base64 serialized payloads
+  and an .env with live Stripe and SES keys.
+stack: laravel
+canaries: true

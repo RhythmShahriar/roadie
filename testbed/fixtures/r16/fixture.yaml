@@ -1,0 +1,11 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  A generic SQL CRM with a Roadie config: the email is the join key of
+  contacts, deals and tickets, so all three must get the same fake or the
+  joins break; contacts.emergency_contact holds a name and a phone the
+  config forgot, which must stop the copy (or, with --allow-uncovered,
+  make verify fail).
+stack: sql
+canaries: true
