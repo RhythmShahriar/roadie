@@ -143,6 +143,9 @@ func fakeFormat(b []byte) string {
 
 // fakeScrub replaces the email spans of text by their fakes.
 func fakeScrub(text []byte, sp core.Spanner, _ core.Known, f core.Faker) ([]byte, int) {
+	if sp == nil {
+		return text, 0
+	}
 	spans := sp.Spans(text)
 	if len(spans) == 0 {
 		return text, 0

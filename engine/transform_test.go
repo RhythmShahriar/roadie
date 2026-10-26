@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/codec/nested"
+	"github.com/RhythmShahriar/roadie/codec/phpser"
 	"github.com/RhythmShahriar/roadie/codec/urlrw"
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/detect"
@@ -77,12 +78,17 @@ func TestTransformActions(t *testing.T) {
 	if got, notNull := valueOf(t, sink, "t", 0, "nn"); !notNull || got != "" {
 		t.Errorf("a NOT NULL column got NULL or %q", got)
 	}
-	var j map[string]map[string]string
+	// The path rule fakes billing.email; the other leaves are no rule's,
+	// so only the address in note (uncovered-values) changes.
+	var j struct {
+		Billing map[string]string `json:"billing"`
+		Note    string            `json:"note"`
+	}
 	got, _ := valueOf(t, sink, "t", 0, "j")
-	if err := json.Unmarshal([]byte(strings.ReplaceAll(got, `"note":"ben@example.com"`, `"note":{}`)), &j); err != nil {
+	if err := json.Unmarshal([]byte(got), &j); err != nil {
 		t.Fatalf("j %q: %v", got, err)
 	}
-	if j["billing"]["email"] != string(email) || j["billing"]["name"] != "Anna" || !strings.Contains(got, `"note":"ben@example.com"`) {
+	if j.Billing["email"] != string(email) || j.Billing["name"] != "Anna" || j.Note == "ben@example.com" || !strings.HasSuffix(j.Note, "@example.invalid") {
 		t.Errorf("path rule: %s", got)
 	}
 	if v, _ := valueOf(t, sink, "t", 1, "e"); v != "<dropped>" {
@@ -780,5 +786,169 @@ func TestTransformHexAndExpr(t *testing.T) {
 	}, cfg, Options{URL: "https://staging.shop.test"})
 	if _, err := p2.run(context.Background()); !isCode(err, core.FindingDataUnparseable) {
 		t.Errorf("on_unparseable: fail: %v", err)
+	}
+}
+
+// A fixed rule reaches a boolean or integer leaf of a serialized value:
+// PayPal Payments stores sandbox_on as b:0;. A leaf already right is
+// kept, a value that isn't the leaf's type leaves it alone and a string
+// leaf stays the string rewrite's.
+func TestFixedScalars(t *testing.T) {
+	rule := func(path, value string) core.Rule {
+		return core.Rule{ID: "ks." + path, Path: path, Action: core.Fixed, Value: value}
+	}
+	cases := []struct {
+		in    string
+		rules []core.Rule
+		want  string // "" = unchanged
+	}{
+		{`a:2:{s:7:"enabled";b:1;s:10:"sandbox_on";b:0;}`, []core.Rule{rule("sandbox_on", "1")}, `a:2:{s:7:"enabled";b:1;s:10:"sandbox_on";b:1;}`},
+		{`a:1:{s:10:"sandbox_on";b:1;}`, []core.Rule{rule("sandbox_on", "yes")}, ""},
+		{`a:1:{s:7:"enabled";b:1;}`, []core.Rule{rule("enabled", "no")}, `a:1:{s:7:"enabled";b:0;}`},
+		{`a:1:{s:4:"mode";i:1;}`, []core.Rule{rule("serialized:mode", "0")}, `a:1:{s:4:"mode";i:0;}`},
+		{`a:1:{s:11:"environment";b:0;}`, []core.Rule{rule("environment", "sandbox")}, ""},
+		{`a:1:{s:10:"sandbox_on";s:1:"0";}`, []core.Rule{rule("sandbox_on", "1")}, ""},
+		{`a:1:{s:10:"sandbox_on";b:0;}`, []core.Rule{{ID: "x", Path: "sandbox_on", Action: core.Blank}}, ""},
+		{`{"sandbox_on":false}`, []core.Rule{rule("sandbox_on", "1")}, ""},
+	}
+	for _, c := range cases {
+		cnt := &counter{out: &batchOut{}, table: "wp_options", col: "option_value"}
+		got, ok := fixedScalars([]byte(c.in), c.rules, cnt)
+		if c.want == "" {
+			if ok {
+				t.Errorf("%s: changed to %s", c.in, got)
+			}
+			continue
+		}
+		if !ok || string(got) != c.want {
+			t.Errorf("%s: got %s %v, want %s", c.in, got, ok, c.want)
+		}
+	}
+}
+
+// A leaf no rule covers gets fakes for what it plainly holds: a phone or
+// a name by its key in a nested value, a known name under "name", and
+// personal emails (a URL's %40 too), phones and IPs anywhere. A
+// product's name, a short code under "phone", a reserved address and
+// production's own host stay.
+func TestUncoveredValues(t *testing.T) {
+	if _, err := pseudo.NewFaker(pseudo.Key{}, pseudo.Options{}); errors.Is(err, core.ErrNotBuilt) {
+		t.Skip("needs the values lane")
+	}
+	mobile := "+44 7700 " + "981234"
+	inner := "a:2:{" + serStr("phone") + serStr(mobile) + serStr("city") + serStr("Leeds") + "}"
+	profile := "a:2:{" + serStr("profile") + serStr(inner) + serStr("name") + serStr("Anna Lee") + "}"
+	cron := "a:1:{i:1767225720;a:1:{" + serStr("send_newsletter") + "a:1:{" + serStr("args") + "a:1:{i:0;" + serStr("mara.ostby@gmail.com") + "}}}}"
+	plugin := `{"name":"Stripe","phone":"n/a","first_name":"Zebulonne","support":"help@example.com","ip":"81.2.69.142"}`
+	entry := "https://shop.com/checkout/?ref=crm&contact=mara.ostby%40gmail.com"
+	p, sink, _ := fixture(t, Copy, "wp_", func() []tableData {
+		return []tableData{
+			{table("wp_options", "option_id:bigint(20)", "option_name", "option_value"), rows{
+				{1, "siteurl", "https://shop.com"}, {2, "home", "https://shop.com"}, {3, "cron", cron}, {4, "plugin_settings", plugin}}},
+			{table("wp_users", "ID:bigint(20)", "user_login", "user_email", "display_name"), rows{
+				{1, "anna", "anna.lee@shop-mail.com", "Anna Lee"}}},
+			{table("wp_usermeta", "umeta_id:bigint(20)", "user_id:bigint(20)", "meta_key", "meta_value"), rows{
+				{1, 1, "plugin_profile", profile}, {2, 1, "_session_entry", entry}}},
+		}
+	}, nil, Options{URL: "https://staging.shop.test"})
+	out := run(t, p)
+	v, _ := valueOf(t, sink, "wp_usermeta", 0, "meta_value")
+	if strings.Contains(v, mobile) || strings.Contains(v, "Anna") || !strings.Contains(v, "Leeds") {
+		t.Errorf("profile: %s", v)
+	}
+	if !phpser.Valid([]byte(v)) {
+		t.Errorf("profile no longer serialized: %s", v)
+	}
+	if v, _ := valueOf(t, sink, "wp_usermeta", 1, "meta_value"); strings.Contains(v, "mara.ostby") || !strings.Contains(v, "%40") ||
+		!strings.HasPrefix(v, "https://staging.shop.test/checkout/") {
+		t.Errorf("session entry: %s", v)
+	}
+	if v, _ := valueOf(t, sink, "wp_options", 2, "option_value"); strings.Contains(v, "mara.ostby") || !phpser.Valid([]byte(v)) {
+		t.Errorf("cron: %s", v)
+	}
+	v, _ = valueOf(t, sink, "wp_options", 3, "option_value")
+	for _, kept := range []string{`"name":"Stripe"`, `"phone":"n/a"`, `"support":"help@example.com"`} {
+		if !strings.Contains(v, kept) {
+			t.Errorf("plugin settings lack %s: %s", kept, v)
+		}
+	}
+	if strings.Contains(v, `"first_name":"Zebulonne"`) || strings.Contains(v, "81.2.69.142") {
+		t.Errorf("plugin settings: %s", v)
+	}
+	n := int64(0)
+	for _, c := range out.Result.Changes {
+		if c.Rule == changeUncovered {
+			n += c.Values
+		}
+	}
+	if n < 5 {
+		t.Errorf("uncovered-values changes %d, want 5 or more: %+v", n, out.Result.Changes)
+	}
+}
+
+// serStr is PHP's serialize() of a string.
+func serStr(v string) string { return fmt.Sprintf(`s:%d:"%s";`, len(v), v) }
+
+// An address index written without the empty parts (an import, a
+// fixture) is rebuilt part by part too, keeping its layout, so it holds
+// the parts' own fakes: the same names, street and city.
+func TestAddressIndexWithoutEmptyParts(t *testing.T) {
+	useFakes(t)
+	var nonEmpty []string
+	for _, v := range billing {
+		if v != "" {
+			nonEmpty = append(nonEmpty, v)
+		}
+	}
+	index := strings.Join(nonEmpty, " ")
+	tables := func() []tableData {
+		addr := []any{1, 10, "billing"}
+		for _, v := range billing {
+			addr = append(addr, v)
+		}
+		return []tableData{
+			wpBase([]any{4, "woocommerce_custom_orders_table_enabled", "yes"}),
+			{table("wp_wc_order_addresses", append([]string{"id:bigint(20)", "order_id:bigint(20)", "address_type"}, addrParts[true]...)...), rows{addr}},
+			{table("wp_wc_orders", "id:bigint(20)", "customer_id:bigint(20)", "billing_email"), rows{{10, 0, billing[9]}}},
+			{table("wp_wc_orders_meta", "id:bigint(20)", "order_id:bigint(20)", "meta_key", "meta_value:longtext"), rows{
+				{1, 10, "_billing_address_index", index}, {2, 10, "_billing_address_index", index + " extra"}}},
+		}
+	}
+	p, sink, _ := fixture(t, Copy, "wp_", tables, nil, Options{})
+	run(t, p)
+	var fakes []string
+	for _, part := range addrParts[true] {
+		if v, _ := valueOf(t, sink, "wp_wc_order_addresses", 0, part); v != "" {
+			fakes = append(fakes, v)
+		}
+	}
+	if v, _ := valueOf(t, sink, "wp_wc_orders_meta", 0, "meta_value"); v != strings.Join(fakes, " ") {
+		t.Errorf("index %q, want %q", v, strings.Join(fakes, " "))
+	}
+	// Lengths that fit neither layout: the index keeps its text rule.
+	if v, _ := valueOf(t, sink, "wp_wc_orders_meta", 1, "meta_value"); strings.Contains(v, billing[9]) || v == strings.Join(fakes, " ")+" extra" {
+		t.Errorf("odd index %q", v)
+	}
+}
+
+// An address index's text keeps no known city; other free text keeps a
+// city on its own, which points at no one.
+func TestSweepTextCity(t *testing.T) {
+	k := testutil.FakeKnown()
+	k.Add(core.KCity, []byte("Leeds"))
+	k.Add(core.KPostcode, []byte("LS1 4AP"))
+	k.Seal()
+	tr := newTransformer(&shared{cfg: roadiecfg.Default(), known: k}, testutil.FakeFaker())
+	text := []byte("Anna Lee 1 High Street Leeds LS1 4AP GB")
+	got, ok := tr.sweepText(text, indexKinds)
+	if !ok || strings.Contains(string(got), "Leeds") || strings.Contains(string(got), "LS1 4AP") {
+		t.Errorf("index: %s", got)
+	}
+	got, ok = tr.sweepText(text, textKinds)
+	if !ok || !strings.Contains(string(got), "Leeds") || strings.Contains(string(got), "LS1 4AP") {
+		t.Errorf("text: %s", got)
+	}
+	if got, ok := tr.sweepText([]byte("Made in Leeds"), textKinds); ok {
+		t.Errorf("a city in prose: %s", got)
 	}
 }

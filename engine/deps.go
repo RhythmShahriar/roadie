@@ -36,6 +36,8 @@ var (
 	newFaker      = pseudo.NewFaker
 	newKnown      = pseudo.NewKnown
 	scrubText     = pseudo.Scrub
+	isFake        = pseudo.IsFake
+	scrubSpans    = pseudo.ScrubSpans
 	resetHash     = pseudo.ResetHashFor
 	passwordHash  = pseudo.PasswordHash
 	nestedRewrite = nested.Rewrite

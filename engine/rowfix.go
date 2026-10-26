@@ -100,27 +100,43 @@ func (t *transformer) addressIndex(rc rowCtx, col core.Column, orig []byte) ([]b
 	if !ok {
 		return nil, false
 	}
-	total := len(parts) - 1
+	// WooCommerce joins every part with a space, empty ones too; an
+	// index written by other code (an import, an older version) may skip
+	// the empty parts. Either layout is rebuilt part by part, so the
+	// index holds the same fakes as the parts.
+	total, nonEmpty, skipped := len(parts)-1, 0, 0
 	for i := range parts {
 		total += lens[i]
+		if lens[i] > 0 {
+			nonEmpty++
+			skipped += lens[i]
+		}
 	}
+	skipEmpty := false
 	if total != len(orig) {
-		return nil, false
+		if nonEmpty == 0 || skipped+nonEmpty-1 != len(orig) {
+			return nil, false
+		}
+		skipEmpty = true
 	}
 	typ := "_shipping_"
 	if billing {
 		typ = "_billing_"
 	}
 	out := make([]byte, 0, len(orig)+32)
-	off := 0
+	off, wrote := 0, false
 	for i, part := range parts {
-		if i > 0 {
+		if skipEmpty && lens[i] == 0 {
+			continue
+		}
+		if skipEmpty && wrote || !skipEmpty && i > 0 {
 			if orig[off] != ' ' {
 				return nil, false
 			}
 			out = append(out, ' ')
 			off++
 		}
+		wrote = true
 		n := lens[i]
 		val := orig[off : off+n]
 		off += n

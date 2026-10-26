@@ -9,13 +9,16 @@ import (
 	"encoding/hex"
 	"hash/maphash"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/RhythmShahriar/roadie/codec/nested"
+	"github.com/RhythmShahriar/roadie/codec/phpser"
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/keys"
 	"github.com/RhythmShahriar/roadie/profile"
 )
 
@@ -27,6 +30,7 @@ const (
 	changeAdminPassword = "admin-password-env"
 	changeUnparseable   = "on_unparseable"
 	changeKnown         = "known-values"
+	changeUncovered     = "uncovered-values"
 )
 
 // sweepKinds are the kinds the known-value sweep replaces in leaves no
@@ -307,14 +311,28 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 			return false, err
 		}
 	}
-	var siblings map[string]string
-	if !rc.noRewrite && nestedFormat(orig) != formatText {
-		siblings = map[string]string{}
-		_ = nestedLeaves(orig, func(p string, leaf []byte) {
-			if len(leaf) <= 512 {
-				siblings[p] = string(leaf)
-			}
-		}, nested.Options{})
+	// The key scan reads a leaf's siblings (testmode, sandbox_on) as
+	// verify does: by their names in the same settings, booleans too.
+	var settings map[string]string
+	var sibs map[string]map[string]string
+	if !rc.noRewrite {
+		settings = settingsOf(orig)
+	}
+	siblingsOf := func(p string) map[string]string {
+		if settings == nil || !singleFormat(p) {
+			return nil
+		}
+		inner, _ := keys.LeafKey(p)
+		parent := parentOf(inner)
+		if sib, ok := sibs[parent]; ok {
+			return sib
+		}
+		if sibs == nil {
+			sibs = map[string]map[string]string{}
+		}
+		sib := keys.Siblings(settings, inner)
+		sibs[parent] = sib
+		return sib
 	}
 	var leafErr error
 	fn := func(p string, leaf []byte) ([]byte, bool) {
@@ -348,7 +366,11 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 				return leaf, false
 			}
 			if !ch {
-				nv, ch = t.scrub(cur)
+				kinds := textKinds
+				if k, _ := rc.get("meta_key"); bytes.HasSuffix(k, []byte("_address_index")) {
+					kinds = indexKinds
+				}
+				nv, ch = t.scrubWith(cur, kinds)
 			}
 			if ch {
 				cnt.changed(whole, 1)
@@ -371,6 +393,7 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 		}
 		// After the URL rewrite: production's own URL becomes the staging
 		// URL even when a user's profile URL is the same.
+		swept := false
 		if !matched && whole == nil && !changed {
 			nv, ch, err := t.sweep(cur, sweepKinds)
 			if err != nil {
@@ -381,10 +404,23 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 				c := out.change(changeKnown, rc.table, col.Name, core.Fake)
 				c.Rows++
 				c.Values++
+				cur, changed, swept = nv, true, true
+			}
+		}
+		if !matched && !swept && (whole == nil || whole.Action == core.RewriteURL) {
+			nv, ch, err := t.uncoveredLeaf(p, cur)
+			if err != nil {
+				leafErr = err
+				return leaf, false
+			}
+			if ch {
+				c := out.change(changeUncovered, rc.table, col.Name, core.Fake)
+				c.Rows++
+				c.Values++
 				cur, changed = nv, true
 			}
 		}
-		nv, ch, err := t.keys(out, rc, col, p, cur, siblings)
+		nv, ch, err := t.keys(out, rc, col, p, cur, siblingsOf(p))
 		if err != nil {
 			leafErr = err
 			return cur, changed
@@ -401,12 +437,75 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 	if err != nil {
 		return false, err
 	}
+	if sv, ok := fixedScalars(nv, paths, cnt); ok {
+		nv, changed = sv, true
+	}
 	if changed {
 		setValue(v, nv, false)
 	} else if whole != nil && whole.Action == core.Keep {
 		cnt.kept(whole)
 	}
 	return false, nil
+}
+
+// fixedScalars applies the fixed path rules to the boolean and integer
+// leaves of a serialized value, which the string rewrite never sees: a
+// gateway's mode can be stored as b:0; (PayPal Payments' sandbox_on).
+// A boolean takes a value of 1, yes, true or on as true and 0, no,
+// false, off or empty as false; an integer takes a whole number. Any
+// other value leaves the leaf as it is.
+func fixedScalars(b []byte, paths []core.Rule, cnt *counter) ([]byte, bool) {
+	fixed := false
+	for i := range paths {
+		if paths[i].Action == core.Fixed {
+			fixed = true
+			break
+		}
+	}
+	if !fixed || nestedFormat(b) != "serialized" {
+		return nil, false
+	}
+	out, changed, err := phpser.RewriteScalars(b, func(p string, tok []byte) ([]byte, bool) {
+		for i := range paths {
+			r := &paths[i]
+			if r.Action != core.Fixed || !leafMatch(r.Path, "serialized:"+p) {
+				continue
+			}
+			want, ok := scalarFor(tok, r.Value)
+			if !ok {
+				return tok, false
+			}
+			if bytes.Equal(want, tok) {
+				cnt.kept(r)
+				return tok, false
+			}
+			cnt.changed(r, 1)
+			return want, true
+		}
+		return tok, false
+	})
+	if err != nil || !changed {
+		return nil, false
+	}
+	return out, true
+}
+
+// scalarFor writes value in the type of tok ("b:0;" or "i:3;").
+func scalarFor(tok []byte, value string) ([]byte, bool) {
+	switch tok[0] {
+	case 'b':
+		switch strings.ToLower(value) {
+		case "1", "yes", "true", "on":
+			return []byte("b:1;"), true
+		case "0", "no", "false", "off", "":
+			return []byte("b:0;"), true
+		}
+	case 'i':
+		if n, err := strconv.ParseInt(value, 10, 64); err == nil {
+			return []byte("i:" + strconv.FormatInt(n, 10) + ";"), true
+		}
+	}
+	return nil, false
 }
 
 // isMultisiteTable reports whether a table is the network's blogs or
@@ -571,10 +670,95 @@ func (t *transformer) sweep(leaf []byte, kinds []core.FakeKind) ([]byte, bool, e
 	return nv, true, nil
 }
 
+// keyedKinds are the kinds a leaf no rule covers holds by its key (the
+// last key of its path in a serialized or JSON value): a plugin's own
+// profile array or a form's stored fields name them plainly.
+var keyedKinds = map[string]core.FakeKind{
+	"phone": core.KPhone, "mobile": core.KPhone, "telephone": core.KPhone, "tel": core.KPhone, "cell": core.KPhone,
+	"cellphone": core.KPhone, "phone_number": core.KPhone, "phonenumber": core.KPhone, "mobile_number": core.KPhone,
+	"billing_phone": core.KPhone, "shipping_phone": core.KPhone, "whatsapp": core.KPhone,
+	"first_name": core.KFirstName, "firstname": core.KFirstName, "given_name": core.KFirstName, "fname": core.KFirstName,
+	"billing_first_name": core.KFirstName, "shipping_first_name": core.KFirstName,
+	"last_name": core.KLastName, "lastname": core.KLastName, "surname": core.KLastName, "family_name": core.KLastName,
+	"lname": core.KLastName, "billing_last_name": core.KLastName, "shipping_last_name": core.KLastName,
+	"full_name": core.KFullName, "fullname": core.KFullName, "display_name": core.KFullName, "customer_name": core.KFullName,
+	"billing_name": core.KFullName, "shipping_name": core.KFullName, "contact_name": core.KFullName,
+}
+
+// uncoveredLeaf gives a leaf no rule covers the fakes of what it plainly
+// holds. A leaf of a serialized or JSON value keyed as a phone or as a
+// first, last or full name gets its kind's fake (a phone only when it
+// has seven digits or more and isn't fictional already); one keyed "name" gets fakes for the known
+// name words in it, since a product or a plugin has a name too. Then
+// any leaf gets fakes for its personal emails (with any at sign: a
+// URL's %40 too), strong-format phones and public IPs, and XXXX for a
+// card number: what verify reports, so a copy doesn't fail its own
+// verify on a plugin's settings, a cron job's arguments or a URL with
+// an address in its query.
+func (t *transformer) uncoveredLeaf(p string, leaf []byte) ([]byte, bool, error) {
+	if t.sh.parts.noData || len(bytes.TrimSpace(leaf)) == 0 {
+		return leaf, false, nil
+	}
+	if p != "" {
+		_, key := keys.LeafKey(p)
+		key = strings.ToLower(key)
+		if kind, ok := keyedKinds[key]; ok && (kind != core.KPhone || digitCount(leaf) >= 7 && !isFake(kind, bytes.TrimSpace(leaf))) {
+			nv, err := t.faker.Fake(kind, bytes.TrimSpace(leaf), core.FakeOpts{Locale: t.sh.cfg.Pseudonymise.Locale})
+			if err != nil {
+				return leaf, false, err
+			}
+			return nv, len(nv) > 0, nil
+		}
+		if key == "name" && t.sh.known != nil {
+			if nv, n := scrubText(leaf, nil, t.sh.known, t.faker); n > 0 && nv != nil {
+				return nv, true, nil
+			}
+		}
+	}
+	if t.sh.spans == nil || !mayHoldShapes(leaf) {
+		return leaf, false, nil
+	}
+	spans := t.sh.spans.Spans(leaf)
+	if len(spans) == 0 {
+		return leaf, false, nil
+	}
+	nv, n := scrubSpans(leaf, spans, t.faker)
+	if n == 0 || nv == nil {
+		return leaf, false, nil
+	}
+	return nv, true, nil
+}
+
+// mayHoldShapes is a cheap test before the text scanners run: an
+// address needs an at sign in some form, a phone, card or IP four
+// digits at least.
+func mayHoldShapes(b []byte) bool {
+	if bytes.IndexByte(b, '@') >= 0 || bytes.Contains(b, []byte("%40")) || bytes.Contains(b, []byte("&#")) {
+		return true
+	}
+	return digitCount(b) >= 4
+}
+
+// digitCount counts the ASCII digits in b.
+func digitCount(b []byte) int {
+	n := 0
+	for _, c := range b {
+		if c >= '0' && c <= '9' {
+			n++
+		}
+	}
+	return n
+}
+
 // scrub replaces the emails, phones, cards, IPs and known names in free
 // text by their fakes, then the known streets, address lines and
 // postcodes.
 func (t *transformer) scrub(text []byte) ([]byte, bool) {
+	return t.scrubWith(text, textKinds)
+}
+
+// scrubWith is scrub with the kinds the word sweep replaces.
+func (t *transformer) scrubWith(text []byte, kinds []core.FakeKind) ([]byte, bool) {
 	if len(text) == 0 {
 		return text, false
 	}
@@ -582,7 +766,7 @@ func (t *transformer) scrub(text []byte) ([]byte, bool) {
 	if n == 0 || nv == nil {
 		nv = text
 	}
-	nv, swept := t.sweepText(nv)
+	nv, swept := t.sweepText(nv, kinds)
 	if n == 0 && !swept {
 		return text, false
 	}
@@ -595,23 +779,30 @@ func (t *transformer) scrub(text []byte) ([]byte, bool) {
 // scrubber's; a city or a country on its own points at no one and stays.
 var textKinds = []core.FakeKind{core.KStreet, core.KAddress, core.KPostcode}
 
+// indexKinds are the kinds swept from an order's address index that
+// can't be rebuilt part by part: there every word is a part of one
+// customer's address, so the city goes too.
+var indexKinds = []core.FakeKind{core.KStreet, core.KAddress, core.KPostcode, core.KCity}
+
 // maxTextWords is the longest run of words sweepText looks up.
 const maxTextWords = 8
 
 // sweepText replaces each run of words in free text that is a known
-// street, address line or postcode by its fake, the longest run first:
+// value of kinds by its fake, the longest run first: with textKinds
 // "111 Kingsmead Road, Dublin D06 F2X3" gets a fake street and postcode
 // and keeps "Dublin". Every such value holds a digit, so a run without
-// one is never looked up.
-func (t *transformer) sweepText(text []byte) ([]byte, bool) {
-	if t.sh.parts.noData || t.sh.known == nil || t.sh.known.Len() == 0 || !bytes.ContainsAny(text, "0123456789") {
+// one is never looked up; with KCity among kinds (an address index)
+// every run is.
+func (t *transformer) sweepText(text []byte, kinds []core.FakeKind) ([]byte, bool) {
+	city := slices.Contains(kinds, core.KCity)
+	if t.sh.parts.noData || t.sh.known == nil || t.sh.known.Len() == 0 || !city && !bytes.ContainsAny(text, "0123456789") {
 		return text, false
 	}
 	words := textWords(text)
 	var out []byte
 	last := 0
 	for i := 0; i < len(words); {
-		if t.sh.starts != nil && !t.sh.starts.has(text[words[i][0]:words[i][1]]) {
+		if !city && t.sh.starts != nil && !t.sh.starts.has(text[words[i][0]:words[i][1]]) {
 			i++
 			continue
 		}
@@ -623,10 +814,10 @@ func (t *transformer) sweepText(text []byte) ([]byte, bool) {
 		n, kind := 0, core.FakeKind("")
 		for k := end - i; k >= 1 && n == 0; k-- {
 			tok := text[words[i][0]:words[i+k-1][1]]
-			if len(tok) < 4 || !bytes.ContainsAny(tok, "0123456789") {
+			if len(tok) < 4 && (!city || len(tok) < 3) || !city && !bytes.ContainsAny(tok, "0123456789") {
 				continue
 			}
-			if kd, enc, ok := t.sh.known.Contains(tok); ok && enc == "raw" && slices.Contains(textKinds, kd) {
+			if kd, enc, ok := t.sh.known.Contains(tok); ok && enc == "raw" && slices.Contains(kinds, kd) {
 				n, kind = k, kd
 			}
 		}
@@ -814,4 +1005,31 @@ func (t *transformer) unparseable(out *batchOut, rc rowCtx, col core.Column, v *
 		Locations: []core.LocationCount{{Location: core.Location{Table: rc.table, Column: col.Name}, Count: 1}},
 		Fix:       "Check the plugin that wrote it; on_unparseable: fail stops the copy instead."})
 	return true, nil
+}
+
+// settingsOf reads a serialized or JSON value as keys.Settings does, or
+// nil for anything else.
+func settingsOf(v []byte) map[string]string {
+	t := bytes.TrimSpace(v)
+	if len(t) < 2 || bytes.IndexByte([]byte("aO{["), t[0]) < 0 {
+		return nil
+	}
+	m, _ := keys.Settings(t)
+	return m
+}
+
+// singleFormat reports whether a leaf path has one format level, so its
+// siblings in the outer settings are its own.
+func singleFormat(p string) bool {
+	n := strings.Count(p, "serialized:") + strings.Count(p, "json:")
+	return n == 1 && !strings.HasPrefix(p, "base64:")
+}
+
+// parentOf is the parent of a settings path, the cache key of its
+// siblings: "smtp" for "smtp.pass", "" for a top-level key.
+func parentOf(p string) string {
+	if i := strings.LastIndexAny(p, ".["); i >= 0 {
+		return p[:i]
+	}
+	return ""
 }
