@@ -887,6 +887,60 @@ func TestUncoveredValues(t *testing.T) {
 	}
 }
 
+// A key of a nested value that holds a customer's address or a
+// strong-format phone gets a fake: the same fake as the address has in
+// the covered columns when it is known. A program's key, an order
+// number and a reserved address as keys stay.
+func TestDataKeys(t *testing.T) {
+	if _, err := pseudo.NewFaker(pseudo.Key{}, pseudo.Options{}); errors.Is(err, core.ErrNotBuilt) {
+		t.Skip("needs the values lane")
+	}
+	mobile := "+44 7911 " + "654321"
+	members := `{"` + mobile + `":{"tier":"gold"},"anna.lee@shop-mail.com":{"tier":"silver"},"mara.ostby@gmail.com":{"tier":"x"},` +
+		`"help@example.com":{"tier":"staff"},"1048576":{"tier":"order"},"gold":{"min":"100"}}`
+	ser := "a:2:{" + serStr(mobile) + serStr("gold") + serStr("anna.lee@shop-mail.com") + serStr("silver") + "}"
+	p, sink, _ := fixture(t, Copy, "wp_", func() []tableData {
+		return []tableData{
+			{table("wp_options", "option_id:bigint(20)", "option_name", "option_value"), rows{
+				{1, "siteurl", "https://shop.com"}, {2, "loyalty_members", members}, {3, "loyalty_ser", ser}}},
+			{table("wp_users", "ID:bigint(20)", "user_login", "user_email", "display_name"), rows{
+				{1, "anna", "anna.lee@shop-mail.com", "Anna Lee"}}},
+		}
+	}, nil, Options{URL: "https://staging.shop.test"})
+	out := run(t, p)
+	userFake, _ := valueOf(t, sink, "wp_users", 0, "user_email")
+	v, _ := valueOf(t, sink, "wp_options", 1, "option_value")
+	if !json.Valid([]byte(v)) {
+		t.Fatalf("members no longer JSON: %s", v)
+	}
+	for _, gone := range []string{mobile, "anna.lee", "mara.ostby"} {
+		if strings.Contains(v, gone) {
+			t.Errorf("members keep %s: %s", gone, v)
+		}
+	}
+	for _, kept := range []string{`"help@example.com"`, `"1048576"`, `"gold"`, `"tier":"staff"`} {
+		if !strings.Contains(v, kept) {
+			t.Errorf("members lack %s: %s", kept, v)
+		}
+	}
+	if !strings.Contains(v, `"`+userFake+`"`) {
+		t.Errorf("the known address key didn't get the user's fake %s: %s", userFake, v)
+	}
+	v, _ = valueOf(t, sink, "wp_options", 2, "option_value")
+	if !phpser.Valid([]byte(v)) || strings.Contains(v, mobile) || strings.Contains(v, "anna.lee") || !strings.Contains(v, userFake) {
+		t.Errorf("serialized keys: %s", v)
+	}
+	rules := map[string]int64{}
+	for _, c := range out.Result.Changes {
+		if c.Table == "wp_options" {
+			rules[c.Rule] += c.Values
+		}
+	}
+	if rules[changeKnown] < 2 || rules[changeUncovered] < 2 {
+		t.Errorf("changes %v", rules)
+	}
+}
+
 // serStr is PHP's serialize() of a string.
 func serStr(v string) string { return fmt.Sprintf(`s:%d:"%s";`, len(v), v) }
 

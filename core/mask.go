@@ -194,26 +194,46 @@ func MaskPath(p string) string {
 	}
 	segs := splitPath(p)
 	for i, s := range segs {
-		var prefix string
-		for again := true; again; {
-			again = false
-			for _, f := range pathFormats {
-				if strings.HasPrefix(s, f) {
-					prefix, s, again = prefix+f, s[len(f):], true
-				}
-			}
-		}
-		key, idx := s, ""
-		for strings.HasSuffix(key, "]") {
-			open := strings.LastIndexByte(key, '[')
-			if open < 0 || !allDigits(key[open+1:len(key)-1]) {
-				break
-			}
-			key, idx = key[:open], key[open:]+idx
-		}
+		prefix, key, idx := pathSegment(s)
 		segs[i] = prefix + maskPathKey(key) + idx
 	}
 	return strings.Join(segs, ".")
+}
+
+// PathKeys returns the keys of a leaf path as the data holds them: no
+// format prefixes or [n] indexes, a dot inside a key unescaped.
+// "json:jane@shop\.com.items[2].email" gives jane@shop.com, items and
+// email.
+func PathKeys(p string) []string {
+	var out []string
+	for _, s := range splitPath(p) {
+		if _, key, _ := pathSegment(s); key != "" {
+			out = append(out, strings.ReplaceAll(key, `\.`, "."))
+		}
+	}
+	return out
+}
+
+// pathSegment splits one segment of a leaf path into its format
+// prefixes, its key (escaped as in the path) and its [n] indexes.
+func pathSegment(s string) (prefix, key, idx string) {
+	for again := true; again; {
+		again = false
+		for _, f := range pathFormats {
+			if strings.HasPrefix(s, f) {
+				prefix, s, again = prefix+f, s[len(f):], true
+			}
+		}
+	}
+	key = s
+	for strings.HasSuffix(key, "]") {
+		open := strings.LastIndexByte(key, '[')
+		if open < 0 || !allDigits(key[open+1:len(key)-1]) {
+			break
+		}
+		key, idx = key[:open], key[open:]+idx
+	}
+	return prefix, key, idx
 }
 
 // splitPath splits a leaf path at each dot that codec/nested didn't

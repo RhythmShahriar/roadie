@@ -439,7 +439,24 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 		}
 		return cur, changed
 	}
-	nv, changed, err := nestedRewrite(orig, fn, nested.Options{})
+	var keyFn func(string, []byte) ([]byte, bool)
+	if !rc.noRewrite && !t.sh.parts.noData {
+		keyFn = func(_ string, k []byte) ([]byte, bool) {
+			nv, rule, err := t.dataKey(k)
+			if err != nil {
+				leafErr = err
+				return k, false
+			}
+			if rule == "" {
+				return k, false
+			}
+			c := out.change(rule, rc.table, col.Name, core.Fake)
+			c.Rows++
+			c.Values++
+			return nv, true
+		}
+	}
+	nv, changed, err := nestedRewrite(orig, fn, nested.Options{Key: keyFn})
 	if err == nil {
 		err = leafErr
 	}
@@ -773,6 +790,40 @@ func (t *transformer) uncoveredLeaf(table, p string, leaf []byte) ([]byte, bool,
 		return leaf, false, nil
 	}
 	return nv, true, nil
+}
+
+// keyKinds are what a key of a serialized or JSON value may hold that
+// gets a fake: a plugin that keys its data by a customer's address or
+// phone ({"jane@shop.com": {...}}, {"+44 7911 123456": {...}}).
+var keyKinds = []core.FakeKind{core.KEmail, core.KPhone}
+
+// dataKey gives a key of a nested value the fake of the email or phone it
+// holds: a known production value gets the same fake as in the covered
+// columns (known-values); any other personal email or strong-format
+// phone gets one too (uncovered-values), as verify would flag it. rule
+// is "" when the key stays.
+func (t *transformer) dataKey(k []byte) (nv []byte, rule string, err error) {
+	if !mayHoldShapes(k) || bytes.IndexByte(k, '@') < 0 && digitCount(k) < 7 {
+		return k, "", nil
+	}
+	if nv, ch, err := t.sweep(k, keyKinds); err != nil || ch {
+		if err != nil {
+			return k, "", err
+		}
+		return nv, changeKnown, nil
+	}
+	if t.sh.spans == nil {
+		return k, "", nil
+	}
+	spans := slices.DeleteFunc(t.sh.spans.Spans(k), func(s core.Span) bool { return !slices.Contains(keyKinds, s.Kind) })
+	if len(spans) == 0 {
+		return k, "", nil
+	}
+	nv, n := scrubSpans(k, spans, t.faker)
+	if n == 0 || nv == nil {
+		return k, "", nil
+	}
+	return nv, changeUncovered, nil
 }
 
 // settingsTable reports whether a table holds a site's settings (its

@@ -1000,6 +1000,24 @@ func TestRunPersonalKeys(t *testing.T) {
 	if f := find(res, core.FindingPIIEmail); f != nil {
 		t.Errorf("plain keys: %+v", f)
 	}
+	// A strong-format phone used as a key is a finding too; the location
+	// shows <key>, never the number.
+	res = runJob(t, Job{Source: source(options([]string{"1", "loyalty_members", `{"+44 7911 654321":{"plan":"gold"}}`}))})
+	f = find(res, core.FindingPIIPhone)
+	if f == nil || len(f.Locations) == 0 || f.Locations[0].Path != "json:<key>.plan" {
+		t.Fatalf("no pii.phone for a phone key: %+v", res.Findings)
+	}
+	// An address key's dots end at the key: a fake address used as a key
+	// is no finding, though the next key follows it in the path.
+	res = runJob(t, Job{Source: source(options([]string{"1", "loyalty_members", `{"u656154198a8f4778@example.invalid":{"tier":"gold"}}`}))})
+	if f := find(res, core.FindingPIIEmail); f != nil {
+		t.Errorf("fake address key: %+v", f)
+	}
+	// Order numbers and years as keys are no phones.
+	res = runJob(t, Job{Source: source(options([]string{"1", "order_index", `{"1048576":{"y":"2024"},"20240101":{"n":"1"}}`}))})
+	if f := find(res, core.FindingPIIPhone); f != nil {
+		t.Errorf("number keys: %+v", f)
+	}
 }
 
 // A database target has no site: only its database-only step runs, so
