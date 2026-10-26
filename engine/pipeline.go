@@ -325,6 +325,9 @@ type pipeline struct {
 	// gatewayIDs are the WooCommerce gateways of the source's options,
 	// from pass 1, for the kill switch's data rules.
 	gatewayIDs []string
+	// dialect is the source dump's dialect once pass 1 has read it; ""
+	// for --one-pass, a database source and before pass 1.
+	dialect core.Dialect
 	parts      parts
 	// result is filled in place when set, so the orchestration's fields
 	// stay; nil starts a new one.
@@ -433,6 +436,9 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 		out.Result.Input = &fp
 		schema = s
 		p.gatewayIDs = killswitch.SourceGatewayIDs(idx.gatewayOpts)
+		if s != nil {
+			p.dialect = s.Dialect
+		}
 		if final, err = p.finalCompile(idx, schema); err != nil {
 			return out, err
 		}

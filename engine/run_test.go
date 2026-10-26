@@ -1243,3 +1243,38 @@ func TestVerifyJobReadsRoutines(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A PostgreSQL dump into a WordPress site's MySQL database stops with
+// dialect-mismatch before anything is written.
+func TestRunDialectMismatch(t *testing.T) {
+	f := useRunFakes(t)
+	f.staging.StackName = core.StackWordPress
+	old := openDump
+	openDump = func(context.Context, io.Reader, dump.Options) (core.Source, error) {
+		td := wpUsers()
+		s := schemaOf("wp_", td)
+		s.Dialect = core.Postgres
+		return testutil.FakeSource(s, batches(td)), nil
+	}
+	t.Cleanup(func() { openDump = old })
+	in := filepath.Join(t.TempDir(), "shop.sql")
+	if err := os.WriteFile(in, []byte("-- dump\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	j := f.job(Copy)
+	j.From = core.Endpoint{Kind: core.DumpFile, Raw: in, Display: "shop.sql", Path: in}
+	res, err := Run(context.Background(), j)
+	if !isCode(err, core.ErrDialectMismatch) || res.TargetState != core.Untouched || len(f.applied()) != 0 || f.stagSink.wrote {
+		t.Errorf("err %v state %s applied %v", err, res.TargetState, f.applied())
+	}
+	// A MySQL dump goes on as before.
+	openDump = func(context.Context, io.Reader, dump.Options) (core.Source, error) {
+		td := wpUsers()
+		s := schemaOf("wp_", td)
+		s.Dialect = core.MySQL
+		return testutil.FakeSource(s, batches(td)), nil
+	}
+	if _, err := Run(context.Background(), j); err != nil {
+		t.Errorf("a MySQL dump: %v", err)
+	}
+}

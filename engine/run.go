@@ -256,6 +256,11 @@ func (r *runner) run(ctx context.Context) error {
 	// come once pass 1 has passed its checks: a stop there (an uncovered
 	// column, a url-map error) leaves the target as it was.
 	writeStart := func(ctx context.Context) error {
+		// A PostgreSQL dump into a MySQL database (or the other way)
+		// stops here, before the first write.
+		if err := dump.CheckDialect(r.j.From.Display, p.dialect, r.targetDialect(stack), true); err != nil {
+			return err
+		}
 		if err := r.apply(ctx, applied, "files"); err != nil {
 			return err
 		}
@@ -974,6 +979,19 @@ func (r *runner) sink(ctx context.Context) (core.Sink, error) {
 		return s, nil
 	}
 	return r.to.Sink(ctx)
+}
+
+// targetDialect is the SQL dialect of a database target: a DSN's driver,
+// MySQL for a WordPress site; "" (not checked) for a dump file, stdout or
+// a site whose database could be either.
+func (r *runner) targetDialect(stack core.Stack) core.Dialect {
+	switch {
+	case r.j.To.Kind == core.DSN:
+		return r.j.To.Driver
+	case r.to != nil && stack == core.StackWordPress:
+		return core.MySQL
+	}
+	return ""
 }
 
 // inputBytes is the input's size, 0 when unknown.
