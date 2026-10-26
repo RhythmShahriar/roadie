@@ -302,8 +302,9 @@ func metaNoindex(body []byte) bool {
 		if name != "robots" && name != "googlebot" {
 			continue
 		}
-		c := attr(tag, "content")
-		if strings.Contains(c, "noindex") || strings.Contains(c, "none") {
+		// The content is a comma list like the header's; "nonexistent"
+		// or "index, follow" holds no noindex.
+		if hasNoindex([]string{attr(tag, "content")}) {
 			return true
 		}
 	}
@@ -344,9 +345,11 @@ func attr(tag, a string) string {
 }
 
 // robotsAllowAll reports whether robots.txt lets User-agent: * crawl "/":
-// no "Disallow: /" in the group that names *.
+// no "Disallow: /" in the group that names *, or an "Allow: /" beside it,
+// which wins a tie of equal length (RFC 9309 section 2.2.2).
 func robotsAllowAll(body []byte) bool {
 	inStar, groupStarted := false, false
+	disallow, allow := false, false
 	for line := range strings.SplitSeq(string(body), "\n") {
 		if i := strings.IndexByte(line, '#'); i >= 0 {
 			line = line[:i]
@@ -366,14 +369,15 @@ func robotsAllowAll(body []byte) bool {
 			}
 		case "disallow":
 			groupStarted = true
-			if inStar && v == "/" {
-				return false
-			}
+			disallow = disallow || inStar && v == "/"
+		case "allow":
+			groupStarted = true
+			allow = allow || inStar && v == "/"
 		default:
 			groupStarted = true
 		}
 	}
-	return true
+	return !disallow || allow
 }
 
 // echo asks Echo whether its seal is on and how many messages it let

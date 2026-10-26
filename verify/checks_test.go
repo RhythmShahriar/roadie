@@ -402,7 +402,10 @@ func TestRobotsAndMeta(t *testing.T) {
 		"User-agent: *\nDisallow: /wp-admin/":                   true,
 		"User-agent: Googlebot\nDisallow: /":                    true,
 		"User-agent: Bingbot\nUser-agent: *\nDisallow: / # all": false,
-		"": true,
+		"":                                     true,
+		"User-agent: *\nDisallow: /\nAllow: /": true,
+		"User-agent: *\nAllow: /wp-content/\nDisallow: /": false,
+		"User-agent: *\nDisallow:":                        true,
 	} {
 		if got := robotsAllowAll([]byte(body)); got != want {
 			t.Errorf("robotsAllowAll(%q) = %v", body, got)
@@ -414,11 +417,13 @@ func TestRobotsAndMeta(t *testing.T) {
 		}
 	}
 	for b, want := range map[string]bool{
-		`<meta name="robots" content="noindex">`:           true,
-		`<meta content="noindex, nofollow" name=robots />`: true,
-		`<meta name="description" content="noindex">`:      false,
-		`<meta name="robots" content="index,follow">`:      false,
-		`<meta name="robots"`:                              false,
+		`<meta name="robots" content="noindex">`:            true,
+		`<meta content="noindex, nofollow" name=robots />`:  true,
+		`<meta name="description" content="noindex">`:       false,
+		`<meta name="robots" content="index,follow">`:       false,
+		`<meta name="robots"`:                               false,
+		`<meta name="robots" content="index, nonexistent">`: false,
+		`<meta name="googlebot" content="none">`:            true,
 	} {
 		if got := metaNoindex([]byte(b)); got != want {
 			t.Errorf("metaNoindex(%s) = %v", b, got)
@@ -436,7 +441,8 @@ func fuzzBound() time.Duration {
 }
 
 // FuzzRobots reads untrusted robots.txt bodies: no panic and a linear
-// bound; a group of User-agent: * with Disallow: / always blocks.
+// bound; a group of User-agent: * with Disallow: / blocks unless an
+// Allow: / follows.
 func FuzzRobots(f *testing.F) {
 	for _, s := range []string{
 		"User-agent: *\nDisallow: /", "User-agent: *\nDisallow: /wp-admin/", "User-agent: Bingbot\nUser-agent: *\nDisallow: / # all",
@@ -450,7 +456,8 @@ func FuzzRobots(f *testing.F) {
 		if d := time.Since(start); d > fuzzBound() {
 			t.Fatalf("%d bytes took %v", len(b), d)
 		}
-		if robotsAllowAll(append([]byte("User-agent: *\nDisallow: /\n\n"), b...)) {
+		// An Allow: / for * after it may lift the block; any other text can't.
+		if robotsAllowAll(append([]byte("User-agent: *\nDisallow: /\n\n"), b...)) && !bytes.Contains(bytes.ReplaceAll(bytes.ToLower(b), []byte("disallow"), nil), []byte("allow")) {
 			t.Fatalf("a leading * block didn't block with %q after it", b)
 		}
 	})
