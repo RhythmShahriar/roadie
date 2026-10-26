@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -290,6 +291,46 @@ func TestUnchangedIsInput(t *testing.T) {
 	}
 }
 
+// Options.Key sees each string key of serialized data and each JSON
+// object key at its container's path and may change it; the value walk
+// is the same with or without it.
+func TestRewriteKeys(t *testing.T) {
+	type seen struct{ path, key string }
+	var got []seen
+	key := func(p string, k []byte) ([]byte, bool) {
+		got = append(got, seen{p, string(k)})
+		if bytes.IndexByte(k, '@') < 0 {
+			return k, false
+		}
+		return []byte("x\"y@example.invalid"), true
+	}
+	j := `{"jane@shop.com":{"tier":"gold"},"list":[{"a@b.co":"1"}]}`
+	out, changed, err := Rewrite([]byte(j), func(string, []byte) ([]byte, bool) { return nil, false }, Options{Key: key})
+	if err != nil || !changed || !json.Valid(out) {
+		t.Fatalf("json: %q %v %v", out, changed, err)
+	}
+	if want := `{"x\"y@example.invalid":{"tier":"gold"},"list":[{"x\"y@example.invalid":"1"}]}`; string(out) != want {
+		t.Errorf("json:\n got %s\nwant %s", out, want)
+	}
+	if !slices.Contains(got, seen{"json:", "jane@shop.com"}) || !slices.Contains(got, seen{"json:jane@shop\\.com", "tier"}) ||
+		!slices.Contains(got, seen{"json:list[0]", "a@b.co"}) {
+		t.Errorf("json keys seen %q", got)
+	}
+	got = nil
+	ser := `a:2:{s:13:"jane@shop.com";s:4:"gold";i:3;a:1:{s:3:"bob";s:1:"x";}}`
+	out, changed, err = Rewrite([]byte(ser), func(string, []byte) ([]byte, bool) { return nil, false }, Options{Key: key})
+	if err != nil || !changed || !phpser.Valid(out) || !bytes.Contains(out, []byte(`s:19:"x"y@example.invalid";s:4:"gold"`)) {
+		t.Fatalf("serialized: %q %v %v", out, changed, err)
+	}
+	if !slices.Contains(got, seen{"serialized:", "jane@shop.com"}) || !slices.Contains(got, seen{"serialized:[3]", "bob"}) {
+		t.Errorf("serialized keys seen %q", got)
+	}
+	// Without Key nothing changes and keys stay as they were.
+	if out, changed, _ := Rewrite([]byte(j), func(string, []byte) ([]byte, bool) { return nil, false }, Options{}); changed || string(out) != j {
+		t.Errorf("no Key: %q", out)
+	}
+}
+
 func FuzzNested(f *testing.F) {
 	inner := `a:1:{s:5:"email";s:16:"jane@example.com";}`
 	j, _ := json.Marshal(map[string]string{"blob": inner, "u": "https://shop.example/é"})
@@ -309,7 +350,7 @@ func FuzzNested(f *testing.F) {
 				t.Fatal("more leaves than bytes")
 			}
 			return append([]byte("€\"/"), leaf...), true
-		}, Options{Stats: &st})
+		}, Options{Stats: &st, Key: func(_ string, k []byte) ([]byte, bool) { return append([]byte("k\"€/"), k...), true }})
 		if err != nil {
 			t.Fatal(err)
 		}

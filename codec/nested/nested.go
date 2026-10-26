@@ -98,6 +98,7 @@ func looksSerialized(b []byte) bool {
 // walker carries one Rewrite or Leaves call.
 type walker struct {
 	fn       func(path string, leaf []byte) ([]byte, bool)
+	key      func(path string, key []byte) ([]byte, bool)
 	maxDepth int
 	budget   int64
 	stats    *Stats
@@ -162,7 +163,13 @@ func (w *walker) text(b []byte, path string) ([]byte, bool) {
 func (w *walker) serialized(b []byte, tag string, depth int) ([]byte, bool) {
 	out, changed, err := phpser.Rewrite(b, func(p string, leaf []byte, isKey bool) ([]byte, bool, error) {
 		if isKey {
-			return nil, false, nil
+			if w.key == nil {
+				return nil, false, nil
+			}
+			// phpser's path for a key already ends in the key; Key gets
+			// the path of the array that holds it, as JSON's keys do.
+			n, ch := w.key(tag+containerOf(p), leaf)
+			return n, ch, nil
 		}
 		n, ch := w.value(leaf, tag+p, depth+1)
 		return n, ch, nil
@@ -173,4 +180,20 @@ func (w *walker) serialized(b []byte, tag string, depth int) ([]byte, bool) {
 		return b, false
 	}
 	return out, changed
+}
+
+// containerOf drops the last key from a phpser path: "a.b" gives "a",
+// "[3].bob" gives "[3]" and "jane@shop\.com" gives "". A dot after a
+// backslash is part of a key.
+func containerOf(p string) string {
+	cut := 0
+	for i := 0; i < len(p); i++ {
+		switch p[i] {
+		case '\\':
+			i++
+		case '.', '[':
+			cut = i
+		}
+	}
+	return p[:cut]
 }

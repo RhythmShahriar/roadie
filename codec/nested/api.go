@@ -23,6 +23,11 @@ type Options struct {
 	// Stats, when set, counts the values the walk treated as text for a
 	// reason the caller may want to report.
 	Stats *Stats
+	// Key, when set, sees each string key of serialized data and each
+	// object key of JSON in Rewrite, at the path of the array or object
+	// that holds it, and may change it: a plugin may key its data by a
+	// customer's address or phone. Leaves never calls it.
+	Key func(path string, key []byte) ([]byte, bool)
 }
 
 // Stats counts values that were handed to fn whole, as text.
@@ -35,8 +40,8 @@ type Stats struct {
 // Rewrite returns b with each string leaf fn changed, keeping every outer
 // format valid.
 //
-// fn sees the string values of serialized data and JSON (never keys) and
-// any text, each at its path. Bytes fn doesn't change are kept as they
+// fn sees the string values of serialized data and JSON (never keys;
+// Options.Key sees those) and any text, each at its path. Bytes fn doesn't change are kept as they
 // were: serialized lengths are fixed only for changed leaves and a changed
 // JSON string is written back in the style of the document, with "\/"
 // when it escaped slashes and \uXXXX when it escaped non-ASCII. When
@@ -48,6 +53,7 @@ func Rewrite(b []byte, fn func(path string, leaf []byte) ([]byte, bool), o Optio
 		return b, false, nil
 	}
 	w := newWalker(b, fn, o)
+	w.key = o.Key
 	out, changed := w.value(b, "", 1)
 	return out, changed, nil
 }

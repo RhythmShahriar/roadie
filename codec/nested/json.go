@@ -13,6 +13,7 @@ import (
 type jsonLeaf struct {
 	start, end int // the token, quotes included
 	path       string
+	key        bool // an object key; path is its object's
 }
 
 // jsonScan collects the string values of a JSON document already checked
@@ -22,6 +23,7 @@ type jsonScan struct {
 	pos    int
 	path   []byte
 	leaves []jsonLeaf
+	keys   bool // collect object keys too
 	// The style a changed string is written back in: PHP's json_encode
 	// writes "\/" and "é" by default; JSON_UNESCAPED_SLASHES and
 	// JSON_UNESCAPED_UNICODE turn them off. One escape of either kind
@@ -60,6 +62,9 @@ func (s *jsonScan) value() {
 			}
 			start := s.pos
 			s.str()
+			if s.keys {
+				s.leaves = append(s.leaves, jsonLeaf{start: start, end: s.pos, path: string(s.path), key: true})
+			}
 			parent := len(s.path)
 			if parent > 0 {
 				s.path = append(s.path, '.')
@@ -267,13 +272,19 @@ func appendU(dst []byte, r rune) []byte {
 // every unchanged string keep their bytes. tag is the path so far ending
 // in "json:".
 func (w *walker) json(b []byte, tag string, depth int) ([]byte, bool) {
-	s := jsonScan{b: b}
+	s := jsonScan{b: b, keys: w.key != nil}
 	s.value()
 	var out []byte
 	last := 0
 	for _, l := range s.leaves {
 		leaf := decodeJSON(b[l.start+1 : l.end-1])
-		n, changed := w.value(leaf, tag+l.path, depth+1)
+		var n []byte
+		var changed bool
+		if l.key {
+			n, changed = w.key(tag+l.path, leaf)
+		} else {
+			n, changed = w.value(leaf, tag+l.path, depth+1)
+		}
 		if !changed {
 			continue
 		}
