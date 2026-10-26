@@ -48,12 +48,16 @@ export TESTBED_PLUGINS := $(PLUGINS)
 # "<name> <version> <url> <sha256>" per line, fetched by make tools into
 # runtime/tools/<name>/. "unverified" means nobody has checked that
 # release's sha256 yet: it is never downloaded and the benchmark reports
-# the tool as not run with that reason. WP-CLI is the one in the pinned
-# sshd image (2.12.0). Greenmask is judged but not fetched: its pinned
-# release reads PostgreSQL only and the inputs it would meet are MySQL.
+# the tool as not run with that reason. Replibyte's sha256 is the one
+# its release publishes (the .sha256sum asset) and matched the download;
+# wordpress.org publishes none for a plugin, so Staging Shield's is that
+# of the zip downloaded twice on 2026-10-26. WP-CLI is the one in the
+# pinned sshd image (2.12.0). Greenmask is judged but not fetched: its
+# pinned release reads PostgreSQL only and the inputs it would meet are
+# MySQL.
 define TOOLS
-replibyte 0.10.0 https://github.com/Qovery/Replibyte/releases/download/v0.10.0/replibyte_v0.10.0_x86_64-unknown-linux-musl.tar.gz unverified
-staging-shield 1.0.2 https://downloads.wordpress.org/plugin/staging-shield.1.0.2.zip unverified
+replibyte 0.10.0 https://github.com/Qovery/Replibyte/releases/download/v0.10.0/replibyte_v0.10.0_x86_64-unknown-linux-musl.tar.gz 6de60297986f246456796420ed61dd349a5f0a904f162a6f1dca6957f286a3cd
+staging-shield 1.0.2 https://downloads.wordpress.org/plugin/staging-shield.1.0.2.zip 071aa0c5e5fe6b679f12d0d4670a54e5fb2f422e2b4b03e71f83f7c9d34e9c26
 endef
 export TESTBED_TOOLS := $(TOOLS)
 GREENMASK_VERSION := 0.2.26
