@@ -337,9 +337,9 @@ func (r *run) stream(ctx context.Context, src core.Source) (map[string]map[strin
 			// The source failed past the last table it gave, so the
 			// failing table has no name here; whatever came after it was
 			// never read either.
-			skip := core.Skipped{Table: "(input)", Reason: err.Error()}
+			skip := core.Skipped{Table: core.SkippedInput + ")", Reason: err.Error()}
 			if current != "" {
-				skip = core.Skipped{Table: "(input after " + current + ")", Reason: err.Error() + "; the tables after it weren't read"}
+				skip = core.Skipped{Table: core.SkippedInput + " after " + current + ")", Reason: err.Error() + "; the tables after it weren't read"}
 			}
 			r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, skip)
 			break

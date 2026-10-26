@@ -85,6 +85,15 @@ func TestEnvelopeVerdicts(t *testing.T) {
 		complete         bool
 		kind, verifyMode string
 	}{"nothing scanned", nothing, VerdictError, ResultError, false, "verify", "heuristic"})
+	unread := copyPass()
+	unread.Verify.Coverage.Skipped = []core.Skipped{{Table: core.SkippedInput + " after wp_users)", Reason: "dump-truncated"}}
+	cases = append(cases, struct {
+		name             string
+		r                *core.Result
+		verdict, result  string
+		complete         bool
+		kind, verifyMode string
+	}{"input not read whole", unread, VerdictError, ResultError, false, "copy", "exact"})
 	for _, c := range cases {
 		e := mustEnvelope(t, c.r)
 		d, err := ParseData(e)
@@ -352,4 +361,25 @@ func FuzzCanonical(f *testing.F) {
 			t.Fatalf("canonical changed the value:\n%v\n%v", a, b)
 		}
 	})
+}
+
+// A saved report of a verify that couldn't read part of its input reads
+// INCOMPLETE; one that stopped reads STOPPED.
+func TestViewVerdictIncomplete(t *testing.T) {
+	unread := copyPass()
+	unread.Verify.Coverage.Skipped = []core.Skipped{{Table: core.SkippedInput + " after wp_users)", Reason: "dump-truncated"}}
+	r, err := readReport(mustEnvelope(t, unread))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if word, _ := r.verdict(); word != "INCOMPLETE" {
+		t.Errorf("verdict %q", word)
+	}
+	r, err = readReport(mustEnvelope(t, copyError()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if word, _ := r.verdict(); word != "STOPPED" {
+		t.Errorf("stopped run: verdict %q", word)
+	}
 }

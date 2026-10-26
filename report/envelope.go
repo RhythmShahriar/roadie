@@ -34,8 +34,8 @@ const (
 // Envelope builds the rhythm-roadie/v1 envelope of a result. Every value
 // in r is already masked (core.Mask*), so the envelope copies strings as
 // they are; BasicAuthPassword, Backup and Restore are left out. complete
-// is false when verify read a sample, when the run stopped and when it
-// scanned nothing.
+// is false when verify read a sample, when part of its input couldn't be
+// read, when the run stopped and when it scanned nothing.
 func Envelope(r *core.Result, tool, version string) (*core.Envelope, error) {
 	if r == nil {
 		return nil, errors.New("report: no result")
@@ -50,7 +50,7 @@ func Envelope(r *core.Result, tool, version string) (*core.Envelope, error) {
 		Kind:     r.Kind,
 		Tool:     tool,
 		Version:  version,
-		Complete: d.Result != ResultError && (r.Verify == nil || r.Verify.Coverage.Sample == 0),
+		Complete: d.Result != ResultError && (r.Verify == nil || r.Verify.Coverage.Sample == 0 && !r.Verify.Coverage.Unread()),
 		Summary:  r.Summary(),
 		Verdict:  VerdictOK,
 		Data:     data,

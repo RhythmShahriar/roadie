@@ -89,6 +89,10 @@ func (r *report) verdict() (word, line string) {
 			return "PLAN", what + " would stop: " + plural(int64(n), "uncovered column", "uncovered columns")
 		}
 		return "PLAN", "ready: nothing changes until you run " + what
+	case d.Result == ResultError && d.Coverage != nil && slices.ContainsFunc(d.Coverage.Skipped, func(s SkippedData) bool {
+		return strings.HasPrefix(s.Table, core.SkippedInput)
+	}):
+		return "INCOMPLETE", r.name() + " couldn't be read whole; coverage lists what wasn't"
 	case d.Result == ResultError:
 		return "STOPPED", "verify couldn't check " + r.name()
 	case d.VerifyMode == "none" && r.env.Kind != "verify":

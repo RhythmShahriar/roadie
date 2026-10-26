@@ -3,7 +3,10 @@
 
 package core
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // TableReport is what a run did to one table.
 type TableReport struct {
@@ -36,6 +39,23 @@ type Coverage struct {
 type Skipped struct {
 	Table  string
 	Reason string
+}
+
+// SkippedInput starts the Table of a Skipped entry for input verify
+// couldn't read: "(input)", or "(input after wp_users)" for the tables
+// after a read error.
+const SkippedInput = "(input"
+
+// Unread reports whether part of verify's input couldn't be read. Such a
+// run is not complete and never passes (PRD 15.3); other skipped entries
+// (values read as text, files a site can't list) don't count.
+func (c Coverage) Unread() bool {
+	for _, s := range c.Skipped {
+		if strings.HasPrefix(s.Table, SkippedInput) {
+			return true
+		}
+	}
+	return false
 }
 
 // Uncovered is a column that looks personal, with the share of sampled

@@ -34,6 +34,10 @@ func TestExitFor(t *testing.T) {
 		{"fail-on none never fails", &core.Result{Findings: []core.Finding{high}}, core.SeverityNone, 0},
 		{"nothing scanned", &core.Result{Verify: &core.VerifyResult{Coverage: core.Coverage{TablesScanned: 2}}}, core.SeverityHigh, 3},
 		{"plan without verify", &core.Result{Kind: "plan"}, core.SeverityHigh, 0},
+		{"input not read whole", &core.Result{Verify: &core.VerifyResult{Coverage: core.Coverage{TablesScanned: 3, RowsScanned: 10,
+			Skipped: []core.Skipped{{Table: core.SkippedInput + " after wp_users)", Reason: "dump-truncated"}}}}}, core.SeverityHigh, 3},
+		{"values read as text", &core.Result{Verify: &core.VerifyResult{Coverage: core.Coverage{TablesScanned: 3, RowsScanned: 10,
+			Skipped: []core.Skipped{{Table: "wp_options.option_value", Reason: "serialized values that don't parse"}}}}}, core.SeverityHigh, 0},
 	}
 	for _, c := range cases {
 		if got := core.ExitFor(c.r, c.failOn); got != c.want {

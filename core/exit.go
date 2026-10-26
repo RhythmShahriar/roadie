@@ -20,7 +20,7 @@ func ExitFor(r *Result, failOn Severity) int {
 			return cli.ExitFindings
 		}
 	}
-	if v := r.Verify; v != nil && (v.Coverage.TablesScanned == 0 || v.Coverage.RowsScanned == 0) {
+	if v := r.Verify; v != nil && (v.Coverage.TablesScanned == 0 || v.Coverage.RowsScanned == 0 || v.Coverage.Unread()) {
 		return cli.ExitUnavailable
 	}
 	return cli.ExitOK

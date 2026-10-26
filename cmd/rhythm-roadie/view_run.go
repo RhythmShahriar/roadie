@@ -633,6 +633,9 @@ func verdict(r *core.Result, failOn core.Severity, name string) (word, line stri
 			return "FAIL", name + " is not a safe copy yet", lipgloss.Color(ui.Danger)
 		}
 	}
+	if r.Verify.Coverage.Unread() {
+		return "INCOMPLETE", name + " couldn't be read whole; coverage lists what wasn't", lipgloss.Color(ui.Warn)
+	}
 	if r.Verify.Coverage.Sample > 0 {
 		return "PASS (sample)", name + " is a pseudonymised copy", lipgloss.Color(ui.Ok)
 	}

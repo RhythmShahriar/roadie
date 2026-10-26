@@ -677,3 +677,17 @@ func TestRunProjectDir(t *testing.T) {
 		}
 	}
 }
+
+// A verify that couldn't read part of its input is INCOMPLETE, never
+// PASS, even with no finding.
+func TestVerdictIncomplete(t *testing.T) {
+	r := &core.Result{Verify: &core.VerifyResult{Coverage: core.Coverage{TablesScanned: 3, RowsScanned: 10,
+		Skipped: []core.Skipped{{Table: core.SkippedInput + " after wp_users)", Reason: "dump-truncated"}}}}}
+	if word, _, _ := verdict(r, core.SeverityHigh, "staging.sql"); word != "INCOMPLETE" {
+		t.Errorf("verdict %q", word)
+	}
+	r.Verify.Coverage.Skipped = nil
+	if word, _, _ := verdict(r, core.SeverityHigh, "staging.sql"); word != "PASS" {
+		t.Errorf("verdict %q", word)
+	}
+}
