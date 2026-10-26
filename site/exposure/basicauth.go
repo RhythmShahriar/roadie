@@ -67,14 +67,16 @@ func randomPassword() (string, error) {
 	return string(b), nil
 }
 
-// validUser reports a user name every server reads the same way: no ':'
-// (the htpasswd separator), no space, quote, brace or control character.
+// validUser reports a user name of 1 to 64 letters, digits or . _ - @,
+// which every server and its config syntax read the same way (no ':',
+// the htpasswd separator, and nothing a Caddyfile or nginx would quote).
 func validUser(u string) bool {
 	if u == "" || len(u) > 64 {
 		return false
 	}
 	for _, c := range []byte(u) {
-		if c <= ' ' || c >= 0x7f || strings.IndexByte(":\"'`\\{}#;$", c) >= 0 {
+		ok := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.IndexByte("._-@", c) >= 0
+		if !ok {
 			return false
 		}
 	}

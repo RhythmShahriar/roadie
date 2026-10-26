@@ -91,7 +91,13 @@ func (st *robots) Apply(ctx context.Context, s core.Site) error {
 	case err == nil:
 		// The first run's backup holds the site's own file; a later run
 		// would only back up Roadie's text over it.
-		if ok, _ := s.Exists(ctx, rel+RobotsBackupSuffix); !ok {
+		ok, err := s.Exists(ctx, rel+RobotsBackupSuffix)
+		if err != nil {
+			// Unsure whether a backup is there: writing one could
+			// replace the site's own file from the first run.
+			return writeErr(rel+RobotsBackupSuffix, err, s)
+		}
+		if !ok {
 			if err := s.WriteFile(ctx, rel+RobotsBackupSuffix, old, 0o644); err != nil {
 				return writeErr(rel+RobotsBackupSuffix, err, s)
 			}
@@ -125,8 +131,9 @@ func writeErr(file string, err error, s core.Site) error {
 }
 
 // Check reports search.indexable when nothing on the copy tells crawlers
-// to stay out: no mu-plugin noindex (or blog_public 1) and no blocking
-// physical robots.txt, or a physical robots.txt that lets them in.
+// to stay out: neither the mu-plugin's noindex nor a blocking physical
+// robots.txt (nor blog_public 0 on WordPress). On Laravel only a blocking
+// public/robots.txt counts.
 func (st *robots) Check(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
 	id := st.ID()
 	se := core.SideEffect{ID: id, Status: "off"}
@@ -141,30 +148,33 @@ func (st *robots) Check(ctx context.Context, s core.Site) (core.SideEffect, []co
 		se.Status, se.How = "unknown", rel+" can't be read"
 		return se, nil, nil
 	}
-	if physical && !Blocks(b) {
-		se.Status, se.How = "on", rel+" lets crawlers in; a physical robots.txt wins over WordPress's own"
-		if s.Stack() == core.StackLaravel {
-			se.How = rel + " lets crawlers in"
+	blocks := physical && Blocks(b)
+	if s.Stack() == core.StackLaravel {
+		switch {
+		case !physical:
+			se.Status, se.How = "on", "no "+rel+" and nothing else tells crawlers to stay out"
+		case !blocks:
+			se.Status, se.How = "on", rel+" lets crawlers in"
+		default:
+			se.How, se.Undo = rel+" disallows every crawler", restoreUndo(rel)
+			return se, nil, nil
 		}
 		return se, []core.Finding{indexable(se.How, core.Location{File: rel})}, nil
 	}
-	if s.Stack() == core.StackLaravel {
-		if !physical {
-			se.Status, se.How = "on", "no "+rel+" and nothing else tells crawlers to stay out"
-			return se, []core.Finding{indexable(se.How, core.Location{File: rel})}, nil
-		}
-		se.How, se.Undo = rel+" disallows every crawler", restoreUndo(rel)
-		return se, nil, nil
-	}
 	if noindexHook(ctx, s) {
+		// Pages and headers say noindex, so the copy stays out of the
+		// index even where a physical robots.txt lets crawlers read it.
 		se.How, se.Undo = "roadie-staging.php sends noindex and serves a robots.txt that disallows every crawler", "delete "+killswitch.MuPluginPath
-		if physical {
+		switch {
+		case blocks:
 			se.How = "roadie-staging.php sends noindex and " + rel + " disallows every crawler"
 			se.Undo += "; " + restoreUndo(rel)
+		case physical:
+			se.How = "roadie-staging.php sends noindex; " + rel + " lets crawlers in, which a physical robots.txt does over WordPress's own"
 		}
 		return se, nil, nil
 	}
-	if physical {
+	if blocks {
 		se.How, se.Undo = rel+" disallows every crawler", restoreUndo(rel)
 		return se, nil, nil
 	}
@@ -172,6 +182,10 @@ func (st *robots) Check(ctx context.Context, s core.Site) (core.SideEffect, []co
 	if err == nil && string(opts["blog_public"]) == "0" {
 		se.How, se.Undo = "blog_public is 0, so WordPress asks search engines not to index", "Settings > Reading > Search engine visibility"
 		return se, nil, nil
+	}
+	if physical {
+		se.Status, se.How = "on", rel+" lets crawlers in; a physical robots.txt wins over WordPress's own"
+		return se, []core.Finding{indexable(se.How, core.Location{File: rel})}, nil
 	}
 	se.Status, se.How = "on", "no noindex from roadie-staging.php, blog_public is 1 and no robots.txt blocks crawlers"
 	return se, []core.Finding{indexable(se.How, core.Location{File: killswitch.MuPluginPath})}, nil
@@ -193,14 +207,26 @@ func noindexHook(ctx context.Context, s core.Site) bool {
 }
 
 // Blocks reports whether a robots.txt disallows the whole site for every
-// agent: the group for "*" holds "Disallow: /" and no Allow rule that
-// opens a path again. Crawlers read the first matching group, so a later
-// "*" group doesn't count.
+// agent. A crawler obeys only the group that names it, if one does, and
+// RFC 9309 merges every group for the same agent; so the file blocks only
+// when it has a group for "*" and every group, for any agent, holds
+// "Disallow: /" and no Allow rule that opens a path again. A group of
+// user-agent lines with no rules lets its agents in.
 func Blocks(robots []byte) bool {
 	var (
-		inStar, rules, seen, disallowAll, allows bool
+		inGroup, rules, star bool
+		// blocked is false once any group lets its agents in.
+		blocked             = true
+		disallowAll, allows bool
 	)
-	for _, line := range strings.Split(string(robots), "\n") {
+	closeGroup := func() {
+		if inGroup && (!disallowAll || allows) {
+			blocked = false
+		}
+		inGroup, rules, disallowAll, allows = false, false, false, false
+	}
+	text := strings.TrimPrefix(string(robots), "\ufeff")
+	for _, line := range strings.Split(text, "\n") {
 		if i := strings.IndexByte(line, '#'); i >= 0 {
 			line = line[:i]
 		}
@@ -213,19 +239,18 @@ func Blocks(robots []byte) bool {
 		case "user-agent":
 			if rules {
 				// A user-agent line after rules starts a new group.
-				if inStar {
-					return disallowAll && !allows
-				}
-				inStar, rules = false, false
+				closeGroup()
 			}
-			if val == "*" && !seen {
-				inStar, seen = true, true
+			inGroup = true
+			if val == "*" {
+				star = true
 			}
 		case "disallow", "allow":
-			rules = true
-			if !inStar {
+			if !inGroup {
+				// Rules before any user-agent line belong to no group.
 				continue
 			}
+			rules = true
 			if key == "disallow" && val == "/" {
 				disallowAll = true
 			}
@@ -234,5 +259,6 @@ func Blocks(robots []byte) bool {
 			}
 		}
 	}
-	return inStar && disallowAll && !allows
+	closeGroup()
+	return star && blocked
 }
