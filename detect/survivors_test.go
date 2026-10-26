@@ -1,0 +1,201 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
+package detect
+
+import (
+	"crypto/md5" // #nosec G501 -- an encoding exact mode looks for
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"math/rand/v2"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/internal/testutil"
+	"github.com/RhythmShahriar/roadie/pseudo"
+)
+
+// newKnown returns the real known set once the values lane has built it
+// and the test fake until then.
+func newKnown(t *testing.T) core.Known {
+	t.Helper()
+	key, err := pseudo.NewKey()
+	if errors.Is(err, core.ErrNotBuilt) {
+		return testutil.FakeKnown()
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k := pseudo.NewKnown(key); k != nil {
+		return k
+	}
+	return testutil.FakeKnown()
+}
+
+func hexOf(b [16]byte) string     { return hex.EncodeToString(b[:]) }
+func hex256(b [32]byte) string    { return hex.EncodeToString(b[:]) }
+func lowerB(s string) []byte      { return []byte(strings.ToLower(s)) }
+func entityFirst(s string) string { return fmt.Sprintf("&#%d;", s[0]) + s[1:] }
+
+func TestSurvivorsEveryEncoding(t *testing.T) {
+	c := testutil.Canaries(11)
+	email, name, phone := c[core.KEmail][0], c[core.KFullName][1], c[core.KPhone][2]
+	street := c[core.KStreet][3]
+	k := newKnown(t)
+	k.Add(core.KEmail, []byte(email))
+	k.Add(core.KFullName, []byte(name))
+	k.Add(core.KPhone, []byte(strings.ReplaceAll(phone, " ", "")))
+	k.Add(core.KStreet, []byte(street))
+	k.Seal()
+	local, domain, _ := strings.Cut(email, "@")
+	cases := []struct{ leaf, enc string }{
+		{"Contact " + email + " today", "raw"},
+		{"order for " + strings.ToLower(name) + " shipped", "lower"},
+		{name, "raw"},
+		{"phone " + phone, "raw"},
+		{street, "raw"},
+		{"hash=" + hexOf(md5.Sum(lowerB(email))) + ";", "md5"}, // #nosec G401 -- test of the md5 encoding
+		{"em=" + hex256(sha256.Sum256(lowerB(email))), "sha256"},
+		{"payload " + base64.StdEncoding.EncodeToString([]byte(`{"email":"`+email+`"}`)), "base64"},
+		{"t=" + base64.RawURLEncoding.EncodeToString([]byte("to: "+name)), "base64"},
+		{"https://shop.example/track?n=" + url.PathEscape(name), "url"},
+		{local + "%40" + domain, "url"},
+		{local + "&#64;" + domain, "html-entity"},
+		{"<p>" + entityFirst(name) + "</p>", "html-entity"},
+	}
+	d := Survivors(k)
+	if d.ID() != core.FindingExactSurvivors {
+		t.Fatalf("ID %q", d.ID())
+	}
+	for _, tc := range cases {
+		hits := scanAll(d, tc.leaf, core.ScanContext{})
+		if len(hits) != 1 {
+			t.Errorf("%q: %d hits %v, want 1", tc.leaf, len(hits), hits)
+			continue
+		}
+		h := hits[0]
+		if h.Encoding != tc.enc || h.Severity != core.SeverityCritical {
+			t.Errorf("%q: encoding %q severity %v, want %q critical", tc.leaf, h.Encoding, h.Severity, tc.enc)
+		}
+		for _, secret := range []string{email, name, local, phone} {
+			if strings.Contains(h.Masked, secret) {
+				t.Errorf("%q: masked %q shows %q", tc.leaf, h.Masked, secret)
+			}
+		}
+	}
+}
+
+// Roadie's own fakes and other people's values never hit.
+func TestSurvivorsLeaveFakesAlone(t *testing.T) {
+	c := testutil.Canaries(12)
+	k := newKnown(t)
+	for _, kind := range core.FakeKinds() {
+		for _, v := range c[kind] {
+			k.Add(kind, []byte(v))
+		}
+	}
+	k.Seal()
+	f := testutil.FakeFaker()
+	other := testutil.Canaries(13)
+	d := Survivors(k)
+	for _, kind := range core.FakeKinds() {
+		for _, v := range c[kind] {
+			fake, err := f.Fake(kind, []byte(v), core.FakeOpts{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if h := scanAll(d, string(fake), core.ScanContext{}); len(h) != 0 {
+				t.Errorf("fake %q hit: %v", fake, h)
+			}
+		}
+		for _, v := range other[kind] {
+			if h := scanAll(d, v, core.ScanContext{}); len(h) != 0 {
+				t.Errorf("unknown %s %q hit: %v", kind, v, h)
+			}
+		}
+	}
+}
+
+// A Roadie-format fake that somehow got into the known set is still not
+// reported: a fake is never a survivor.
+func TestSurvivorsSkipRoadieFakes(t *testing.T) {
+	if !valuesLaneBuilt() {
+		t.Skip("needs the values lane")
+	}
+	fake := "u0123456789abcdef@example.invalid"
+	k := newKnown(t)
+	k.Add(core.KEmail, []byte(fake))
+	k.Seal()
+	if h := scanAll(Survivors(k), "to "+fake, core.ScanContext{}); len(h) != 0 {
+		t.Errorf("fake hit: %v", h)
+	}
+}
+
+func TestSurvivorsRandomTextHasNoHits(t *testing.T) {
+	k := newKnown(t)
+	for kind, vals := range testutil.Canaries(14) {
+		for _, v := range vals {
+			k.Add(kind, []byte(v))
+		}
+	}
+	k.Seal()
+	r := rand.New(rand.NewPCG(1, 2))
+	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,@%&;:+-_/=éßø"
+	letters := []rune(alphabet)
+	var b strings.Builder
+	for b.Len() < mib {
+		b.WriteRune(letters[r.IntN(len(letters))])
+	}
+	text := b.String()
+	start := time.Now()
+	if h := scanAll(Survivors(k), text, core.ScanContext{}); len(h) != 0 {
+		t.Errorf("%d hits in random text: %v", len(h), h[:min(3, len(h))])
+	}
+	if d := time.Since(start); d > timeBound(5*time.Second) {
+		t.Errorf("1 MiB took %v", d)
+	}
+}
+
+func TestSurvivorsNilAndShort(t *testing.T) {
+	if h := scanAll(Survivors(nil), "anything at all", core.ScanContext{}); len(h) != 0 {
+		t.Errorf("nil known hit: %v", h)
+	}
+	k := newKnown(t)
+	k.Add(core.KFirstName, []byte("Ada"))
+	k.Seal()
+	if h := scanAll(Survivors(k), "Ada", core.ScanContext{}); len(h) != 0 {
+		t.Errorf("a value under 4 bytes hit: %v", h)
+	}
+}
+
+// The words of an address that survived whole are not reported twice.
+func TestSurvivorsNoOverlap(t *testing.T) {
+	k := newKnown(t)
+	k.Add(core.KEmail, []byte("kowalczyk@mail.example.org"))
+	k.Add(core.KLastName, []byte("Kowalczyk"))
+	k.Seal()
+	hits := scanAll(Survivors(k), "kowalczyk@mail.example.org and Kowalczyk", core.ScanContext{})
+	if len(hits) != 2 || hits[0].End > hits[1].Start {
+		t.Errorf("hits %v", hits)
+	}
+}
+
+func TestDecoders(t *testing.T) {
+	out, offs, ok := decodeEntities([]byte("a&#64;b&amp;c&#xE9;&bogus;"))
+	if !ok || string(out) != "a@b&cé&bogus;" || len(offs) != len(out)+1 {
+		t.Errorf("entities %q %v", out, offs)
+	}
+	out, offs, ok = decodePercent([]byte("a%40b%2"))
+	if !ok || string(out) != "a@b%2" || offs[1] != 1 || offs[2] != 4 {
+		t.Errorf("percent %q %v", out, offs)
+	}
+	if _, _, ok := decodePercent([]byte("plain")); ok {
+		t.Error("nothing to decode reported a change")
+	}
+}

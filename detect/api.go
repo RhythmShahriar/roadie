@@ -45,7 +45,7 @@ func TextSpans() core.Spanner { return textSpanner{} }
 // Survivors finds production values that survived in the copy, in any
 // encoding (exact.survivors). A nil k gives a detector that finds nothing, as heuristic mode has no
 // known values.
-func Survivors(k core.Known) core.Detector { return nil }
+func Survivors(k core.Known) core.Detector { return survivorsDetector{k: k} }
 
 // Allow lists values a detector must not flag.
 type Allow struct {
