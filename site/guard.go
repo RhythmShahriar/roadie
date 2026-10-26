@@ -231,7 +231,11 @@ func readTarget(ctx context.Context, in GuardInput) (*targetFacts, error) {
 	}
 	t.siteURL = in.SiteURL
 	if t.siteURL == "" && s.Stack() == core.StackWordPress {
-		t.siteURL = readSiteURL(ctx, s)
+		u, err := readSiteURL(ctx, s)
+		if err != nil {
+			return nil, err
+		}
+		t.siteURL = u
 	}
 	t.add(urlHost(t.siteURL), "is", true, true)
 	return t, nil
@@ -251,23 +255,41 @@ func readReason(err error) string {
 
 // readSiteURL asks WP-CLI (ssh, alias) or the options table (local) for
 // siteurl, else home. A target that can't be read yet (an empty database)
-// has none.
-func readSiteURL(ctx context.Context, s core.Site) string {
+// has none. A database that can't be reached is an error: the guard
+// fails closed, since it can't tell whether the target is production.
+func readSiteURL(ctx context.Context, s core.Site) (string, error) {
 	out, err := s.WP(ctx, "option", "get", "siteurl")
 	if err == nil {
-		return printableURL(string(out))
+		return printableURL(string(out)), nil
 	}
 	if !errors.Is(err, core.ErrNoWPCLI) {
-		return ""
+		return "", nil
 	}
 	opts, err := wpdb.Options(ctx, s, "siteurl", "home")
 	if err != nil {
-		return ""
+		var oe *net.OpError
+		var de *net.DNSError
+		switch {
+		case errors.As(err, &oe):
+			return "", unreachableErr(s, oe)
+		case errors.As(err, &de):
+			return "", unreachableErr(s, de)
+		}
+		return "", nil
 	}
 	if v := opts["siteurl"]; len(v) > 0 {
-		return printableURL(string(v))
+		return printableURL(string(v)), nil
 	}
-	return printableURL(string(opts["home"]))
+	return printableURL(string(opts["home"])), nil
+}
+
+// unreachableErr is the stop for a target whose database can't be
+// reached. Only the network error is quoted: it names the host and port,
+// never the password.
+func unreachableErr(s core.Site, err error) error {
+	return core.Errorf(core.ErrUnreachable, 3,
+		"unreachable: the database of %s: %v. Check that the database is running and reachable from here; then check DB_HOST.",
+		s.Endpoint().Display, err)
 }
 
 // printableURL drops control and format characters (escape sequences,

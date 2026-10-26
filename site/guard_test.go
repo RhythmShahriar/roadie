@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"net"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -592,5 +593,26 @@ func TestPrintableURL(t *testing.T) {
 		if got := printableURL(in); got != want {
 			t.Errorf("printableURL(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// A target whose database can't be reached fails closed: the guard can't
+// read siteurl, so it can't tell the target isn't production. A database
+// that answers without an options table (an empty one) still passes.
+func TestGuardUnreachableDatabase(t *testing.T) {
+	ctx := context.Background()
+	s := stagingSite("staging", "")
+	s.WPFunc = nil
+	s.SourceFunc = func([]string) (core.Source, error) {
+		return nil, &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connect: connection refused")}
+	}
+	in := GuardInput{From: dumpEP(), To: s.EP, ToSite: s, Production: []string{"shop.com"}, URL: "https://staging.shop.test", Mode: "copy"}
+	wantCode(t, Guard(ctx, in), core.ErrUnreachable, 3, "")
+	if w := s.Writes(); len(w) != 0 {
+		t.Errorf("writes %v", w)
+	}
+	s.SourceFunc = func([]string) (core.Source, error) { return nil, errors.New("table staging.wp_options doesn't exist") }
+	if err := Guard(ctx, in); err != nil {
+		t.Errorf("empty database: %v", err)
 	}
 }

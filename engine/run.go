@@ -261,17 +261,21 @@ func (r *runner) run(ctx context.Context) error {
 		if err := r.checkDialects(p.dialect, stack); err != nil {
 			return err
 		}
-		if err := r.apply(ctx, applied, "files"); err != nil {
-			return err
-		}
 		if !dataPass {
-			return nil
+			return r.apply(ctx, applied, "files")
 		}
-		if err := r.startMaintenance(ctx, stack); err != nil {
-			return err
-		}
+		// The sink opens first: a target database that can't be reached
+		// stops the run before a file of the site is edited.
 		s, err := r.sink(ctx, p.dialect)
 		if err != nil {
+			return err
+		}
+		if err := r.apply(ctx, applied, "files"); err != nil {
+			_ = s.Abort(context.WithoutCancel(ctx))
+			return err
+		}
+		if err := r.startMaintenance(ctx, stack); err != nil {
+			_ = s.Abort(context.WithoutCancel(ctx))
 			return err
 		}
 		p.sink, p.importing = s, r.to != nil

@@ -592,10 +592,7 @@ func TestRunStepOrder(t *testing.T) {
 
 	f = useRunFakes(t)
 	f.staging.SinkFunc = func() (core.Sink, error) {
-		if _, err := f.staging.ReadFile(context.Background(), ".maintenance"); err != nil {
-			t.Error("no .maintenance during the import")
-		}
-		return f.stagSink, nil
+		return &maintenanceSink{logSink: f.stagSink, t: t, site: f.staging}, nil
 	}
 	res, err := Run(context.Background(), f.job(Prepare))
 	if err != nil {
@@ -626,7 +623,7 @@ func TestRunStepOrder(t *testing.T) {
 	if code, exit := errCode(err); code != core.ErrKillSwitch || exit != 1 {
 		t.Fatalf("err %v", err)
 	}
-	if f.staging.Backups() != 0 || f.rec.index("sink") >= 0 || res.TargetState != core.Untouched {
+	if f.staging.Backups() != 0 || f.rec.index("sink write") >= 0 || !f.stagSink.Aborted() || res.TargetState != core.Untouched {
 		t.Errorf("after a failed step: %v", f.rec.all())
 	}
 	if !strings.HasPrefix(err.Error(), "side-effect.mail: couldn't turn it off on /srv/staging (permission denied).") {
@@ -1031,8 +1028,9 @@ func TestRunUncoveredLeavesTarget(t *testing.T) {
 	}
 }
 
-// A run that stops after a step changed the target says mixed, not
-// untouched: the kill switch already edited the site.
+// A target database that can't be reached stops the run before a file
+// of the site is edited: the target is untouched. A run that stops after
+// a step changed the target says mixed: the kill switch edited the site.
 func TestRunStoppedAfterStepIsMixed(t *testing.T) {
 	f := useRunFakes(t)
 	f.staging.SinkFunc = func() (core.Sink, error) { return nil, errors.New("access denied for user 'staging'") }
@@ -1040,9 +1038,34 @@ func TestRunStoppedAfterStepIsMixed(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "access denied") {
 		t.Fatalf("err %v", err)
 	}
+	if got := f.applied(); len(got) != 0 || len(f.staging.Writes()) != 0 || res.TargetState != core.Untouched {
+		t.Errorf("unreachable database: applied %v writes %v state %s", got, f.staging.Writes(), res.TargetState)
+	}
+
+	f = useRunFakes(t)
+	f.stagSink.WriteErr = errors.New("connection lost")
+	res, err = Run(context.Background(), f.job(Copy))
+	if err == nil || !strings.Contains(err.Error(), "connection lost") {
+		t.Fatalf("err %v", err)
+	}
 	if got := f.applied(); len(got) == 0 || res.TargetState != core.Mixed || res.Target.State != core.Mixed {
 		t.Errorf("applied %v state %s", got, res.TargetState)
 	}
+}
+
+// maintenanceSink checks that .maintenance is up when the first batch
+// reaches the target.
+type maintenanceSink struct {
+	*logSink
+	t    *testing.T
+	site *testutil.Site
+}
+
+func (s *maintenanceSink) Write(ctx context.Context, b *core.Batch) error {
+	if _, err := s.site.ReadFile(ctx, ".maintenance"); err != nil {
+		s.t.Error("no .maintenance during the import")
+	}
+	return s.logSink.Write(ctx, b)
 }
 
 // prepare reads the staging it writes, never a source: from the config.
