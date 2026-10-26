@@ -258,7 +258,7 @@ func (r *runner) run(ctx context.Context) error {
 	writeStart := func(ctx context.Context) error {
 		// A PostgreSQL dump into a MySQL database (or the other way)
 		// stops here, before the first write.
-		if err := dump.CheckDialect(r.j.From.Display, p.dialect, r.targetDialect(stack), true); err != nil {
+		if err := r.checkDialects(p.dialect, stack); err != nil {
 			return err
 		}
 		if err := r.apply(ctx, applied, "files"); err != nil {
@@ -291,6 +291,13 @@ func (r *runner) run(ctx context.Context) error {
 		r.endMaintenance(ctx)
 		if err != nil {
 			return err
+		}
+		if r.mode == Plan {
+			// A plan stops where the copy would: plan --fail-on in CI
+			// must not pass a copy that can't run.
+			if err := r.checkDialects(p.dialect, stack); err != nil {
+				return err
+			}
 		}
 		r.res.Source.Bytes = inputBytes(r.res.Input)
 		if r.j.To.Kind == core.DumpFile && r.mode != Plan {
@@ -990,6 +997,23 @@ func (r *runner) sink(ctx context.Context, dialect core.Dialect) (core.Sink, err
 	}
 	return r.to.Sink(ctx)
 }
+
+// checkDialects stops a copy whose source dialect the target can't take:
+// a PostgreSQL dump into a MySQL database (or the other way), or a
+// SQLite source into a dump, which Roadie can't write.
+func (r *runner) checkDialects(source core.Dialect, stack core.Stack) error {
+	if err := dump.CheckDialect(r.j.From.Display, source, r.targetDialect(stack), true); err != nil {
+		return err
+	}
+	if source == core.SQLite && (r.j.To.Kind == core.DumpFile || r.j.To.Kind == core.Stdio) {
+		return core.Errorf(core.ErrDialectMismatch, 2, "%s", sqliteDumpMsg)
+	}
+	return nil
+}
+
+// sqliteDumpMsg is the stop for a SQLite source copied to a dump file.
+const sqliteDumpMsg = "dialect-mismatch: Roadie writes MySQL, MariaDB and PostgreSQL dumps, not SQLite ones. " +
+	"Copy into a SQLite database instead: --to sqlite:///path/to/staging.sqlite."
 
 // sourceDialect is the dialect of a dump file source read from its head,
 // for --one-pass, where the sink comes before the first statement is

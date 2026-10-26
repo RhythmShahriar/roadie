@@ -1399,3 +1399,29 @@ func TestRunSoundcheckFailed(t *testing.T) {
 		})
 	}
 }
+
+// A SQLite source can't go to a dump; plan stops on it as copy does.
+func TestCheckDialects(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		source core.Dialect
+		to     core.Endpoint
+		stop   bool
+	}{
+		{"sqlite to dump", core.SQLite, core.Endpoint{Kind: core.DumpFile, Path: "out.sql"}, true},
+		{"sqlite to stdout", core.SQLite, core.Endpoint{Kind: core.Stdio}, true},
+		{"sqlite to sqlite", core.SQLite, core.Endpoint{Kind: core.DSN, Driver: core.SQLite}, false},
+		{"mysql to dump", core.MySQL, core.Endpoint{Kind: core.DumpFile, Path: "out.sql"}, false},
+		{"postgres to mysql", core.Postgres, core.Endpoint{Kind: core.DSN, Driver: core.MySQL}, true},
+	} {
+		r := &runner{j: Job{From: core.Endpoint{Kind: core.DumpFile, Display: "prod"}, To: c.to}}
+		err := r.checkDialects(c.source, "")
+		var ce *core.Error
+		if got := errors.As(err, &ce) && ce.Code == core.ErrDialectMismatch; got != c.stop {
+			t.Errorf("%s: %v", c.name, err)
+		}
+		if c.stop && c.source == core.SQLite && !strings.Contains(err.Error(), "--to sqlite:///") {
+			t.Errorf("%s: no next step in %q", c.name, err)
+		}
+	}
+}

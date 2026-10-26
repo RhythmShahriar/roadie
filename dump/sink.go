@@ -74,7 +74,7 @@ func newEncoder(w io.Writer, o WriterOptions) (encoder, error) {
 	case core.Postgres:
 		return pgsql.NewWriter(w), nil
 	case core.SQLite:
-		return nil, core.Errorf(core.ErrDialectMismatch, 2, "dialect-mismatch: Roadie writes MySQL, MariaDB and PostgreSQL dumps, not SQLite ones.")
+		return nil, core.Errorf(core.ErrDialectMismatch, 2, "dialect-mismatch: Roadie writes MySQL, MariaDB and PostgreSQL dumps, not SQLite ones. Copy into a SQLite database instead: --to sqlite:///path/to/staging.sqlite.")
 	}
 	return mysql.NewWriter(w, mysql.WriterOptions{Target: o.Target, FixCollation: o.FixCollation}), nil
 }
