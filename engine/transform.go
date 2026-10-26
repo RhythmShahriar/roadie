@@ -6,6 +6,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"slices"
 	"strings"
 
@@ -226,7 +227,13 @@ func (c *counter) kept(r *core.Rule) { c.out.change(r.ID, c.table, c.col, r.Acti
 
 // value changes one value. It reports whether the row is to be deleted.
 func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.Value, rules *ruleSet) (bool, error) {
-	if v.Kind != core.String && v.Kind != core.BinaryString {
+	switch v.Kind {
+	case core.String, core.BinaryString:
+	case core.Hex:
+		return t.hexValue(out, rc, col, v, rules)
+	case core.Expr:
+		return false, t.exprValue(out, rc, col, v, rules)
+	default:
 		return false, nil
 	}
 	whole, paths := rules.match(rc.get)
@@ -405,6 +412,70 @@ func isMultisiteTable(table, prefix string) bool {
 }
 
 // setValue replaces a value's bytes (or makes it NULL) and marks it dirty.
+// hexValue runs the rules on a value the dump wrote in hex (mysqldump
+// --hex-blob writes binary columns as 0x...): on its bytes, as for a
+// quoted string. A changed value is written back as a binary string; an
+// unchanged one keeps its hex text.
+func (t *transformer) hexValue(out *batchOut, rc rowCtx, col core.Column, v *core.Value, rules *ruleSet) (bool, error) {
+	b, ok := decodeHexLiteral(v.Raw)
+	if !ok {
+		return false, nil
+	}
+	hv := core.Value{Kind: core.BinaryString, Raw: b}
+	del, err := t.value(out, rc, col, &hv, rules)
+	if err == nil && hv.Dirty {
+		*v = hv
+	}
+	return del, err
+}
+
+// decodeHexLiteral reads 0x4A61 or X'4A61' (either case) into bytes.
+func decodeHexLiteral(raw []byte) ([]byte, bool) {
+	var digits []byte
+	switch {
+	case len(raw) >= 2 && raw[0] == '0' && (raw[1] == 'x' || raw[1] == 'X'):
+		digits = raw[2:]
+	case len(raw) >= 3 && (raw[0] == 'x' || raw[0] == 'X') && raw[1] == '\'' && raw[len(raw)-1] == '\'':
+		digits = raw[2 : len(raw)-1]
+	default:
+		return nil, false
+	}
+	b, err := hex.DecodeString(string(digits))
+	return b, err == nil
+}
+
+// exprValue handles a value the dump wrote as an SQL expression Roadie
+// doesn't evaluate: adjacent literals ('jane' '@shop.com'), a function
+// call. In a column no rule changes it stays as written. Where a rule
+// would pseudonymise it, it can't be read, so it is treated as
+// unparseable: blanked and reported, or the copy stops with
+// on_unparseable: fail. It never passes through unchanged.
+func (t *transformer) exprValue(out *batchOut, rc rowCtx, col core.Column, v *core.Value, rules *ruleSet) error {
+	if t.sh.parts.noData {
+		return nil
+	}
+	whole, paths := rules.match(rc.get)
+	if whole == nil && len(paths) == 0 || whole != nil && whole.Action == core.Keep && len(paths) == 0 {
+		return nil
+	}
+	at := rc.loc
+	at.Column = col.Name
+	if t.sh.cfg.Pseudonymise.OnUnparseable == "fail" {
+		return &core.Error{Code: core.FindingDataUnparseable, Exit: 3, Msg: "data.unparseable: a value at " + at.String() +
+			" is an SQL expression Roadie can't read, in a column it pseudonymises; on_unparseable: fail stops here." +
+			" Export the dump again without it, or set on_unparseable: blank to blank such values."}
+	}
+	*v = core.Value{Kind: core.String, Raw: []byte{}, Dirty: true}
+	c := out.change(changeUnparseable, rc.table, col.Name, core.Blank)
+	c.Rows++
+	c.Values++
+	out.findings = append(out.findings, core.Finding{ID: core.FindingDataUnparseable, Severity: core.SeverityMedium,
+		Title: "A value written as an SQL expression stood in a pseudonymised column; it was blanked", Count: 1,
+		Locations: []core.LocationCount{{Location: core.Location{Table: rc.table, Column: col.Name}, Count: 1}},
+		Fix:       "Export the dump again with plain values; on_unparseable: fail stops the copy instead."})
+	return nil
+}
+
 func setValue(v *core.Value, b []byte, null bool) {
 	if null {
 		*v = core.Value{Kind: core.Null, Dirty: true}

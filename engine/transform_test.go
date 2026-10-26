@@ -731,3 +731,54 @@ func TestHostWordKnown(t *testing.T) {
 		}
 	}
 }
+
+// A value the dump wrote in hex gets its rules like a quoted one; an
+// expression in a pseudonymised column is blanked and reported, in a
+// column no rule changes it stays.
+func TestTransformHexAndExpr(t *testing.T) {
+	if _, err := pseudo.NewFaker(pseudo.Key{}, pseudo.Options{}); errors.Is(err, core.ErrNotBuilt) {
+		t.Skip("needs the values lane")
+	}
+	hexEmail := core.Value{Kind: core.Hex, Raw: []byte("0x" + strings.ToUpper(hex.EncodeToString([]byte("anna.lee@shop-mail.com"))))}
+	expr := core.Value{Kind: core.Expr, Raw: []byte("'ben' '@shop-mail.com'")}
+	exprKept := core.Value{Kind: core.Expr, Raw: []byte("CONCAT('a','b')")}
+	p, sink, _ := fixture(t, Copy, "wp_", func() []tableData {
+		return []tableData{
+			{table("wp_options", "option_id:bigint(20)", "option_name", "option_value"), rows{{1, "siteurl", "https://shop.com"}}},
+			{table("wp_users", "ID:bigint(20)", "user_login", "user_email", "user_status"), rows{
+				{1, "anna", hexEmail, "0"}, {2, "ben", expr, exprKept}, {3, "cy", core.Value{Kind: core.Hex, Raw: []byte("0xZZ")}, "0"}}},
+		}
+	}, nil, Options{URL: "https://staging.shop.test"})
+	out := run(t, p)
+	if v, _ := valueOf(t, sink, "wp_users", 0, "user_email"); strings.Contains(v, "anna") || !strings.HasSuffix(v, "@example.invalid") {
+		t.Errorf("hex email: %q", v)
+	}
+	if v, _ := valueOf(t, sink, "wp_users", 1, "user_email"); v != "" {
+		t.Errorf("an expression in user_email: %q", v)
+	}
+	if v, _ := valueOf(t, sink, "wp_users", 1, "user_status"); v != "CONCAT('a','b')" {
+		t.Errorf("an expression no rule changes: %q", v)
+	}
+	if v, _ := valueOf(t, sink, "wp_users", 2, "user_email"); v != "0xZZ" {
+		t.Errorf("hex that isn't hex: %q", v)
+	}
+	found := false
+	for _, f := range out.Result.Findings {
+		found = found || f.ID == core.FindingDataUnparseable
+	}
+	if !found {
+		t.Error("no data.unparseable finding for the expression")
+	}
+	// on_unparseable: fail stops instead.
+	cfg := roadiecfg.Default()
+	cfg.Pseudonymise.OnUnparseable = "fail"
+	p2, _, _ := fixture(t, Copy, "wp_", func() []tableData {
+		return []tableData{
+			{table("wp_options", "option_id:bigint(20)", "option_name", "option_value"), rows{{1, "siteurl", "https://shop.com"}}},
+			{table("wp_users", "ID:bigint(20)", "user_login", "user_email"), rows{{2, "ben", expr}}},
+		}
+	}, cfg, Options{URL: "https://staging.shop.test"})
+	if _, err := p2.run(context.Background()); !isCode(err, core.FindingDataUnparseable) {
+		t.Errorf("on_unparseable: fail: %v", err)
+	}
+}

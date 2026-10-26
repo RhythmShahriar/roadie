@@ -412,6 +412,8 @@ func batches(tables []tableData) []*core.Batch {
 					row.Values = append(row.Values, core.Value{Kind: core.Number, Raw: []byte(strconv.Itoa(x))})
 				case string:
 					row.Values = append(row.Values, core.Value{Kind: core.String, Raw: []byte(x)})
+				case core.Value:
+					row.Values = append(row.Values, core.Value{Kind: x.Kind, Raw: bytes.Clone(x.Raw)})
 				default:
 					panic(fmt.Sprintf("fixture value %T", v))
 				}
