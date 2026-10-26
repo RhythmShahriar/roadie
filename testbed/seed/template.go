@@ -249,9 +249,9 @@ func (r *renderer) funcs() template.FuncMap {
 		"mul":    func(a, b int) int { return a * b },
 		"repeat": func(n int, s string) string { return strings.Repeat(s, max(n, 0)) },
 		"mod":    func(a, b int) int { return a % b },
-		"cr":   func() string { return "\r" },
-		"bom":  func() string { return "\ufeff" },
-		"list": func(args ...any) []any { return args },
+		"cr":     func() string { return "\r" },
+		"bom":    func() string { return "\ufeff" },
+		"list":   func(args ...any) []any { return args },
 		"dict": func(kv ...any) (map[string]any, error) {
 			if len(kv)%2 != 0 {
 				return nil, fmt.Errorf("dict needs key and value pairs, got %d arguments", len(kv))
