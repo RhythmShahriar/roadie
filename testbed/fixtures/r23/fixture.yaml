@@ -1,0 +1,10 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  The egress drill plugin: a WP-CLI command that tries every way out a
+  plugin has (wp_mail, wp_remote_post, raw cURL, mail(), an SMTP socket
+  and fsockopen), each marked so the sinkhole log shows which reached it.
+  It runs on a staging Roadie prepared from r01's data.
+stack: woocommerce
+canaries: false

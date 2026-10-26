@@ -1,0 +1,11 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  wp-config.php traps on a staging copy: a UTF-8 BOM and CRLF line
+  endings, WP_ENVIRONMENT_TYPE production and DISABLE_WP_CRON false
+  already defined (PHP keeps the first define, so appending a second one
+  does nothing), constants read with getenv(), a DB_HOST fallback and
+  WP_REDIS_HOST naming production hosts.
+stack: woocommerce
+canaries: true

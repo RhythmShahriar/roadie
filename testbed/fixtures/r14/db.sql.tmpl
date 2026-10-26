@@ -1,0 +1,16 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r14: a small raw shop behind the trapped wp-config.php. */ -}}
+{{template "head"}}
+{{- template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'blog_public','1','on');
+UNLOCK TABLES;
+{{template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+{{template "users" (dict "p" "wp_" "n" 30 "tag" "w" "base" 1)}}UNLOCK TABLES;
+{{template "wp_usermeta" "wp_"}}
+LOCK TABLES `wp_usermeta` WRITE;
+{{template "usermeta" (dict "p" "wp_" "n" 30 "tag" "w" "base" 1 "meta" 0)}}UNLOCK TABLES;
+{{template "tail"}}

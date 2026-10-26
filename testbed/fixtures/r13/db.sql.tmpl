@@ -1,0 +1,26 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r13: the raw staging. 80 customers, a due WP-Cron event per armed hook,
+80 pending newsletter actions (one per customer), 20 CRM pings and 10
+card charges in Action Scheduler, an active webhook and Stripe live. */ -}}
+{{template "head"}}
+{{- template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'blog_public','1','on'),(5,'woocommerce_custom_orders_table_enabled','yes','on'),(6,'woocommerce_stripe_settings','{{sql (include "stripe_live")}}','on'),(7,'cron','{{sql "a:4:{i:1767225600;a:1:{s:16:\"testbed_ping_crm\";a:1:{s:32:\"40cd750bba9870f18aada2478b24840a\";a:3:{s:8:\"schedule\";s:6:\"hourly\";s:4:\"args\";a:0:{}s:8:\"interval\";i:3600;}}}i:1767225660;a:1:{s:19:\"testbed_charge_card\";a:1:{s:32:\"40cd750bba9870f18aada2478b24840a\";a:2:{s:8:\"schedule\";b:0;s:4:\"args\";a:0:{}}}}i:1767225720;a:1:{s:23:\"testbed_send_newsletter\";a:1:{s:32:\"" (md5 (printf "a:1:{i:0;%s}" (ser (canary "email" "cron" "wp_options.option_value")))) "\";a:2:{s:8:\"schedule\";b:0;s:4:\"args\";a:1:{i:0;" (ser (canary "email" "cron")) "}}}}s:7:\"version\";i:2;}"}}','on');
+UNLOCK TABLES;
+{{template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+{{template "users" (dict "p" "wp_" "n" 80 "tag" "c" "base" 1)}}UNLOCK TABLES;
+{{template "wp_usermeta" "wp_"}}
+LOCK TABLES `wp_usermeta` WRITE;
+{{template "usermeta" (dict "p" "wp_" "n" 80 "tag" "c" "base" 1 "meta" 0)}}UNLOCK TABLES;
+{{template "wp_actionscheduler_actions" "wp_"}}
+LOCK TABLES `wp_actionscheduler_actions` WRITE;
+INSERT INTO `wp_actionscheduler_actions` VALUES {{range $a := seq 80}}{{if gt $a 1}},{{end}}({{$a}},'testbed_send_newsletter','pending','2026-01-01 00:00:00','2026-01-01 00:00:00',10,'{{sql "[\"" (json (canary "email" (printf "c%d" $a))) "\"]"}}','O:30:\"ActionScheduler_SimpleSchedule\":0:{}',0,0,'0000-00-00 00:00:00','0000-00-00 00:00:00',0,NULL){{end}}{{range $a := seq 20}},({{add $a 100}},'testbed_ping_crm','pending','2026-01-01 00:00:00','2026-01-01 00:00:00',10,'[]','O:30:\"ActionScheduler_SimpleSchedule\":0:{}',0,0,'0000-00-00 00:00:00','0000-00-00 00:00:00',0,NULL){{end}}{{range $a := seq 10}},({{add $a 200}},'testbed_charge_card','pending','2026-01-01 00:00:00','2026-01-01 00:00:00',10,'[]','O:30:\"ActionScheduler_SimpleSchedule\":0:{}',0,0,'0000-00-00 00:00:00','0000-00-00 00:00:00',0,NULL){{end}};
+UNLOCK TABLES;
+{{template "wp_wc_webhooks" "wp_"}}
+LOCK TABLES `wp_wc_webhooks` WRITE;
+INSERT INTO `wp_wc_webhooks` VALUES (1,'active','Zapier order sync',1,'https://hooks.zapier.com/hooks/catch/123456/abcdef/','{{key "stripe_webhook_secret"}}','order.created','2026-02-01 09:00:00',3,0,0);
+UNLOCK TABLES;
+{{template "tail"}}

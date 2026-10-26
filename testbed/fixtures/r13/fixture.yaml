@@ -1,0 +1,12 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  A running staging that is still a raw copy with every side effect
+  armed: an active webhook to Zapier, due WP-Cron events, pending Action
+  Scheduler actions (a newsletter queued to every customer), Stripe in
+  live mode and a mu-plugin that mails and posts when those hooks run.
+  The harness hits the site the whole time and a host cron calls
+  wp-cron.php every 30 seconds.
+stack: woocommerce
+canaries: true
