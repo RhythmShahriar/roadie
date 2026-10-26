@@ -171,9 +171,9 @@ func LoadSerialized(path string) ([]Location, error) {
 
 // Integrity is the PHP half of gate 2.
 type Integrity struct {
-	Checked  int        `json:"checked"`
-	Failures int        `json:"failures"`
-	Missing  int        `json:"missing"` // cells whose row is there and whose value or column is gone
+	Checked  int `json:"checked"`
+	Failures int `json:"failures"`
+	Missing  int `json:"missing"` // cells whose row is there and whose value or column is gone
 	// Gone counts, by table, the cells whose whole row is gone from the
 	// output: a row the copy deleted on purpose (a session) or a
 	// truncated table. The row counts say whether that was meant.

@@ -185,7 +185,7 @@ func (r *runner) productionIndex(ctx context.Context, from core.Endpoint, defs [
 	known.Seal()
 	// The shop's own name words are no survivors, as in the copy's own
 	// verify (hostWordKnown).
-	var k core.Known = known
+	k := known
 	if words := hostWords(found); len(words) > 0 {
 		k = &hostWordKnown{Known: known, words: words}
 	}

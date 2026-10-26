@@ -83,9 +83,9 @@ func TestDumpScenariosTranslate(t *testing.T) {
 		{ID: "r01", Kind: manifest.KindCopy, Input: "r01", Run: manifest.RunStagingWP, Setup: []string{manifest.SetupStagingSite},
 			Command: []string{"copy", "--from", "${in}/db.sql", "--to", "${site}", "--url", "${staging_url}", "--confirm-target", "${confirm}", "--yes", "--json"},
 			Output:  manifest.Output{DB: manifest.OutStagingDB, Tree: manifest.OutStagingWP}, Verify: []string{"${site}", "--from", "${in}/db.sql"},
-			Boot:    true, Drill: true, WPChecks: []manifest.WPCheck{{Name: "x", PHP: "exit(0);"}},
-			Expect:  manifest.Expect{ExitCode: &zero, Sinkhole: &zero, Integrity: true, VerifyExit: &zero, TargetState: "replaced", FindingIDs: []string{"uploads.personal", "data.unparseable"}},
-			Forbid:  []string{"pii.email", "side-effect.mail"}},
+			Boot: true, Drill: true, WPChecks: []manifest.WPCheck{{Name: "x", PHP: "exit(0);"}},
+			Expect: manifest.Expect{ExitCode: &zero, Sinkhole: &zero, Integrity: true, VerifyExit: &zero, TargetState: "replaced", FindingIDs: []string{"uploads.personal", "data.unparseable"}},
+			Forbid: []string{"pii.email", "side-effect.mail"}},
 		{ID: "r11", Kind: manifest.KindCopy, Input: "r11", Run: manifest.RunStagingWP, Cases: []manifest.Case{
 			{Name: "unmapped", Setup: []string{manifest.SetupSnapshot}, Command: []string{"copy", "--from", "${in}/db.sql", "--to", "${site}"},
 				Output: manifest.Output{DB: manifest.OutStagingDB}, Expect: manifest.Expect{ExitCode: &two, ErrorCode: "url-map", Unchanged: true}}}},
