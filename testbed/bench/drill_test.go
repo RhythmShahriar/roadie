@@ -25,6 +25,9 @@ import (
 const (
 	portTraffic = "127.0.0.1:33124"
 	portEcho    = "127.0.0.1:33125"
+	// portSeal is Soundcheck's seal proxy, portSealSite the site behind it.
+	portSeal     = "127.0.0.1:33126"
+	portSealSite = "127.0.0.1:33127"
 )
 
 func writeLines(t *testing.T, path string, recs ...any) {
