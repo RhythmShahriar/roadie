@@ -13,11 +13,7 @@ import (
 
 // The frozen stubs answer core.ErrNotBuilt until the lane builds them.
 func TestStubsNotBuilt(t *testing.T) {
-	_, err := ParseEndpoint("dump.sql")
-	if !errors.Is(err, core.ErrNotBuilt) {
-		t.Fatalf("call 1: %v, want core.ErrNotBuilt", err)
-	}
-	_, err = Open(context.Background(), core.Endpoint{}, Options{})
+	_, err := Open(context.Background(), core.Endpoint{}, Options{})
 	if !errors.Is(err, core.ErrNotBuilt) {
 		t.Fatalf("call 2: %v, want core.ErrNotBuilt", err)
 	}

@@ -15,9 +15,14 @@ import (
 	"github.com/RhythmShahriar/roadie/core"
 )
 
-// ParseEndpoint parses one --from or --to value (PRD 6.2).
+// ParseEndpoint parses one --from or --to value (PRD 6.2). A value of no
+// known shape, or an ssh host that could be read as an option, is a
+// kit cli.UsageError (exit 2). A DSN password moves from the value into
+// Password and Display shows "•••" in its place; the caller fills
+// Password from ROADIE_FROM_PASSWORD or ROADIE_TO_PASSWORD when the value
+// has none. For a server DSN, Path is the database name.
 func ParseEndpoint(s string) (core.Endpoint, error) {
-	return core.Endpoint{}, core.ErrNotBuilt
+	return parseEndpoint(s)
 }
 
 // Options configures Open.
