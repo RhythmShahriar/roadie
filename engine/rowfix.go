@@ -95,14 +95,14 @@ func (t *transformer) addressIndex(rc rowCtx, col core.Column, orig []byte) ([]b
 		return nil, false
 	}
 	id, _ := rc.get(idCol)
-	lens := t.sh.addr[addrKey{rc.table, string(id), billing}]
+	lens, ok := t.sh.addr[newAddrKey(rc.table, id, billing)]
 	parts := addrParts[billing]
-	if lens == nil {
+	if !ok {
 		return nil, false
 	}
 	total := len(parts) - 1
 	for i := range parts {
-		total += int(max(lens[i], 0))
+		total += int(lens[i])
 	}
 	if total != len(orig) {
 		return nil, false
@@ -121,7 +121,7 @@ func (t *transformer) addressIndex(rc rowCtx, col core.Column, orig []byte) ([]b
 			out = append(out, ' ')
 			off++
 		}
-		n := int(max(lens[i], 0))
+		n := int(lens[i])
 		val := orig[off : off+n]
 		off += n
 		r, colOf := t.partRule(rc.table, blog, typ, part)

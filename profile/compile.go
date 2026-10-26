@@ -434,6 +434,28 @@ func MatchWhere(r core.Rule, get func(column string) (string, bool)) bool {
 	return true
 }
 
+// MatchWhereBytes is MatchWhere over raw values, for the engine's hot
+// path: a glob without wildcards is compared byte for byte, so the
+// common where clause (meta_key: _billing_email) costs no allocation.
+func MatchWhereBytes(r core.Rule, get func(column string) ([]byte, bool)) bool {
+	for col, glob := range r.Where {
+		v, ok := get(col)
+		if !ok {
+			return false
+		}
+		if !hasGlob(glob) {
+			if string(v) != glob {
+				return false
+			}
+			continue
+		}
+		if m, _ := path.Match(glob, string(v)); !m {
+			return false
+		}
+	}
+	return true
+}
+
 // rulesFor returns the rules for table, before TableAction decides.
 func (c *compiled) rulesFor(table string) []core.Rule {
 	out := slices.Clone(c.exact[table])

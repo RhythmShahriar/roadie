@@ -6,6 +6,8 @@ package engine
 import (
 	"bytes"
 	"context"
+	"hash/maphash"
+	"math"
 	"path"
 	"slices"
 	"strconv"
@@ -110,18 +112,35 @@ var addrParts = map[bool][]string{
 	false: {"first_name", "last_name", "company", "address_1", "address_2", "city", "state", "postcode", "country", "phone"},
 }
 
-// addrKey names one order's billing or shipping address index: the meta
-// table the index row is in and the order (or post) ID.
-type addrKey struct {
-	table   string
-	id      string
-	billing bool
+// addrKey names one order's billing or shipping address index: a hash
+// of the meta table the index row is in, the order (or post) ID and the
+// address type. A shop holds an entry per order address, so the key is
+// 8 bytes, not two strings; a collision only gives lengths that don't
+// add up so the index keeps its own text rule.
+type addrKey uint64
+
+// addrSeed seeds addrKey; the keys never leave the process.
+var addrSeed = maphash.MakeSeed()
+
+// newAddrKey is the key of one order's address index.
+func newAddrKey(table string, id []byte, billing bool) addrKey {
+	var h maphash.Hash
+	h.SetSeed(addrSeed)
+	_, _ = h.WriteString(table)
+	_ = h.WriteByte(0)
+	_, _ = h.Write(id)
+	if billing {
+		_ = h.WriteByte(1)
+	}
+	return addrKey(h.Sum64())
 }
 
-// addrLens holds the byte length of each address part pass 1 saw, -1 for
+// addrLens holds the byte length of each address part pass 1 saw, 0 for
 // a part it didn't. Lengths, not values: with them pass 2 splits the
-// index back into its parts, so memory stays small for big shops.
-type addrLens [11]int32
+// index back into its parts, so memory stays small for big shops. A part
+// of 64 KiB or more saturates, so the lengths don't add up and the index
+// keeps its own text rule.
+type addrLens [11]uint16
 
 // keptUsers are the users keep_users names, found in pass 1.
 type keptUsers struct {
@@ -164,7 +183,7 @@ type indexer struct {
 	kept     *keptUsers
 	admins   []uint64
 	forms    []formRow
-	addr     map[addrKey]*addrLens
+	addr     map[addrKey]addrLens
 	rows     map[string]int64
 	order    []string // tables in the order their rows came
 
@@ -181,7 +200,7 @@ type indexer struct {
 func newIndexer(ctx context.Context, cfg *roadiecfg.Config, defs []profile.Def, site core.Site, known core.Known) *indexer {
 	return &indexer{ctx: ctx, cfg: cfg, defs: defs, site: site, known: known, samples: newSamples(),
 		options: map[string]bool{}, siteURLs: map[string][2]string{}, rows: map[string]int64{},
-		kept: &keptUsers{ids: map[string]bool{}, orders: map[string]bool{}}, addr: map[addrKey]*addrLens{}, nTables: -1}
+		kept: &keptUsers{ids: map[string]bool{}, orders: map[string]bool{}}, addr: map[addrKey]addrLens{}, nTables: -1}
 }
 
 // refresh rebuilds the provisional rule sets when the schema has new
@@ -225,12 +244,22 @@ func (x *indexer) refresh(s *core.Schema) {
 // missing column reads as absent.
 func rowGet(b *core.Batch, pos map[string]int, r *core.Row) func(string) ([]byte, bool) {
 	return func(col string) ([]byte, bool) {
-		i, ok := pos[strings.ToLower(col)]
+		i, ok := posOf(pos, col)
 		if !ok || i >= len(r.Values) || r.Values[i].Kind == core.Null {
 			return nil, false
 		}
 		return r.Values[i].Raw, true
 	}
+}
+
+// posOf looks a column up in positions: as written first, since rules
+// mostly name columns in lower case already, then lower-cased.
+func posOf(pos map[string]int, col string) (int, bool) {
+	if i, ok := pos[col]; ok {
+		return i, true
+	}
+	i, ok := pos[strings.ToLower(col)]
+	return i, ok
 }
 
 // positions maps each column name of a batch (lower case) to its value
@@ -376,20 +405,14 @@ func (x *indexer) keepUser(get func(string) ([]byte, bool)) {
 // address records the length of each order address part, for the
 // hpos-address-index row fix.
 func (x *indexer) address(table string, get func(string) ([]byte, bool)) {
-	set := func(k addrKey, part string, v []byte) {
-		i := slices.Index(addrParts[k.billing], part)
+	set := func(k addrKey, billing bool, part string, v []byte) {
+		i := slices.Index(addrParts[billing], part)
 		if i < 0 {
 			return
 		}
 		l := x.addr[k]
-		if l == nil {
-			l = &addrLens{}
-			for j := range l {
-				l[j] = -1
-			}
-			x.addr[k] = l
-		}
-		l[i] = int32(min(len(v), 1<<30)) // #nosec G115 -- capped above
+		l[i] = uint16(min(len(v), math.MaxUint16)) // #nosec G115 -- capped above
+		x.addr[k] = l
 	}
 	for _, meta := range []struct{ suffix, idCol string }{{"postmeta", "post_id"}, {"wc_orders_meta", "order_id"}} {
 		if _, ok := blogOf(table, x.prefix, meta.suffix); !ok {
@@ -404,7 +427,7 @@ func (x *indexer) address(table string, get func(string) ([]byte, bool)) {
 			}
 			if part, ok := strings.CutPrefix(string(key), typ); ok {
 				v, _ := get("meta_value")
-				set(addrKey{table, string(id), billing}, part, v)
+				set(newAddrKey(table, id, billing), billing, part, v)
 			}
 		}
 		return
@@ -412,16 +435,14 @@ func (x *indexer) address(table string, get func(string) ([]byte, bool)) {
 	if blog, ok := blogOf(table, x.prefix, "wc_order_addresses"); ok {
 		id, _ := get("order_id")
 		typ, _ := get("address_type")
-		k := addrKey{blog + "wc_orders_meta", string(id), string(typ) == "billing"}
-		if string(typ) != "billing" && string(typ) != "shipping" {
+		billing := string(typ) == "billing"
+		if !billing && string(typ) != "shipping" {
 			return
 		}
-		for _, part := range addrParts[k.billing] {
-			if v, ok := get(part); ok {
-				set(k, part, v)
-			} else {
-				set(k, part, nil)
-			}
+		k := newAddrKey(blog+"wc_orders_meta", id, billing)
+		for _, part := range addrParts[billing] {
+			v, _ := get(part)
+			set(k, billing, part, v)
 		}
 	}
 }
@@ -516,10 +537,9 @@ func (x *indexer) addKnown(b *core.Batch, pos map[string]int, r *core.Row, rs []
 			return
 		}
 	}
-	sget := func(c string) (string, bool) { v, ok := get(c); return string(v), ok }
 	for _, rule := range rs {
 		v, ok := get(rule.Column)
-		if !ok || len(bytes.TrimSpace(v)) == 0 || !profile.MatchWhere(rule, sget) {
+		if !ok || len(bytes.TrimSpace(v)) == 0 || !profile.MatchWhereBytes(rule, get) {
 			continue
 		}
 		if rule.Path == "" {

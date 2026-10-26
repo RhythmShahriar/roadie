@@ -85,7 +85,7 @@ func (t *transformer) transform(ctx context.Context, b *core.Batch, c *profile.C
 	orig := make([][]byte, len(b.Columns))
 	nulls := make([]bool, len(b.Columns))
 	get := func(col string) ([]byte, bool) {
-		i, ok := pos[strings.ToLower(col)]
+		i, ok := posOf(pos, col)
 		if !ok || nulls[i] {
 			return nil, false
 		}
@@ -187,9 +187,8 @@ func rowLocation(tb *core.Table, get func(string) ([]byte, bool)) core.Location 
 // whole-value rule (the most specific, as Rules sorts them) and every
 // path rule.
 func match(rules []core.Rule, get func(string) ([]byte, bool)) (whole *core.Rule, paths []core.Rule) {
-	sget := func(c string) (string, bool) { v, ok := get(c); return string(v), ok }
 	for i := range rules {
-		if !profile.MatchWhere(rules[i], sget) {
+		if !profile.MatchWhereBytes(rules[i], get) {
 			continue
 		}
 		if rules[i].Path != "" {
@@ -204,19 +203,18 @@ func match(rules []core.Rule, get func(string) ([]byte, bool)) (whole *core.Rule
 // counter counts one value's changes per rule: a rule that changed
 // several leaves of one value changed one row.
 type counter struct {
-	out          *batchOut
-	table, col   string
-	changedRules map[string]bool
+	out        *batchOut
+	table, col string
+	// changedRules are the rule IDs that changed this value so far; a
+	// value has few, so a slice beats a map.
+	changedRules []string
 }
 
 func (c *counter) changed(r *core.Rule, n int64) {
 	ch := c.out.change(r.ID, c.table, c.col, r.Action)
 	ch.Values += n
-	if c.changedRules == nil {
-		c.changedRules = map[string]bool{}
-	}
-	if !c.changedRules[r.ID] {
-		c.changedRules[r.ID] = true
+	if !slices.Contains(c.changedRules, r.ID) {
+		c.changedRules = append(c.changedRules, r.ID)
 		ch.Rows++
 	}
 }

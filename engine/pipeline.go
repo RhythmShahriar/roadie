@@ -164,7 +164,7 @@ type shared struct {
 	stagingPath string
 	kept        *keptUsers
 	adminID     string // the first administrator's ID
-	addr        map[addrKey]*addrLens
+	addr        map[addrKey]addrLens
 	adminHash   []byte // the kept users' password hash for --admin-password-env
 	onePass     bool
 	parts       parts
