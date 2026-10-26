@@ -60,7 +60,8 @@ type streamInput struct {
 	o       dump.Options
 	onePass bool
 
-	sp spool
+	sp      spool
+	spooled bool // pass 1 read the stream to its end into sp
 }
 
 func (s *streamInput) open(ctx context.Context, pass int) (core.Source, error) {
@@ -79,10 +80,13 @@ func (s *streamInput) open(ctx context.Context, pass int) (core.Source, error) {
 			_ = w.Close()
 			return nil, err
 		}
-		return &spoolSource{Source: src, r: s.r, w: w}, nil
+		return &spoolSource{Source: src, r: s.r, w: w, done: &s.spooled}, nil
 	}
 	if s.sp == nil {
 		return nil, errors.New("engine: pass 2 before pass 1")
+	}
+	if !s.spooled {
+		return nil, errors.New("engine: pass 2 after a pass 1 that stopped early")
 	}
 	rc, err := s.sp.Reader()
 	if err != nil {
@@ -110,22 +114,41 @@ func (s *streamInput) close() error {
 	return err
 }
 
-// spoolSource is pass 1 over a stream: on Close it copies whatever the
-// parser didn't read (bytes after the last statement) to the spool too,
-// so pass 2 sees the same input byte for byte.
+// spoolSource is pass 1 over a stream: once the parser has reached the
+// end, Close copies whatever it didn't read (bytes after the last
+// statement) to the spool too, so pass 2 sees the same input byte for
+// byte. A pass that stopped early (a parse error, a canceled run) skips
+// the copy: no pass 2 follows. Reading the rest of an ssh export or
+// waiting for stdin to end would only delay the stop.
 type spoolSource struct {
 	core.Source
-	r io.Reader
-	w io.WriteCloser
+	r    io.Reader
+	w    io.WriteCloser
+	eof  bool
+	done *bool // set once the whole stream is in the spool
+}
+
+// Next reads a batch and notes when the parser reached the end.
+func (s *spoolSource) Next(ctx context.Context) (*core.Batch, error) {
+	b, err := s.Source.Next(ctx)
+	if errors.Is(err, io.EOF) {
+		s.eof = true
+	}
+	return b, err
 }
 
 func (s *spoolSource) Close() error {
 	err := s.Source.Close()
-	if _, cerr := io.Copy(s.w, s.r); err == nil {
-		err = cerr
+	if s.eof {
+		if _, cerr := io.Copy(s.w, s.r); err == nil {
+			err = cerr
+		}
 	}
 	if cerr := s.w.Close(); err == nil {
 		err = cerr
+	}
+	if s.eof && err == nil {
+		*s.done = true
 	}
 	return err
 }
