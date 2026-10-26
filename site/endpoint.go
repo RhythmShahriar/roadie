@@ -69,6 +69,11 @@ func parseEndpoint(s string) (core.Endpoint, error) {
 	// An existing local file or folder wins over the scp-like form, so a
 	// local name holding '@' and ':' still reads as local.
 	if user, host, path, ok := splitSCP(s); ok && !exists(s) {
+		// Mask the password before any message can print the user part.
+		if name, _, has := strings.Cut(user, ":"); has {
+			shown := name + ":" + masked + s[len(user):]
+			return core.Endpoint{}, cli.Usagef("endpoint: %s holds a password; Roadie uses your ssh keys and agent, never an ssh password", shown)
+		}
 		return sshEndpoint(s, user, host, 0, path)
 	}
 	return parseLocal(s)

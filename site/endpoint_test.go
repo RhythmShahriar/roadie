@@ -128,6 +128,8 @@ func TestParseEndpointRefused(t *testing.T) {
 		{"deploy@a;id:/srv", `ssh host "a;id" is refused: a host can't hold ";"`},
 		{"de$(id)@host.example:/srv", `ssh user "de$(id)" is refused`},
 		{"ssh://u:pw@host.example/srv", "holds a password"},
+		{"deploy:hunter2-pw@shop.example:/var/www", "endpoint: deploy:•••@shop.example:/var/www holds a password; Roadie uses your ssh keys and agent"},
+		{"ssh://deploy:hunter2-pw@shop.example/var/www", "endpoint: ssh://deploy:•••@shop.example/var/www holds a password"},
 		{"ssh://host.example", "needs the site's folder"},
 		{"ssh://host.example:0/srv", "bad port"},
 		{"ssh://host.example/srv?x=1", "takes no ?query"},
