@@ -20,7 +20,7 @@
 -MAIL_USERNAME=postmaster@shop.example
 -MAIL_PASSWORD="fixture mail pass"
 -MAIL_ENCRYPTION=tls
-+MAIL_HOST=127.0.0.1 # the production relay
++MAIL_HOST=127.0.0.1
 +MAIL_PORT=1025
 +MAIL_USERNAME=
 +MAIL_PASSWORD=

@@ -120,7 +120,10 @@ func TestSetGolden(t *testing.T) {
 
 func TestSetRules(t *testing.T) {
 	tests := []struct{ name, in, key, value, want string }{
-		{"in place keeps the comment", "A=1 # c\n", "A", "2", "A=2 # c\n"},
+		{"a changed value drops its comment", "A=1 # c\n", "A", "2", "A=2\n"},
+		{"a changed quoted value drops its comment", "A=\"1 1\"\t# c\r\nB=2 # b\r\n", "A", "2", "A=2\r\nB=2 # b\r\n"},
+		{"the same value keeps its comment", "A=1 # c\n", "A", "1", "A=1 # c\n"},
+		{"a comment on the last line without an end", "A=1 # c", "A", "", "A="},
 		{"last duplicate", "A=1\nA=2\n", "A", "3", "A=1\nA=3\n"},
 		{"export kept", "export A=1\n", "A", "x y", "export A=\"x y\"\n"},
 		{"append with newline", "A=1\n", "B", "2", "A=1\nB=2\n"},

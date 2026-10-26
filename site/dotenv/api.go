@@ -52,7 +52,8 @@ func (f *File) Get(name string) (core.Pair, bool) {
 }
 
 // Set changes the last assignment of name in place, or appends
-// NAME=value on a new line. The value is written unquoted when it holds
+// NAME=value on a new line. A # comment after a value it changes goes
+// too, since it described the old value. The value is written unquoted when it holds
 // only letters, digits and _ . / : @ + -, else double quoted with escapes.
 func (f *File) Set(name, value string) error {
 	return f.set(name, value)

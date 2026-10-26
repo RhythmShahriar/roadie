@@ -46,7 +46,11 @@ func (f *File) try(name, value, q string) (*File, bool) {
 	var out []byte
 	old := f.last(name)
 	if old != nil {
-		out = slices.Concat(f.src[:old.valStart], []byte(q), f.src[old.valEnd:])
+		end := old.valEnd
+		if old.value != value {
+			end = afterComment(f.src, end)
+		}
+		out = slices.Concat(f.src[:old.valStart], []byte(q), f.src[end:])
 	} else {
 		eol := lineEnding(f.src)
 		out = bytes.Clone(f.src)
@@ -67,6 +71,20 @@ func (f *File) try(name, value, q string) (*File, bool) {
 		return nil, false
 	}
 	return nf, true
+}
+
+// afterComment is the end of the line when only blanks and a # comment
+// follow the value at end, else end. A comment about the old value
+// ("# the production relay") would mislead next to the new one.
+func afterComment(src []byte, end int) int {
+	eol := len(src)
+	if i := bytes.IndexAny(src[end:], "\r\n"); i >= 0 {
+		eol = end + i
+	}
+	if bytes.HasPrefix(bytes.TrimLeft(src[end:eol], " \t"), []byte("#")) {
+		return eol
+	}
+	return end
 }
 
 func boolInt(b bool) int {
