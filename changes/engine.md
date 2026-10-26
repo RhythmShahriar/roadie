@@ -633,10 +633,13 @@ It hasn't run yet: the schema files in `profile/testdata/schemas/` were written 
 4. The target guards (PRD 10.4). Nothing is written when one refuses.
 5. The confirmation (below), before anything is written.
 6. `prepare`: the database backup (unless `--no-backup`).
-7. The file-level kill switch (wp-config defines, mu-plugins, `.env`) on a site target, before anything is imported.
-8. `prepare` on WordPress: `.maintenance` is written (`<?php $upgrading = <unix time>; ?>`), so visitors see WordPress's maintenance page during the import. It is removed after the import, also when the run fails.
-9. Pass 1 (index) and pass 2 (transform or import), then the commit.
-10. The after-import kill switch steps, `--basic-auth`, then verify in exact mode on what was written, read back from the target. `--soundcheck` runs Soundcheck on `--url` after it.
+7. Pass 1 (index) and its checks: the uncovered-column stop, the url-map stop and `--site`. A stop here leaves the target untouched: no kill switch step, no `.maintenance`, no sink.
+8. The file-level kill switch (wp-config defines, mu-plugins, `.env`) on a site target, before anything is imported.
+9. `prepare` on WordPress: `.maintenance` is written (`<?php $upgrading = <unix time>; ?>`), so visitors see WordPress's maintenance page during the import. It is removed after the import, also when the run fails.
+10. Pass 2 (transform or import), then the commit.
+11. The after-import kill switch steps, `--basic-auth`, then verify in exact mode on what was written, read back from the target. `--soundcheck` runs Soundcheck on `--url` after it.
+
+A run that stops after a kill switch or exposure step changed the target reports the target `mixed` (in `data.target_state` and in the error), not `untouched`, also when no row was imported yet. A step that fails first leaves it `untouched`.
 
 ### Two passes, the spool and `--one-pass`
 
@@ -648,7 +651,7 @@ It hasn't run yet: the schema files in `profile/testdata/schemas/` were written 
 
 ### Uncovered columns
 
-A text column no rule covers is scanned in pass 1 (up to 1,000 non-empty values, each cut to 1 KiB) and listed when its name or its values look personal (the detect lane's PRD 11.3 rule). `copy` and `prepare` then stop before pass 2, exit 1, target untouched:
+A text column no rule covers is scanned in pass 1 (up to 1,000 non-empty values, each cut to 1 KiB) and listed when its name or its values look personal (the detect lane's PRD 11.3 rule). `copy` and `prepare` then stop before pass 2 and before the kill switch or `.maintenance` touch the site, exit 1, target untouched:
 
 `uncovered: 2 columns look personal and no rule covers them: wp_loyalty_members.email, wp_loyalty_members.phone. Add them under columns: (rhythm-roadie explain uncovered-column), or --allow-uncovered to copy and list them as findings. The target is untouched.`
 
@@ -677,7 +680,7 @@ Users are limited to the members of the chosen blogs and the main site (a `<pref
 
 ## 5. `prepare`
 
-- Source and target are the staging. It needs a site or database: `prepare needs a staging site or database; staging.sql is a dump file. Use rhythm-roadie copy for dump files.` (exit 2).
+- Source and target are the staging; a `source:` in the config (or a `--from` the CLI passes) is never read, so `prepare` can't turn into a copy from production. It needs a site or database: `prepare needs a staging site or database; staging.sql is a dump file. Use rhythm-roadie copy for dump files.` (exit 2).
 - Backup first, unless `--no-backup`; the result carries the backup path and the restore command for the screen. A failed backup stops: `backup of /var/www/staging: <why>. Fix it, or pass --no-backup to go on without one`.
 - `.maintenance` around the import on WordPress (section 4).
 - `--production-url <url>` joins `production:` for the run.
@@ -713,13 +716,14 @@ Without `data`, `keys` and `urls`, only the tables the kill switch touches are e
 - `--basic-auth <user>` (or `basic_auth: true`, user `staging`): the snippets go to `.roadie/basic-auth/` (folder 0700, files 0600); the password is in the result for the screen only, never in a report.
 - `--no-verify`: no verify; the result has none. A copy to stdout can't be read back, so it has no verify either.
 - `plan` lists each step's planned edits; a step that can't plan shows `manual: couldn't plan this step (<why>)`.
-- Report fields: the ruleset, config and Echo connector SHA-256 (the connector only when the kill switch installs it on a WordPress site), the profile pack version, the remote commands every opened site ran, the output's SHA-256 for a dump file plus the Not covered section: PRD 19.1's sentence, `Run rhythm tuner scan <staging dir> for file-level leaks.` for a site target with files and `Add an X-Robots-Tag: noindex middleware; Roadie does not edit Laravel code.` for Laravel.
-- Standalone `verify`: the target is read once read-only to find its stack and profiles (a stdin target goes through the encrypted spool, which verify then reads). With `--from`, production is read once, read-only and never spooled, to fill the known-value set and its wp-config.php and .env pairs: exact mode.
+- Report fields: the ruleset, config and Echo connector SHA-256 (the connector only when the kill switch installs it on a WordPress site), the profile pack version, the remote commands every opened site ran, the output's SHA-256 for a dump file plus the Not covered section: PRD 19.1's sentence, `Run rhythm tuner scan <staging dir> for file-level leaks.` for a site target with files and `Add an X-Robots-Tag: noindex middleware; Roadie does not edit Laravel code.` for Laravel (also for `prepare --only noindex`, which reads no data: the stack is the site's own).
+- Standalone `verify`: the target is read once read-only to find its stack and profiles (a stdin target goes through the encrypted spool, which verify then reads). With `--from`, production is read once, read-only and never spooled, to fill the known-value set and its wp-config.php and .env pairs: exact mode. Every production host it finds counts as production (siteurl, home, every blog domain), also a blog domain `url_map` doesn't name: verify rewrites nothing, so it never stops on url-map. `verify - --from -`: `verify can't read both the copy and --from from stdin (-); name a file or a site for one of them` (exit 2).
 
 ## 8. `update` and the profile pack
 
 - `rhythm-roadie update` downloads `checksums.txt`, `checksums.txt.sigstore.json` and `rhythm-roadie_profiles.tar.gz` from the latest Roadie release, checks the signature the way the binary's is checked (the shared release workflow at refs/heads/master, this repository and the tag), checks the archive's SHA-256 against `checksums.txt` and stores the profiles in `<cache>/roadie/profiles/<version>/`. Older packs are removed.
-- The archive may hold only `*.yaml` files, flat or under `profile/builtin/`, each under 1 MiB, each a profile this binary can parse, at most 256. A link, another folder, a path outside the pack, another file type or a damaged archive refuses the whole pack and nothing is stored.
+- The archive may hold only `*.yaml` files, flat or under `profile/builtin/`, each under 1 MiB and 16 MiB in all, each a profile this binary can parse, at most 256. Past 16 MiB: `profile pack 1.0.1: rhythm-roadie_profiles.tar.gz holds over 16 MiB of profiles; nothing was installed`.
+- The release's version names the cache folder, so a release whose version isn't a plain release version is refused before anything is downloaded: `profile pack: the release's version "../x" isn't a release version, so nothing was installed`. A link, another folder, a path outside the pack, another file type or a damaged archive refuses the whole pack and nothing is stored.
 - Output: `Installed profile pack 1.0.1 (24 profiles).`; when the latest release isn't newer than the built-in profiles: `The built-in profiles (1.0.0) are the newest; nothing to download.`; a pinned older pack: `The built-in profiles (1.0.0) are newer, so Roadie keeps using them.`
 - Refusals: `profile pack 1.0.1: the signature over checksums.txt doesn't verify, so nothing was installed: <why>`, `profile pack 1.0.1: rhythm-roadie_profiles.tar.gz has SHA-256 <a> where checksums.txt says <b>; nothing was installed`, `profile pack 1.0.1: <file> doesn't parse (it may need a newer rhythm-roadie): <why>; nothing was installed`.
 - `update --pin profiles=1.0.1` (and `rhythm lock`) installs that release's pack.
