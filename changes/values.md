@@ -29,9 +29,9 @@ Formats per kind (the examples come from one test key):
 | city | from the list | `Guildford` |
 | company | a word and a locale suffix | `Apex Ltd`, `Nordsee KG` |
 | postcode | the original's shape: letters stay letters, digits stay digits, other bytes kept | `SW1A 1AA` to `FG5M 3DK` |
-| dob | moved by up to 180 days either way, inside the same year; a zero date (`0000-00-00`) stays, a value that isn't a date gets new digits in the same shape; one with no digit at all is blanked | `1980-05-17` to `1980-11-13` |
+| dob | moved by up to 180 days either way, inside the same year; a zero date (`0000-00-00`) stays, a value in a date's shape that isn't a real date (`1990-02-29`) keeps its year and gets a valid month and day, any other value that isn't a date gets new digits in the same shape; one with no digit at all is blanked | `1980-05-17` to `1980-11-13` |
 | ip | IPv4 into 192.0.2.0/24, 198.51.100.0/24 or 203.0.113.0/24; IPv6 into 2001:db8::/32 | `198.51.100.166`, `2001:db8:71a4:ccce:d3a7:6ff4:f9a3:f897` |
-| url | `https://u` + 12 hex + `.example.invalid/` | |
+| url | `https://u` + 12 hex + `.example.invalid/`; a narrow column drops the closing slash, never a hex digit | |
 | user agent | always `Mozilla/5.0 (Roadie staging copy)` | |
 | text | not faked: scrubbed (below) | |
 
@@ -39,9 +39,13 @@ Every format is one `verify` never flags: reserved domains, fictional phone rang
 
 ### Fitting the column
 
-A fake never exceeds the column's byte limit. Names are cut on a word; unique kinds (email, username) shorten their hex part but never below 12 hex, for example `u517b398146a84@example.invalid` at 30 bytes. A column too narrow for that is an error:
+A fake never exceeds the column's byte limit. Names are cut on a word; unique kinds (email, username) shorten their hex part but never below 12 hex, for example `u517b398146a84@example.invalid` at 30 bytes. A URL keeps all 12 hex and only drops its closing slash, so it needs 36 bytes. A column too narrow is an error. For an email or an email-shaped username:
 
 `a fake <kind> needs at least <n> bytes but the column holds <m>; blank the column or use a shorter pseudonymise.email_domain`
+
+For every other kind (the email domain plays no part):
+
+`a fake <kind> needs at least <n> bytes but the column holds <m>; blank the column`
 
 ### Collisions
 
@@ -93,7 +97,7 @@ What it replaces in a text value (order notes, comments, form messages):
 - Every span the detector finds (emails, phones, IPs and the other fake kinds) becomes the fake of that kind, the same fake the structured column got. Cards, IBANs and any span of a kind without a fake become `XXXX`.
 - Email addresses found by their `@` and read as Unicode, so `maría.lópez@correo.example`, `jöhn.dœ@exämple-shop.de` and `user+tag@例え.jp` are replaced whole. A trailing `.` or `-` stays outside the address.
 - Names seen in a structured column of the same run: a known word pair becomes a two-word fake full name; a pair joined by an apostrophe or hyphen (`O'Sullivan`, `Jean-Luc`) counts as one word and gets a one-word fake; a single known word of 3 or more letters becomes a one-word fake when it starts with a capital letter (`Will`, `MARK`). A pair matches in any case (`mark green`).
-- A span that already holds a Roadie fake stays, so scrubbing twice changes nothing more.
+- A span that already holds a Roadie fake stays, so scrubbing twice changes nothing more. A word pair that reads as a Roadie fake full name and isn't a known pair (`Kylie Kim` from an earlier pass) stays whole, even when one word of it (`Kim`) is a known name.
 - Text outside the replaced parts is kept byte for byte.
 
 What it can't do:
@@ -101,6 +105,7 @@ What it can't do:
 - A name Roadie never saw in a structured column (a neighbour named in a note) stays. Free text holds names no pattern can find; `free_text: blank` empties such fields instead.
 - A known word under 3 letters on its own stays.
 - A known name written in lower case on its own stays, so a customer named Will, Mark or Green leaves "we will mark the green box" alone. The cost: "ask bartholomew" keeps the name. A capitalised common word that is a known name ("Will you call?") is still replaced.
+- A single list name standing alone (`Kylie`) that is also a known real name is replaced again on a second pass: it can't be told apart from the real one. A pair Roadie never saw that happens to read as a fake full name keeps a known word inside it.
 - Addresses, streets and postcodes typed into free text are not recognised unless the detector reports them as spans.
 
 ## Production URLs
@@ -119,13 +124,13 @@ Boundary rule (what stays):
 
 - The host must follow two slashes in some spelling, so `jane@shop.com`, `https://jane@shop.com`, `myshop.com` and bare `shop.com` in prose stay.
 - A host that is the user part of a URL to another host stays: in `https://shop.com@other.example/` (or `shop.com:pw@`, or `%40` for the `@`) the URL points at other.example, so it isn't rewritten.
-- The byte after the host must not be a letter, digit or `-`, nor a `.` followed by a letter or digit, so `shop.com.au`, `shop.community` and `shop.com-x.net` stay.
+- The byte after the host must not be a letter, digit or `-`, nor a `.` followed by a letter or digit, so `shop.com.au`, `shop.community` and `shop.com-x.net` stay. A dot spelled `%2E` (any case), `&#46;`, `&#x2E;` or `&period;` counts as a dot, so `shop.com%2Eau` and `shop.com&#46;au` stay too.
 - A production URL with a path only matches before a byte outside `[A-Za-z0-9._~-]`: `/blog` doesn't match `/blogger`.
 - A port in the text stays (`shop.com:8443` becomes `staging.shop.test:8443`) unless the staging URL names one.
 - Subdomains (`fr.shop.com`) are rewritten only with a pair of their own.
 - Host case is ignored (ASCII).
 
-URL map errors (code `config`, exit 2): `url map: "<entry>" isn't a URL or a host like shop.com or https://shop.com/path` and `url map: <host> maps to itself; the staging URL needs a host of its own`.
+URL map errors (code `config`, exit 2): `url map: "<entry>" isn't a URL or a host like shop.com or https://shop.com/path`, `url map: "https://***@staging.shop.com" has user info, which isn't allowed; write a URL or a host like shop.com or https://shop.com/path` (everything between the scheme and the last `@` is shown as `***`, so a password never reaches the message) and `url map: <host> maps to itself; the staging URL needs a host of its own`.
 
 ## PHP serialized values
 
