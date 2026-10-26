@@ -660,3 +660,42 @@ func benchValue(format string, i int) []byte {
 	}
 	return fmt.Appendf(nil, format, i)
 }
+
+// TestLRU checks the cache on its own: a hit needs the same key bytes,
+// not only the same hash, inputs that join to the same bytes stay apart
+// and the least recently used entry goes first.
+func TestLRU(t *testing.T) {
+	c := newLRU(2)
+	ka := c.key(core.KEmail, []byte("a"), core.FakeOpts{Country: "GB"})
+	c.put(ka, []byte("fake-a"))
+	// Same hash, other bytes: what a hash collision looks like to get.
+	c.key(core.KEmail, []byte("b"), core.FakeOpts{})
+	if got, ok := c.get(ka); ok {
+		t.Errorf("a hash match with other inputs hit: %q", got)
+	}
+	// "a" with the country "GB" and "aGB" with none would join to one
+	// string without the lengths.
+	if c.key(core.KEmail, []byte("a"), core.FakeOpts{Country: "GB"}) != ka {
+		t.Fatal("key isn't stable")
+	}
+	if c.key(core.KEmail, []byte("aGB"), core.FakeOpts{}) == ka ||
+		c.key(core.KEmail, []byte("a"), core.FakeOpts{Locale: "GB"}) == ka {
+		t.Error("different inputs share a key")
+	}
+	kb := c.key(core.KEmail, []byte("b"), core.FakeOpts{})
+	c.put(kb, []byte("fake-b"))
+	c.key(core.KEmail, []byte("a"), core.FakeOpts{Country: "GB"})
+	if got, ok := c.get(ka); !ok || string(got) != "fake-a" {
+		t.Fatalf("get a = %q, %v", got, ok)
+	}
+	kc := c.key(core.KEmail, []byte("c"), core.FakeOpts{})
+	c.put(kc, []byte("fake-c")) // evicts b, the least recently used
+	c.key(core.KEmail, []byte("b"), core.FakeOpts{})
+	if _, ok := c.get(kb); ok {
+		t.Error("b survived eviction")
+	}
+	c.key(core.KEmail, []byte("a"), core.FakeOpts{Country: "GB"})
+	if got, ok := c.get(ka); !ok || string(got) != "fake-a" {
+		t.Errorf("get a after eviction = %q, %v", got, ok)
+	}
+}

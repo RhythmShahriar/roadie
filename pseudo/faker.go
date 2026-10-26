@@ -143,7 +143,7 @@ func (f *faker) Fake(kind core.FakeKind, original []byte, o core.FakeOpts) ([]by
 	f.norm = appendNormalise(f.norm[:0], hk, original)
 	n := f.norm
 	ck := f.cache.key(kind, n, o)
-	if out, ok := f.cache.get(ck, kind, n, o); ok {
+	if out, ok := f.cache.get(ck); ok {
 		return bytes.Clone(out), nil
 	}
 	f.in = append(append(append(f.in[:0], hk...), 0), n...)
@@ -161,7 +161,7 @@ func (f *faker) Fake(kind core.FakeKind, original []byte, o core.FakeOpts) ([]by
 	}
 	// The cache keeps its own copy, so out, fresh from format, is the
 	// caller's without a second copy.
-	f.cache.put(ck, kind, n, o, out)
+	f.cache.put(ck, out)
 	return out, nil
 }
 
@@ -243,19 +243,20 @@ func collision(kind core.FakeKind) error {
 // buffer holds the next value, so a full cache allocates nothing.
 type lru struct {
 	seed       maphash.Seed
-	scratch    []byte // the bytes of the last key
+	scratch    []byte // the bytes of the last key, which get and put use
 	max        int
 	idx        map[uint64]int32
 	ents       []lruEntry
 	head, tail int32 // most and least recently used; -1 when empty
 }
 
+// lruEntry is one cached fake. buf holds the whole key, not only its
+// hash, so a hash collision is a miss and never the wrong fake; keeping
+// kind and options in those bytes keeps the entry small.
 type lruEntry struct {
 	key        uint64
-	kind       core.FakeKind
-	opts       core.FakeOpts
-	buf        []byte // the normalised value, then the fake
-	nlen       int    // the length of the normalised value in buf
+	buf        []byte // the key's bytes, then the fake
+	klen       int32  // the length of the key's bytes in buf
 	prev, next int32
 }
 
@@ -264,37 +265,44 @@ func newLRU(maxEntries int) *lru {
 }
 
 // key hashes what a fake depends on: kind, normalised value and options.
+// The bytes it hashes are kept for get and put to compare, so they spell
+// each input with its length and two different inputs never share them.
 func (c *lru) key(kind core.FakeKind, n []byte, o core.FakeOpts) uint64 {
-	b := append(append(c.scratch[:0], kind...), 0)
+	b := append(append(c.scratch[:0], kind...), 0) // a kind holds no NUL
+	b = binary.AppendUvarint(b, uint64(len(n)))
 	b = append(b, n...)
-	b = binary.LittleEndian.AppendUint64(b, uint64(o.MaxLen)) // #nosec G115 -- hashed, never read back
+	b = binary.LittleEndian.AppendUint64(b, uint64(o.MaxLen)) // #nosec G115 -- compared, never read back
+	unique := byte(0)
 	if o.Unique {
-		b = append(b, 1)
+		unique = 1
 	}
-	b = append(append(append(b, 0), o.Country...), 0)
-	b = append(b, o.Locale...)
+	b = append(b, unique)
+	b = binary.AppendUvarint(b, uint64(len(o.Country)))
+	b = append(append(b, o.Country...), o.Locale...)
 	c.scratch = b
 	return maphash.Bytes(c.seed, b)
 }
 
-// get returns the cached fake; a hash match with other inputs is a miss.
-func (c *lru) get(k uint64, kind core.FakeKind, n []byte, o core.FakeOpts) ([]byte, bool) {
+// get returns the cached fake for the key k was made from by the last
+// key call; a hash match with other inputs is a miss.
+func (c *lru) get(k uint64) ([]byte, bool) {
 	i, ok := c.idx[k]
 	if !ok {
 		return nil, false
 	}
 	e := &c.ents[i]
-	if e.kind != kind || e.opts != o || !bytes.Equal(e.buf[:e.nlen], n) {
+	if !bytes.Equal(e.buf[:e.klen], c.scratch) {
 		return nil, false
 	}
 	c.touch(i)
-	return e.buf[e.nlen:], true
+	return e.buf[e.klen:], true
 }
 
-// put stores fake, evicting the least recently used entry when full.
-func (c *lru) put(k uint64, kind core.FakeKind, n []byte, o core.FakeOpts, fake []byte) {
+// put stores fake for the key k was made from by the last key call,
+// evicting the least recently used entry when full.
+func (c *lru) put(k uint64, fake []byte) {
 	if i, ok := c.idx[k]; ok {
-		c.ents[i].set(kind, n, o, fake)
+		c.ents[i].set(c.scratch, fake)
 		c.touch(i)
 		return
 	}
@@ -309,15 +317,15 @@ func (c *lru) put(k uint64, kind core.FakeKind, n []byte, o core.FakeOpts, fake 
 	}
 	e := &c.ents[i]
 	e.key, e.prev, e.next = k, -1, -1
-	e.set(kind, n, o, fake)
+	e.set(c.scratch, fake)
 	c.idx[k] = i
 	c.pushFront(i)
 }
 
 // set fills e, reusing the buffer of the value it held before.
-func (e *lruEntry) set(kind core.FakeKind, n []byte, o core.FakeOpts, fake []byte) {
-	e.kind, e.opts, e.nlen = kind, o, len(n)
-	e.buf = append(append(e.buf[:0], n...), fake...)
+func (e *lruEntry) set(key, fake []byte) {
+	e.klen = int32(len(key)) // #nosec G115 -- a key is a value of one column plus a few bytes
+	e.buf = append(append(e.buf[:0], key...), fake...)
 }
 
 func (c *lru) touch(i int32) {
