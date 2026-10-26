@@ -448,8 +448,8 @@ func effective(base *roadiecfg.Config, o Options) (*roadiecfg.Config, error) {
 // needConfig fails when a key the run uses reads a ${ROADIE_*} variable
 // that isn't set (roadiecfg.Config.Need, exit 2). A key a flag replaces
 // isn't used, so its unset variable doesn't stop the run; source: and
-// target: count only when the endpoint is the config's value, and
-// prepare never reads source:.
+// target: count only when the endpoint is the config's value. prepare
+// never reads source:.
 func needConfig(c *roadiecfg.Config, o Options, from, to core.Endpoint, prepare bool) error {
 	keys := make([]string, 0, len(c.Unset))
 	for k := range c.Unset {
