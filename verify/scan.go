@@ -26,6 +26,9 @@ type scanner struct {
 	noKeys, noLiveMode bool
 	findURL            func([]byte) []core.Span
 	filter             *filter
+	// wcpayDev is WCPAY_DEV_MODE from wp-config.php: WooPayments runs on
+	// a test account whatever its test_mode says.
+	wcpayDev bool
 }
 
 // detectorSkip names the --skip entry of each PII detector.
@@ -82,6 +85,7 @@ func (s *scanner) batch(w work) result {
 		}
 	}
 	res.findings = acc.Findings()
+	res.unparsed = f.unparsed
 	return res
 }
 
@@ -164,13 +168,28 @@ type field struct {
 	sibs     map[string]map[string]string
 	public   bool
 	lat      core.Location // the leaf being scanned, for emit
+	// unparsed counts serialized-looking values that didn't parse, by
+	// table, NUL, column.
+	unparsed map[string]int64
 	emitFn   func(core.Hit)
 	leafFn   func(string, []byte)
+	// pending holds the leaves of the value being walked and arena their
+	// bytes. They are scanned only once the walk succeeds: a walk that
+	// fails partway leaves the value to be read as plain text; leaves
+	// scanned before the failure would then be counted twice.
+	pending []pendingLeaf
+	arena   []byte
+}
+
+// pendingLeaf is one walked leaf: its path and its bytes in field.arena.
+type pendingLeaf struct {
+	path       string
+	start, end int
 }
 
 func newField(s *scanner, acc sink, hits *[]core.KeyHit) *field {
 	f := &field{s: s, acc: acc, hits: hits}
-	f.emitFn, f.leafFn = f.emit, f.leaf
+	f.emitFn, f.leafFn = f.emit, f.collect
 	return f
 }
 
@@ -191,11 +210,29 @@ func (f *field) value(v []byte, sc core.ScanContext, at core.Location) {
 	f.public = publicOption(sc)
 	switch formatOf(v) {
 	case "serialized", "json", "base64-serialized":
+		f.pending, f.arena = f.pending[:0], f.arena[:0]
 		if err := leavesOf(v, f.leafFn, nested.Options{}); err == nil {
+			for _, l := range f.pending {
+				f.leaf(l.path, f.arena[l.start:l.end])
+			}
 			return
 		}
 	}
+	if looksSerialized(v) {
+		if f.unparsed == nil {
+			f.unparsed = map[string]int64{}
+		}
+		f.unparsed[sc.Table+"\x00"+sc.Column]++
+	}
 	f.leaf("", v)
+}
+
+// collect keeps one walked leaf until the walk ends. The bytes are
+// copied: the walker may reuse its buffer for the next leaf.
+func (f *field) collect(p string, l []byte) {
+	start := len(f.arena)
+	f.arena = append(f.arena, l...)
+	f.pending = append(f.pending, pendingLeaf{path: p, start: start, end: len(f.arena)})
 }
 
 // emit records one detector hit at the current leaf.
@@ -216,6 +253,12 @@ func (f *field) leaf(p string, l []byte) {
 		if ipKeys[strings.ToLower(key)] {
 			lsc.ColumnKind = core.KIP
 		}
+	}
+	if p != "" && encrypted(l) {
+		// A Laravel job that implements ShouldBeEncrypted keeps its
+		// command encrypted inside the JSON payload of the jobs table.
+		f.acc.add(core.Finding{ID: core.FindingDataEncrypted, Severity: core.SeverityInfo, Title: titles[core.FindingDataEncrypted],
+			Locations: []core.LocationCount{{Location: f.lat}}})
 	}
 	if !f.public {
 		for _, d := range s.detectors {
@@ -241,7 +284,10 @@ func (f *field) leaf(p string, l []byte) {
 			addKeyHit(h, f.acc, f.hits)
 		}
 	}
-	if s.findURL != nil {
+	if s.findURL != nil && !optionNamed(f.sc, "wc_subscriptions_siteurl") {
+		// WooCommerce Subscriptions keeps production's URL there on
+		// purpose: a copy whose URL differs from it stays in staging
+		// mode. Roadie never rewrites it, so it is no finding (PRD 15.2).
 		for range s.findURL(l) {
 			id := core.FindingURLProduction
 			if siteURLOption(f.sc) {
@@ -294,11 +340,17 @@ func urlSeverity(id string) core.Severity {
 
 // siteURLOption reports whether the value is the siteurl or home option.
 func siteURLOption(sc core.ScanContext) bool {
+	return optionNamed(sc, "siteurl", "home")
+}
+
+// optionNamed reports whether sc is the option_value of an options row
+// named one of names.
+func optionNamed(sc core.ScanContext, names ...string) bool {
 	if !strings.HasSuffix(sc.Table, "options") || !strings.EqualFold(sc.Column, "option_value") || sc.Row == nil {
 		return false
 	}
 	name, ok := sc.Row("option_name")
-	return ok && (string(name) == "siteurl" || string(name) == "home")
+	return ok && slices.Contains(names, string(name))
 }
 
 // publicOptionPrefixes are the option names under which WordPress caches
@@ -392,7 +444,7 @@ func (s *scanner) liveMode(v []byte, settings map[string]string, sc core.ScanCon
 		return
 	}
 	g, ok := keys.GatewayFor(string(name))
-	if !ok || g.TestValue == "" && g.LiveValue == "" {
+	if !ok || g.TestValue == "" && g.LiveValue == "" || g.ID == "woopayments" && s.wcpayDev {
 		return
 	}
 	if g.ModePath == "" {
@@ -433,4 +485,30 @@ func encrypted(v []byte) bool {
 	}
 	_, tag := m["tag"]
 	return len(m) == 3 || len(m) == 4 && tag
+}
+
+// looksSerialized is WordPress's is_serialized test (strict): a value
+// PHP's maybe_unserialize would try to read. Such a value that nested
+// can't parse is noted under coverage.
+func looksSerialized(v []byte) bool {
+	v = bytes.TrimSpace(v)
+	if string(v) == "N;" {
+		return true
+	}
+	if len(v) < 4 || v[1] != ':' {
+		return false
+	}
+	last := v[len(v)-1]
+	if last != ';' && last != '}' {
+		return false
+	}
+	switch v[0] {
+	case 's':
+		return last == ';' && v[len(v)-2] == '"'
+	case 'a', 'O', 'E':
+		return last == '}' && bytes.IndexByte(v[2:], ':') > 0
+	case 'b', 'i', 'd':
+		return last == ';' && len(v) > 2
+	}
+	return false
 }

@@ -16,6 +16,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/RhythmShahriar/echo/client"
 	"github.com/RhythmShahriar/echo/model"
@@ -37,8 +39,9 @@ const DefaultEchoURL = client.DefaultURL
 // echoTimeout bounds each call to Echo.
 const echoTimeout = 10 * time.Second
 
-// maxEchoPages caps how many pages of messages are counted.
-const maxEchoPages = 200
+// maxEchoPages caps how many pages of messages are counted; tests
+// lower it.
+var maxEchoPages = 200
 
 // checkOptions refuses options that could reach the wrong host before
 // anything is read: a --site on a production host and an Echo URL that
@@ -49,7 +52,9 @@ func checkOptions(j Job) error {
 		if err != nil {
 			return err
 		}
-		if matchHost(productionHosts(j.Production), strings.ToLower(u.Hostname())) {
+		// normHost makes "shop.com." and "[::ffff:127.0.0.1]" compare
+		// equal to the production entries they name.
+		if matchHost(productionHosts(j.Production), normHost(u.Hostname())) {
 			return core.Errorf(core.ErrTargetIsProduction, 3,
 				"target-is-production: --site %s is %s, which production: lists. Roadie never fetches production. Point --site at the staging copy.",
 				u.Redacted(), u.Hostname())
@@ -87,6 +92,40 @@ func echoURL(s string) (*url.URL, error) {
 	}
 	return nil, core.Errorf(core.ErrConfig, cli.ExitUsage,
 		"verify --echo: %s is plain http beyond this machine and its network, where anyone on the way could read or fake its answers. Use https:// for an Echo elsewhere.", u.Redacted())
+}
+
+// echoClient is the client for --echo. Redirects stay on Echo's own
+// scheme, host and port: an https Echo elsewhere must not bounce the
+// requests (or the answers verify trusts) to another server.
+func echoClient(echo *url.URL) *http.Client {
+	return &http.Client{Timeout: echoTimeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("too many redirects")
+		}
+		if req.URL.Scheme != echo.Scheme || !strings.EqualFold(req.URL.Host, echo.Host) {
+			return fmt.Errorf("redirect off Echo's host to %s", req.URL.Redacted())
+		}
+		return nil
+	}}
+}
+
+// printable returns s without control or format characters (escape
+// sequences, bidi overrides) and cut to at most n runes, for text from
+// another program that ends up in a finding title.
+func printable(s string, n int) string {
+	var b strings.Builder
+	for _, r := range s {
+		if n == 0 {
+			b.WriteString("...")
+			break
+		}
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == utf8.RuneError {
+			continue
+		}
+		b.WriteRune(r)
+		n--
+	}
+	return b.String()
 }
 
 // localHost reports whether host is localhost or a loopback, private or
@@ -299,11 +338,14 @@ func metaNoindex(body []byte) bool {
 		tag := string(low[start : start+end])
 		off = start + end
 		name := attr(tag, "name")
-		if name != "robots" && name != "googlebot" {
+		// A tag for one crawler (name="googlebot") leaves the rest free
+		// to index, as a one-bot X-Robots-Tag rule does.
+		if name != "robots" {
 			continue
 		}
-		c := attr(tag, "content")
-		if strings.Contains(c, "noindex") || strings.Contains(c, "none") {
+		// The content is a comma list like the header's; "nonexistent"
+		// or "index, follow" holds no noindex.
+		if hasNoindex([]string{attr(tag, "content")}) {
 			return true
 		}
 	}
@@ -344,9 +386,11 @@ func attr(tag, a string) string {
 }
 
 // robotsAllowAll reports whether robots.txt lets User-agent: * crawl "/":
-// no "Disallow: /" in the group that names *.
+// no "Disallow: /" in the group that names *, or an "Allow: /" beside it,
+// which wins a tie of equal length (RFC 9309 section 2.2.2).
 func robotsAllowAll(body []byte) bool {
 	inStar, groupStarted := false, false
+	disallow, allow := false, false
 	for line := range strings.SplitSeq(string(body), "\n") {
 		if i := strings.IndexByte(line, '#'); i >= 0 {
 			line = line[:i]
@@ -366,14 +410,15 @@ func robotsAllowAll(body []byte) bool {
 			}
 		case "disallow":
 			groupStarted = true
-			if inStar && v == "/" {
-				return false
-			}
+			disallow = disallow || inStar && v == "/"
+		case "allow":
+			groupStarted = true
+			allow = allow || inStar && v == "/"
 		default:
 			groupStarted = true
 		}
 	}
-	return true
+	return !disallow || allow
 }
 
 // echo asks Echo whether its seal is on and how many messages it let
@@ -385,7 +430,7 @@ func (r *run) echo(ctx context.Context) {
 		return
 	}
 	c := client.New(u.String(), "")
-	c.HTTP = &http.Client{Timeout: echoTimeout}
+	c.HTTP = echoClient(u)
 	r.count(core.FindingSideEffectMail, 1)
 	at := core.Location{File: u.Redacted()}
 	mail := func(title, fix string) {
@@ -406,7 +451,7 @@ func (r *run) echo(ctx context.Context) {
 		return
 	}
 	if h.Mode != "seal" {
-		mail("Echo is in "+h.Mode+" mode, so mail from this copy reaches real people",
+		mail("Echo is in "+printable(h.Mode, 40)+" mode, so mail from this copy reaches real people",
 			"Run Echo in seal mode: rhythm echo up --mode seal.")
 	}
 	sent := int64(0)
@@ -418,6 +463,7 @@ func (r *run) echo(ctx context.Context) {
 		r.note[core.FindingSideEffectMail] = "counted only messages since verify started; the copy's start time wasn't known"
 	}
 	f := client.Filter{Since: since, Limit: 200}
+	more := false
 	for range maxEchoPages {
 		p, err := c.List(ctx, f)
 		if err != nil {
@@ -432,10 +478,18 @@ func (r *run) echo(ctx context.Context) {
 				sent++
 			}
 		}
-		if p.Next == "" {
+		more = p.Next != ""
+		if !more {
 			break
 		}
 		f.Before = p.Next
+	}
+	if more {
+		// Pages past the cap were never counted, so a zero count proves
+		// nothing; the check fails closed.
+		mail(fmt.Sprintf("verify --echo: couldn't count every message Echo let through (stopped after %d pages)", maxEchoPages),
+			"Check Echo's inbox for sent messages, clear it, then run verify again.")
+		return
 	}
 	if sent > 0 {
 		mail(fmt.Sprintf("Echo let %d messages through %s", sent, from),

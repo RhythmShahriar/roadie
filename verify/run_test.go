@@ -240,7 +240,14 @@ func ids(res *core.VerifyResult) []string {
 	return out
 }
 
-func liveStripe() string { return testutil.J("sk_", "live_", strings.Repeat("Ab3", 8)) }
+// keyBody returns n key characters starting with seed. A real key body
+// is random, so it has more than three different characters; a body of
+// fewer reads as a placeholder (xxxx, 0000).
+func keyBody(seed string, n int) string {
+	return strings.Repeat(seed+"Zk7Wm", n)[:n]
+}
+
+func liveStripe() string { return testutil.J("sk_", "live_", keyBody("Ab3", 24)) }
 
 // ser writes a flat serialized array of strings.
 func ser(kv ...string) string {
@@ -383,7 +390,7 @@ func TestRunGatewayLiveModeAndKeys(t *testing.T) {
 	}
 
 	// A Square token with no environment beside it is key.unknown-env.
-	sq := testutil.J("EAAA", strings.Repeat("Zx9", 20))
+	sq := testutil.J("EAAA", keyBody("Zx9", 60))
 	res = runJob(t, Job{Source: source(options([]string{"1", "my_square_token", sq}))})
 	if f := find(res, core.FindingKeyUnknownEnv); f == nil || f.Severity != core.SeverityMedium {
 		t.Errorf("unknown env: %+v", res.Findings)
@@ -391,9 +398,43 @@ func TestRunGatewayLiveModeAndKeys(t *testing.T) {
 
 	// Test keys are no finding at all.
 	res = runJob(t, Job{Source: source(options([]string{"1", "woocommerce_stripe_settings",
-		ser("enabled", "yes", "testmode", "yes", "test_secret_key", testutil.J("sk_", "test_", strings.Repeat("Ab3", 8)))}))})
+		ser("enabled", "yes", "testmode", "yes", "test_secret_key", testutil.J("sk_", "test_", keyBody("Ab3", 24)))}))})
 	if len(res.Findings) != 0 {
 		t.Errorf("test mode: %v", ids(res))
+	}
+}
+
+// WooPayments in dev (sandbox) mode only uses a test account, so its
+// test_mode setting no longer flags live mode.
+func TestRunWooPaymentsDevMode(t *testing.T) {
+	opt := func() *core.Batch {
+		return options([]string{"1", "woocommerce_woocommerce_payments_settings", ser("enabled", "yes", "test_mode", "no")})
+	}
+	if f := find(runJob(t, Job{Source: source(opt())}), core.FindingKeyLiveMode); f == nil || f.Title != "WooPayments is in live mode" {
+		t.Fatalf("no wp-config: want key.live-mode, got %+v", f)
+	}
+	for _, c := range []struct {
+		config string
+		live   bool
+	}{
+		{"define( 'WCPAY_DEV_MODE', true );", false},
+		{"define( 'WP_ENVIRONMENT_TYPE', 'staging' );", false},
+		{"define( 'WP_ENVIRONMENT_TYPE', 'development' );", false},
+		{"define( 'WP_DEVELOPMENT_MODE', 'plugin' );", false},
+		{"define( 'WP_ENVIRONMENT_TYPE', 'production' );", true},
+		{"define( 'WCPAY_DEV_MODE', false );", true},
+	} {
+		st := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\n" + c.config + "\n")})
+		res := runJob(t, Job{Site: st, Source: source(opt())})
+		if got := find(res, core.FindingKeyLiveMode) != nil; got != c.live {
+			t.Errorf("%s: live mode %v, want %v", c.config, got, c.live)
+		}
+	}
+	// Dev mode is WooPayments' own: Stripe still counts.
+	st := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\ndefine( 'WP_ENVIRONMENT_TYPE', 'staging' );\n")})
+	res := runJob(t, Job{Site: st, Source: source(options([]string{"1", "woocommerce_stripe_settings", ser("enabled", "yes", "testmode", "no")}))})
+	if find(res, core.FindingKeyLiveMode) == nil {
+		t.Errorf("stripe on a staging site: want key.live-mode, got %v", ids(res))
 	}
 }
 
@@ -406,6 +447,31 @@ func TestRunEncrypted(t *testing.T) {
 	if f == nil || f.Count != 2 || f.Locations[0].Column != "ssn" || len(notUncovered(res)) != 1 {
 		t.Fatalf("encrypted: %+v", res.Findings)
 	}
+	// An info finding fails its check only when --fail-on is info.
+	if c := checkByID(res, core.FindingDataEncrypted); c.Status != "pass" || c.Checked != 2 {
+		t.Errorf("data.encrypted check %+v", c)
+	}
+	res = runJob(t, Job{Source: source(batch(table("users", "id", "ssn"), []string{"1", payload})), Opts: Options{FailOn: core.SeverityInfo}})
+	if c := checkByID(res, core.FindingDataEncrypted); c.Status != "fail" || c.Detail != "1 hit" {
+		t.Errorf("data.encrypted check at --fail-on info %+v", c)
+	}
+}
+
+// A ShouldBeEncrypted job keeps its command encrypted inside the JSON
+// payload of the jobs table.
+func TestRunEncryptedJobPayload(t *testing.T) {
+	cmd := base64.StdEncoding.EncodeToString([]byte(`{"iv":"aXY=","value":"dmFsdWU=","mac":"0123456789abcdef","tag":""}`))
+	payload := `{"uuid":"7d3c","displayName":"App\\Jobs\\SendInvoice","data":{"commandName":"App\\Jobs\\SendInvoice","command":"` + cmd + `"}}`
+	res := runJob(t, Job{Source: source(batch(table("jobs", "id", "payload"), []string{"1", payload}))})
+	f := find(res, core.FindingDataEncrypted)
+	if f == nil || f.Locations[0].Column != "payload" {
+		t.Fatalf("job payload: %+v", res.Findings)
+	}
+	plain := `{"uuid":"7d3c","data":{"commandName":"App\\Jobs\\SendInvoice","command":"O:19:\"App\\Jobs\\SendInvoice\":0:{}"}}`
+	res = runJob(t, Job{Source: source(batch(table("jobs", "id", "payload"), []string{"1", plain}))})
+	if find(res, core.FindingDataEncrypted) != nil {
+		t.Errorf("plain job: %v", ids(res))
+	}
 }
 
 func TestRunURLs(t *testing.T) {
@@ -417,6 +483,20 @@ func TestRunURLs(t *testing.T) {
 	}
 	if f := find(res, core.FindingURLProduction); f == nil || f.Count != 1 {
 		t.Errorf("url: %+v", res.Findings)
+	}
+	// Subscriptions keeps production's URL on purpose; the same URL in
+	// another option is still reported.
+	res = runJob(t, Job{Production: []string{"shop.com"}, Source: source(
+		options([]string{"1", "wc_subscriptions_siteurl", "https://shop.com"}),
+	)})
+	if len(res.Findings) != 0 {
+		t.Errorf("wc_subscriptions_siteurl: %v", ids(res))
+	}
+	res = runJob(t, Job{Production: []string{"shop.com"}, Source: source(
+		options([]string{"1", "wc_subscriptions_siteurl_backup", "https://shop.com"}),
+	)})
+	if find(res, core.FindingURLProduction) == nil {
+		t.Errorf("other option: %v", ids(res))
 	}
 	res = runJob(t, Job{Production: []string{"shop.com"}, Opts: Options{Skip: []string{"urls"}},
 		Source: source(options([]string{"1", "siteurl", "https://shop.com"}))})
@@ -471,7 +551,7 @@ func siteFixture(kind core.EndpointKind) *testutil.Site {
 			"define('WP_HOME', 'https://shop.com');\ndefine('STRIPE_SECRET', '" + liveStripe() + "');\n"),
 		"wp-content/themes/shop/functions.php":       []byte("<?php\n// settings\n$stripe = '" + liveStripe() + "';\n"),
 		"wp-content/themes/shop/style.css":           []byte(liveStripe()),
-		"wp-content/plugins/x/test.php":              []byte("<?php $k = '" + testutil.J("sk_", "test_", strings.Repeat("Ab3", 8)) + "';"),
+		"wp-content/plugins/x/test.php":              []byte("<?php $k = '" + testutil.J("sk_", "test_", keyBody("Ab3", 24)) + "';"),
 		"wp-content/debug.log":                       []byte("PHP Notice"),
 		"wp-content/uploads/gravity_forms/1/a.pdf":   []byte("%PDF"),
 		"wp-content/uploads/gravity_forms/index.php": []byte("<?php"),
@@ -784,5 +864,117 @@ func TestRunCodeFilesUnreadable(t *testing.T) {
 		if s.Table == "code files" {
 			t.Errorf("no code folders: %+v", s)
 		}
+	}
+}
+
+// A serialized-looking value that doesn't parse is read as text and its
+// column is listed under coverage; data.unparseable is copy's finding.
+func TestRunUnparsedNoted(t *testing.T) {
+	broken := `a:2:{s:5:"email";s:99:"ada.kowalczyk@gmail.com";}`
+	res := runJob(t, Job{Source: source(options(
+		[]string{"1", "widget_contact", broken},
+		[]string{"2", "widget_text", broken},
+		[]string{"3", "blogname", "a:b; not serialized at all"},
+		[]string{"4", "shop_settings", ser("enabled", "yes")},
+	))})
+	want := []core.Skipped{{Table: "wp_options.option_value",
+		Reason: "2 serialized-looking values didn't parse; read as plain text, so data nested inside may be missed"}}
+	if fmt.Sprint(res.Coverage.Skipped) != fmt.Sprint(want) {
+		t.Errorf("skipped %+v, want %+v", res.Coverage.Skipped, want)
+	}
+	if f := find(res, core.FindingPIIEmail); f == nil || f.Count != 2 {
+		t.Errorf("the text read missed the email: %v", ids(res))
+	}
+	if find(res, core.FindingDataUnparseable) != nil {
+		t.Errorf("verify reported data.unparseable: %v", ids(res))
+	}
+	res = runJob(t, Job{Source: source(options([]string{"1", "shop_settings", ser("enabled", "yes")}))})
+	if len(res.Coverage.Skipped) != 0 {
+		t.Errorf("a parsed value was noted: %+v", res.Coverage.Skipped)
+	}
+}
+
+func TestLooksSerialized(t *testing.T) {
+	for v, want := range map[string]bool{
+		`a:1:{s:1:"a";s:1:"b";}`: true,
+		`a:2:{broken`:            false,
+		`O:8:"stdClass":0:{}`:    true,
+		`s:5:"hello";`:           true,
+		` i:42; `:                true,
+		`b:1;`:                   true,
+		`N;`:                     true,
+		`s:5:"hello"}`:           false,
+		`a:b; not serialized`:    false,
+		`x:1;`:                   false,
+		`a:`:                     false,
+		`{"a":1}`:                false,
+		`Time: 10:30; see you`:   false,
+		"":                       false,
+	} {
+		if got := looksSerialized([]byte(v)); got != want {
+			t.Errorf("looksSerialized(%q) = %v, want %v", v, got, want)
+		}
+	}
+}
+
+func FuzzLooksSerialized(f *testing.F) {
+	for _, s := range []string{`a:1:{s:1:"a";s:1:"b";}`, `s:5:"hello";`, "N;", " i:", "s:\"", ""} {
+		f.Add([]byte(s))
+	}
+	f.Fuzz(func(t *testing.T, b []byte) {
+		if looksSerialized(b) && len(bytes.TrimSpace(b)) < 2 {
+			t.Errorf("%q is too short to be serialized", b)
+		}
+	})
+}
+
+// A walk that fails after some leaves leaves the value to the plain-text
+// read; the leaves seen before the failure are not counted as well.
+func TestRunNestedFailsPartway(t *testing.T) {
+	defer func(f func([]byte) string, l func([]byte, func(string, []byte), nested.Options) error) {
+		formatOf, leavesOf = f, l
+	}(formatOf, leavesOf)
+	formatOf = func([]byte) string { return "serialized" }
+	leavesOf = func(b []byte, fn func(string, []byte), _ nested.Options) error {
+		fn("serialized:email", []byte("ada.kowalczyk@gmail.com"))
+		return errors.New("truncated")
+	}
+	broken := `a:2:{s:5:"email";s:23:"ada.kowalczyk@gmail.com";s:3:"bad`
+	res := runJob(t, Job{Source: source(options([]string{"1", "widget_contact", broken}))})
+	f := find(res, core.FindingPIIEmail)
+	if f == nil || f.Count != 1 || f.Locations[0].Path != "" {
+		t.Errorf("partial walk: %+v", res.Findings)
+	}
+	// The same walk that succeeds reports the leaf at its path.
+	leavesOf = func(b []byte, fn func(string, []byte), _ nested.Options) error {
+		fn("serialized:email", []byte("ada.kowalczyk@gmail.com"))
+		return nil
+	}
+	res = runJob(t, Job{Source: source(options([]string{"1", "widget_contact", broken}))})
+	if f := find(res, core.FindingPIIEmail); f == nil || f.Count != 1 || f.Locations[0].Path != "serialized:email" {
+		t.Errorf("whole walk: %+v", res.Findings)
+	}
+}
+
+// A staging copy on production's server with production's database
+// name is config.points-at-production, at the DB_NAME line.
+func TestRunSameLocalDatabase(t *testing.T) {
+	cfg := []byte("<?php\ndefine( 'DB_NAME', 'shop_wp' );\ndefine( 'DB_HOST', 'localhost' );\n")
+	prod := []core.Pair{{Name: "DB_NAME", Value: "shop_wp"}, {Name: "DB_HOST", Value: "localhost"}}
+	st := testutil.FakeSite(map[string][]byte{"wp-config.php": cfg})
+	res := runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"})), ProductionPairs: prod})
+	f := find(res, core.FindingConfigPointsAtProduction)
+	if f == nil || f.Title != "DB_NAME is production's on the same local DB_HOST" || f.Locations[0].Line != 2 || f.Severity != core.SeverityCritical {
+		t.Fatalf("same local database: %+v", res.Findings)
+	}
+	st = testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\ndefine( 'DB_NAME', 'shop_staging' );\ndefine( 'DB_HOST', 'localhost' );\n")})
+	res = runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"})), ProductionPairs: prod})
+	if find(res, core.FindingConfigPointsAtProduction) != nil {
+		t.Errorf("own database flagged: %+v", res.Findings)
+	}
+	res = runJob(t, Job{Site: testutil.FakeSite(map[string][]byte{"wp-config.php": cfg}), Source: source(options([]string{"1", "blogname", "Shop"})),
+		ProductionPairs: prod, Opts: Options{Skip: []string{"config"}}})
+	if find(res, core.FindingConfigPointsAtProduction) != nil {
+		t.Errorf("skipped config still checked: %+v", res.Findings)
 	}
 }

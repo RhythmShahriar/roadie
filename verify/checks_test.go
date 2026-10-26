@@ -197,14 +197,41 @@ func TestSiteInsecureTLSOneHost(t *testing.T) {
 func TestSiteProductionRefused(t *testing.T) {
 	h := &siteHandler{body: "prod"}
 	s := serve(t, h, false)
-	_, err := Run(context.Background(), Job{Source: source(options([]string{"1", "blogname", "Shop"})), Production: []string{"127.0.0.1"},
-		Opts: Options{SiteURL: s.URL}})
-	var ce *core.Error
-	if !errors.As(err, &ce) || ce.Code != core.ErrTargetIsProduction || ce.Exit != 3 {
-		t.Fatalf("got %v", err)
+	_, port, _ := strings.Cut(strings.TrimPrefix(s.URL, "http://127.0.0.1"), ":")
+	for _, site := range []string{s.URL, "http://[::ffff:127.0.0.1]:" + port, "http://127.0.0.1.:" + port} {
+		_, err := Run(context.Background(), Job{Source: source(options([]string{"1", "blogname", "Shop"})), Production: []string{"127.0.0.1"},
+			Opts: Options{SiteURL: site}})
+		var ce *core.Error
+		if !errors.As(err, &ce) || ce.Code != core.ErrTargetIsProduction || ce.Exit != 3 {
+			t.Errorf("%s: got %v", site, err)
+		}
 	}
 	if h.requests.Load() != 0 {
 		t.Errorf("%d requests to production", h.requests.Load())
+	}
+}
+
+// A trailing dot, upper case or an IPv4-mapped IPv6 literal names the
+// same host, so none of them gets past the production guard; a staging
+// host next to production does.
+func TestSiteProductionHostForms(t *testing.T) {
+	for site, refused := range map[string]bool{
+		"https://shop.com./":             true,
+		"https://www.shop.com./":         true,
+		"https://SHOP.COM../":            true,
+		"https://cdn.shop.de./":          true,
+		"http://[::ffff:10.0.0.5]:8080/": true,
+		"http://[::ffff:a00:5]/":         true,
+		"http://10.0.0.5./":              true,
+		"https://staging.shop.com./":     false,
+		"https://shop.com.evil.test/":    false,
+		"http://[::1]/":                  false,
+		"http://10.0.0.6/":               false,
+	} {
+		err := checkOptions(Job{Production: []string{"https://Shop.com./", "*.shop.de", "[::ffff:10.0.0.5]"}, Opts: Options{SiteURL: site}})
+		if got := errors.Is(err, &core.Error{Code: core.ErrTargetIsProduction}); got != refused {
+			t.Errorf("%s: refused %v, want %v (%v)", site, got, refused, err)
+		}
 	}
 }
 
@@ -299,6 +326,51 @@ func TestEchoListFails(t *testing.T) {
 	}
 }
 
+// Counting that stops at the page cap while Echo has more pages fails
+// closed: the uncounted pages may hold sent mail.
+func TestEchoPageCap(t *testing.T) {
+	old := maxEchoPages
+	maxEchoPages = 2
+	t.Cleanup(func() { maxEchoPages = old })
+	pages := 0
+	endless := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/health" {
+			_, _ = io.WriteString(w, `{"tool":"rhythm-echo","version":"1.1.2","mode":"seal","wire":1,"providers":[]}`)
+			return
+		}
+		pages++
+		fmt.Fprintf(w, `{"messages":[{"id":"m%d","status":"faked"}],"next":"c%d"}`, pages, pages)
+	}), false)
+	res := siteRun(t, Options{Echo: true, EchoURL: endless.URL})
+	want := "verify --echo: couldn't count every message Echo let through (stopped after 2 pages)"
+	if f := find(res, core.FindingSideEffectMail); f == nil || f.Severity != core.SeverityCritical || f.Title != want {
+		t.Errorf("capped: %+v", res.Findings)
+	}
+	if pages != 2 {
+		t.Errorf("%d pages read, want 2", pages)
+	}
+	// The last page within the cap ends the count cleanly.
+	pages = 0
+	last := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/health" {
+			_, _ = io.WriteString(w, `{"tool":"rhythm-echo","version":"1.1.2","mode":"seal","wire":1,"providers":[]}`)
+			return
+		}
+		pages++
+		next := ""
+		if pages < 2 {
+			next = "c1"
+		}
+		fmt.Fprintf(w, `{"messages":[{"id":"m%d","status":"faked"}],"next":%q}`, pages, next)
+	}), false)
+	res = siteRun(t, Options{Echo: true, EchoURL: last.URL})
+	if f := find(res, core.FindingSideEffectMail); f != nil {
+		t.Errorf("two pages within the cap: %+v", f)
+	}
+}
+
 // Echo beyond loopback asks for a token on every route; the finding
 // says so in place of calling Echo unreachable.
 func TestEchoWantsToken(t *testing.T) {
@@ -364,7 +436,7 @@ func fakeSoundcheck(t *testing.T, exit string) {
 // report and exits with ROADIE_FAKE_SOUNDCHECK.
 func soundcheckMain() {
 	args := os.Args[1:]
-	if len(args) < 3 || args[0] != "run" || args[2] != "--json" {
+	if len(args) < 3 || args[0] != "run" || !strings.HasPrefix(args[1], "http") || args[2] != "--json" {
 		fmt.Fprintln(os.Stderr, "bad args", args)
 		os.Exit(2)
 	}
@@ -394,6 +466,19 @@ func TestSoundcheck(t *testing.T) {
 	if r.Ran || r.Note != "Soundcheck not run: install it with rhythm install soundcheck" || SoundcheckFinding(r) != nil {
 		t.Errorf("missing: %+v", r)
 	}
+	// A site that isn't an http(s) URL never reaches Soundcheck, where
+	// a leading "-" would be read as a flag.
+	fakeSoundcheck(t, "0")
+	for _, u := range []string{"--config=/etc/passwd", "-h", "ftp://staging.shop.test", ""} {
+		r = Soundcheck(context.Background(), u, "")
+		if r.Ran || r.Note != SoundcheckNotURL || u != "" && strings.Contains(r.Note, u) {
+			t.Errorf("%q: %+v", u, r)
+		}
+	}
+	// A bare host is run as https, the way --site reads it.
+	if r = Soundcheck(context.Background(), "staging.shop.test", ""); !r.Ran || r.ExitCode != 0 {
+		t.Errorf("bare host: %+v", r)
+	}
 }
 
 func TestRobotsAndMeta(t *testing.T) {
@@ -402,7 +487,10 @@ func TestRobotsAndMeta(t *testing.T) {
 		"User-agent: *\nDisallow: /wp-admin/":                   true,
 		"User-agent: Googlebot\nDisallow: /":                    true,
 		"User-agent: Bingbot\nUser-agent: *\nDisallow: / # all": false,
-		"": true,
+		"":                                     true,
+		"User-agent: *\nDisallow: /\nAllow: /": true,
+		"User-agent: *\nAllow: /wp-content/\nDisallow: /": false,
+		"User-agent: *\nDisallow:":                        true,
 	} {
 		if got := robotsAllowAll([]byte(body)); got != want {
 			t.Errorf("robotsAllowAll(%q) = %v", body, got)
@@ -414,11 +502,14 @@ func TestRobotsAndMeta(t *testing.T) {
 		}
 	}
 	for b, want := range map[string]bool{
-		`<meta name="robots" content="noindex">`:           true,
-		`<meta content="noindex, nofollow" name=robots />`: true,
-		`<meta name="description" content="noindex">`:      false,
-		`<meta name="robots" content="index,follow">`:      false,
-		`<meta name="robots"`:                              false,
+		`<meta name="robots" content="noindex">`:            true,
+		`<meta content="noindex, nofollow" name=robots />`:  true,
+		`<meta name="description" content="noindex">`:       false,
+		`<meta name="robots" content="index,follow">`:       false,
+		`<meta name="robots"`:                               false,
+		`<meta name="robots" content="index, nonexistent">`: false,
+		`<meta name="googlebot" content="none">`:            false,
+		`<meta name="bingbot" content="noindex">`:           false,
 	} {
 		if got := metaNoindex([]byte(b)); got != want {
 			t.Errorf("metaNoindex(%s) = %v", b, got)
@@ -436,7 +527,8 @@ func fuzzBound() time.Duration {
 }
 
 // FuzzRobots reads untrusted robots.txt bodies: no panic and a linear
-// bound; a group of User-agent: * with Disallow: / always blocks.
+// bound; a group of User-agent: * with Disallow: / blocks unless an
+// Allow: / follows.
 func FuzzRobots(f *testing.F) {
 	for _, s := range []string{
 		"User-agent: *\nDisallow: /", "User-agent: *\nDisallow: /wp-admin/", "User-agent: Bingbot\nUser-agent: *\nDisallow: / # all",
@@ -450,7 +542,8 @@ func FuzzRobots(f *testing.F) {
 		if d := time.Since(start); d > fuzzBound() {
 			t.Fatalf("%d bytes took %v", len(b), d)
 		}
-		if robotsAllowAll(append([]byte("User-agent: *\nDisallow: /\n\n"), b...)) {
+		// An Allow: / for * after it may lift the block; any other text can't.
+		if robotsAllowAll(append([]byte("User-agent: *\nDisallow: /\n\n"), b...)) && !bytes.Contains(bytes.ReplaceAll(bytes.ToLower(b), []byte("disallow"), nil), []byte("allow")) {
 			t.Fatalf("a leading * block didn't block with %q after it", b)
 		}
 	})
@@ -492,4 +585,68 @@ func FuzzPHPArrayValue(f *testing.F) {
 			t.Fatalf("phpArrayValue(%q, %q) = %q, not in the source", src, key, v)
 		}
 	})
+}
+
+// Echo's redirects stay on its own host: a redirect elsewhere is not
+// followed and the check fails closed.
+func TestEchoRedirectOffHost(t *testing.T) {
+	hit := false
+	other := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"tool":"rhythm-echo","version":"1.1.2","mode":"seal","wire":1,"providers":[]}`)
+	}), false)
+	bounce := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+r.URL.Path, http.StatusFound)
+	}), false)
+	res := siteRun(t, Options{Echo: true, EchoURL: bounce.URL})
+	if f := find(res, core.FindingSideEffectMail); f == nil || !strings.Contains(f.Title, "isn't reachable") {
+		t.Errorf("redirect off host: %+v", res.Findings)
+	}
+	if hit {
+		t.Error("verify followed Echo's redirect to another host")
+	}
+	// A redirect on Echo's own host is followed.
+	same := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/health":
+			http.Redirect(w, r, "/v1/health2", http.StatusFound)
+		case "/v1/health2":
+			_, _ = io.WriteString(w, `{"tool":"rhythm-echo","version":"1.1.2","mode":"seal","wire":1,"providers":[]}`)
+		default:
+			_, _ = io.WriteString(w, `{"messages":[]}`)
+		}
+	}), false)
+	res = siteRun(t, Options{Echo: true, EchoURL: same.URL})
+	if find(res, core.FindingSideEffectMail) != nil {
+		t.Errorf("redirect on host: %+v", res.Findings)
+	}
+}
+
+// Echo's mode reaches a finding title without control or bidi
+// characters.
+func TestEchoModeControlChars(t *testing.T) {
+	s := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/health" {
+			_, _ = io.WriteString(w, `{"tool":"rhythm-echo","version":"1.1.2","mode":"obs\u001b[2Jerve\u202e\u0007","wire":1,"providers":[]}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"messages":[]}`)
+	}), false)
+	res := siteRun(t, Options{Echo: true, EchoURL: s.URL})
+	f := find(res, core.FindingSideEffectMail)
+	if f == nil || f.Title != "Echo is in obs[2Jerve mode, so mail from this copy reaches real people" {
+		t.Errorf("mode title: %+v", res.Findings)
+	}
+	for _, c := range []struct {
+		in   string
+		n    int
+		want string
+	}{{"seal", 40, "seal"}, {"a\nb\tc", 40, "abc"}, {"", 40, ""}, {"abcdef", 3, "abc..."}, {"abc", 3, "abc"}, {"\xffok", 40, "ok"}} {
+		if got := printable(c.in, c.n); got != c.want {
+			t.Errorf("printable(%q, %d) = %q, want %q", c.in, c.n, got, c.want)
+		}
+	}
 }

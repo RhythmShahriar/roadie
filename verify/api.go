@@ -33,7 +33,10 @@ type Job struct {
 
 // Options are verify's flags and config.
 type Options struct {
-	FailOn      core.Severity
+	FailOn core.Severity
+	// Sample, when above 0, scans only the first Sample rows of each
+	// table. It limits scanning, not reading: the source has no row
+	// limit yet, so the rest of each table is still read and dropped.
 	Sample      int
 	Skip        []string
 	Allow       detect.Allow
@@ -64,7 +67,10 @@ type Ignore struct {
 // schema and summary counts of its JSON. When Soundcheck is not on PATH
 // the result has Ran false and the note "Soundcheck not run: install it
 // with rhythm install soundcheck", never a finding. SoundcheckFinding
-// turns an exit 1 into soundcheck.failed.
+// turns an exit 1 into soundcheck.failed. url is read as --site is (a
+// bare host means https) and always passed on with its scheme, so it
+// can't be read as a flag; anything else, or a value that starts with
+// "-", gets the note SoundcheckNotURL and no run.
 func Soundcheck(ctx context.Context, url, echoURL string) *core.SoundcheckResult {
 	return soundcheck(ctx, url, echoURL)
 }

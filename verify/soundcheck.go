@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -23,8 +24,20 @@ const soundcheckMaxOutput = 16 << 20
 // SoundcheckNotRun is the note of a verify --soundcheck without Soundcheck.
 const SoundcheckNotRun = "Soundcheck not run: install it with rhythm install soundcheck"
 
+// SoundcheckNotURL is the note of a verify --soundcheck whose site is
+// not an http(s) URL or a bare host. The URL is left out, since it may carry a password.
+const SoundcheckNotURL = "Soundcheck not run: the site isn't an http:// or https:// URL or a host name"
+
 // soundcheck is Soundcheck.
 func soundcheck(ctx context.Context, url, echoURL string) *core.SoundcheckResult {
+	// The site is parsed as --site is and passed on as a whole http(s)
+	// URL, so nothing the user typed can be read as one of Soundcheck's
+	// flags.
+	u, err := siteURL(url)
+	if err != nil || strings.HasPrefix(strings.TrimSpace(url), "-") {
+		return &core.SoundcheckResult{Note: SoundcheckNotURL}
+	}
+	url = u.String()
 	bin, err := exec.LookPath("rhythm-soundcheck")
 	if err != nil {
 		return &core.SoundcheckResult{Note: SoundcheckNotRun}

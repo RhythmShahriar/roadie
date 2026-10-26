@@ -41,6 +41,13 @@ var templ = regexp.MustCompile(`\{([aAlhdt]):(\d+)\}|\{uuid\}`)
 // joins the parts with testutil.J, so no key is ever in the source.
 type expander struct{ r *rand.Rand }
 
+// keyBody returns n key characters starting with seed. A real key body
+// is random, so it has more than three different characters; a body of
+// fewer reads as a placeholder (xxxx, 0000).
+func keyBody(seed string, n int) string {
+	return strings.Repeat(seed+"Zk7Wm", n)[:n]
+}
+
 func newExpander(seed string) *expander {
 	h := fnv.New64a()
 	h.Write([]byte(seed))
@@ -228,7 +235,7 @@ func TestEveryProviderHasFixtures(t *testing.T) {
 // A test key is reported with Env test and no severity, so it never
 // becomes a finding.
 func TestTestKeysPassThrough(t *testing.T) {
-	v := testutil.J("sk_", "test_", strings.Repeat("Ab3", 8))
+	v := testutil.J("sk_", "test_", keyBody("Ab3", 24))
 	hits := ScanValue([]byte(v), core.Location{Table: "wp_options"}, nil)
 	if len(hits) != 1 || hits[0].Env != EnvTest || hits[0].Severity != core.SeverityNone {
 		t.Fatalf("got %+v", hits)
@@ -236,23 +243,23 @@ func TestTestKeysPassThrough(t *testing.T) {
 }
 
 func TestClassify(t *testing.T) {
-	live := testutil.J("sk_", "live_", strings.Repeat("x9Z", 8))
+	live := testutil.J("sk_", "live_", keyBody("x9Z", 24))
 	tests := []struct {
 		provider, value string
 		sib             map[string]string
 		want            string
 	}{
 		{"stripe", live, nil, EnvLive},
-		{"stripe", testutil.J("sk_", "test_", strings.Repeat("x9Z", 8)), nil, EnvTest},
-		{"stripe_publishable", testutil.J("pk_", "test_", strings.Repeat("x9Z", 8)), nil, EnvTest},
-		{"stripe-webhook", testutil.J("whsec_", strings.Repeat("x9Z", 8)), map[string]string{"testmode": "no"}, EnvLive},
-		{"paypal_client_secret", strings.Repeat("Ab", 20), map[string]string{"sandbox_on": "1"}, EnvTest},
-		{"paypal_client_secret", strings.Repeat("Ab", 20), map[string]string{"name": "client_secret_production"}, EnvLive},
-		{"paypal", strings.Repeat("Ab", 20), nil, EnvUnknown},
-		{"razorpay_key_id", testutil.J("rzp_", "live_", strings.Repeat("a1", 7)), nil, EnvLive},
-		{"square", testutil.J("sandbox-", "sq0idb-", strings.Repeat("a1", 11)), nil, EnvTest},
-		{"square", testutil.J("EAAA", strings.Repeat("a1", 30)), map[string]string{"environment": "production"}, EnvLive},
-		{"mollie", testutil.J("test_", strings.Repeat("a1B", 10)), nil, EnvTest},
+		{"stripe", testutil.J("sk_", "test_", keyBody("x9Z", 24)), nil, EnvTest},
+		{"stripe_publishable", testutil.J("pk_", "test_", keyBody("x9Z", 24)), nil, EnvTest},
+		{"stripe-webhook", testutil.J("whsec_", keyBody("x9Z", 24)), map[string]string{"testmode": "no"}, EnvLive},
+		{"paypal_client_secret", keyBody("Ab", 40), map[string]string{"sandbox_on": "1"}, EnvTest},
+		{"paypal_client_secret", keyBody("Ab", 40), map[string]string{"name": "client_secret_production"}, EnvLive},
+		{"paypal", keyBody("Ab", 40), nil, EnvUnknown},
+		{"razorpay_key_id", testutil.J("rzp_", "live_", keyBody("a1", 14)), nil, EnvLive},
+		{"square", testutil.J("sandbox-", "sq0idb-", keyBody("a1", 22)), nil, EnvTest},
+		{"square", testutil.J("EAAA", keyBody("a1", 60)), map[string]string{"environment": "production"}, EnvLive},
+		{"mollie", testutil.J("test_", keyBody("a1B", 30)), nil, EnvTest},
 		{"stripe", "", nil, EnvUnknown},
 	}
 	for _, tt := range tests {
@@ -263,7 +270,7 @@ func TestClassify(t *testing.T) {
 }
 
 func TestDisabledGatewayIsLow(t *testing.T) {
-	v := testutil.J("sk_", "live_", strings.Repeat("Ab3", 8))
+	v := testutil.J("sk_", "live_", keyBody("Ab3", 24))
 	hits := ScanValue([]byte(v), core.Location{Row: "option_name=woocommerce_stripe_settings", Path: "serialized:secret_key"},
 		map[string]string{"enabled": "no", "testmode": "no"})
 	if len(hits) != 1 || hits[0].Severity != core.SeverityLow || hits[0].Env != EnvLive {
@@ -285,10 +292,25 @@ func TestPlaceholders(t *testing.T) {
 	}
 }
 
+// A key body that only stands in for one is no key, inside any text.
+func TestPlaceholderBody(t *testing.T) {
+	for _, v := range []string{"xxxxxxxxxxxxxxxxxxxxxxxx", "XXXXXXXXXXXXXXXX", "000000000000000000", "x0x0x0x0x0x0x0x0",
+		"YOUR_SECRET_KEY_HERE_123", "your_key_goes_here_abc9", "Ab3dEXAMPLE7kLm9nPq", "Ab3dREDACTED9QwE"} {
+		if !placeholderBody([]byte(v)) {
+			t.Errorf("placeholderBody(%q) = false", v)
+		}
+	}
+	for _, v := range []string{"Ab3dE5gH7jK9mN2pQ4rS6tU8", keyBody("Ab3", 24), "51NqZx8Kp2Zx8Kp2Zx8Kp2Zx8Kp2", "YoUr3dE5gH7jK9mN2pQ4"} {
+		if placeholderBody([]byte(v)) {
+			t.Errorf("placeholderBody(%q) = true", v)
+		}
+	}
+}
+
 // Two keys in one value are two hits; a key glued to a word is none.
 func TestTokensInText(t *testing.T) {
-	a := testutil.J("sk_", "live_", strings.Repeat("Ab3", 8))
-	b := testutil.J("pk_", "live_", strings.Repeat("Cd4", 8))
+	a := testutil.J("sk_", "live_", keyBody("Ab3", 24))
+	b := testutil.J("pk_", "live_", keyBody("Cd4", 24))
 	hits := ScanValue([]byte("secret="+a+"\npublishable="+b), core.Location{}, nil)
 	if len(hits) != 2 || hits[0].Provider != "stripe" || hits[1].Provider != "stripe-publishable" {
 		t.Fatalf("got %+v", hits)
@@ -391,9 +413,98 @@ func TestMayHoldToken(t *testing.T) {
 		"abcdefghij 0123456789":                    false,
 		"https://shop.example/a@2x.png":            true,
 		"":                                         false,
+		"word abcdefghij0123456789":                true,
+		"abcdefghij012345678 abcdefghij012345678":  false,
+		"abcdefghijklmnopqrs 0123456789abcdefghij": true,
+		"0123456789012345678a":                     true,
 	} {
 		if got := mayHoldToken([]byte(v)); got != want {
 			t.Errorf("mayHoldToken(%q) = %v, want %v", v, got, want)
 		}
 	}
+}
+
+// mayHoldTokenRef is mayHoldToken read byte by byte, as it was before
+// the window skip: the fuzz target holds the two to the same answer.
+func mayHoldTokenRef(v []byte) bool {
+	run, seen := 0, uint8(0)
+	for _, c := range v {
+		k := tokenClass[c]
+		if k == 0 {
+			run, seen = 0, 0
+			continue
+		}
+		run++
+		seen |= k
+		if run >= 20 && seen&(classLetter|classDigit) == classLetter|classDigit {
+			return true
+		}
+	}
+	return bytes.Contains(v, []byte("PRIVATE KEY")) || bytes.Contains(v, []byte("://")) && bytes.IndexByte(v, '@') >= 0
+}
+
+// findTokensRef is findTokens reading every run forward, as it was
+// before the window skip.
+func findTokensRef(v []byte, ctx string) []keyToken {
+	var out []keyToken
+	runEnd := 0
+	for i := 0; i < len(v); i++ {
+		if i >= runEnd {
+			runEnd = i
+			for runEnd < len(v) && isKeyByte(v[runEnd]) {
+				runEnd++
+			}
+			if runEnd-i < minKeyLen {
+				i = runEnd
+				continue
+			}
+		}
+		if i > 0 && isWord(v[i-1]) {
+			continue
+		}
+		for _, ri := range rulesByFirst[v[i]] {
+			r := &tokenRules[ri]
+			if r.context != "" && !strings.Contains(ctx, r.context) {
+				continue
+			}
+			end, env, body := r.match(v, i)
+			if end < 0 {
+				continue
+			}
+			if !placeholderBody(v[body:end]) {
+				out = append(out, keyToken{rule: r, start: i, end: end, env: env})
+			}
+			i = end - 1
+			break
+		}
+	}
+	return out
+}
+
+// The window skip of mayHoldToken and findTokens finds what a byte by
+// byte read finds, on any input.
+func FuzzTokenSkip(f *testing.F) {
+	for _, s := range []string{
+		"abcdefghij0123456789", "word abcdefghij0123456789", "abcdefghij012345678 abcdefghij012345678",
+		"key=" + "sk_" + "live_" + "51Hc8d2e3f4g5h6i7j8k9l0m", "x " + "AKIA" + "IOSFODNN7EXAMPLQ" + " y",
+		"Lorem ipsum dolor sit amet, consectetur adipiscing elit.", "-----BEGIN RSA PRIVATE KEY-----", "",
+	} {
+		f.Add([]byte(s))
+	}
+	f.Fuzz(func(t *testing.T, v []byte) {
+		if got, want := mayHoldToken(v), mayHoldTokenRef(v); got != want {
+			t.Fatalf("mayHoldToken(%q) = %v, the byte read says %v", v, got, want)
+		}
+		const ctx = "woocommerce_stripe_settings secret_key wp_options"
+		got := findTokens(v, func() string { return ctx })
+		want := findTokensRef(v, ctx)
+		if len(got) != len(want) {
+			t.Fatalf("findTokens(%q) = %d keys, the byte read finds %d", v, len(got), len(want))
+		}
+		for i := range got {
+			if got[i].start != want[i].start || got[i].end != want[i].end || got[i].rule != want[i].rule {
+				t.Fatalf("findTokens(%q)[%d] = %+v, the byte read finds %+v", v, i, got[i], want[i])
+			}
+		}
+	})
 }

@@ -6,6 +6,7 @@ package verify
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -274,5 +275,56 @@ func TestCheckOf(t *testing.T) {
 		if got := checkOf(id); got != want {
 			t.Errorf("checkOf(%s) = %s, want %s", id, got, want)
 		}
+	}
+}
+
+// everything is a run with data, config, code, upload and Step findings.
+func everything(code string) Job {
+	st := siteFixture(core.LocalSite)
+	if code != "" {
+		if err := st.WriteFile(context.Background(), "wp-content/themes/shop/functions.php", []byte(code), 0o600); err != nil {
+			panic(err)
+		}
+	}
+	return Job{Site: st, Source: source(people(), comments(), options([]string{"1", "woocommerce_stripe_settings",
+		ser("enabled", "yes", "testmode", "no", "secret_key", liveStripe())})),
+		Production: []string{"shop.com"}, Steps: []core.Step{fakeStep{id: core.FindingSideEffectCron}}}
+}
+
+// A report of a run, given back as its baseline, hides every finding of
+// the same copy; a key that moved to another line of the same file stays
+// hidden; a new table is still reported.
+func TestBaselineOfTheSameRunHidesEverything(t *testing.T) {
+	first := runJob(t, everything(""))
+	var total int64
+	kinds := map[string]bool{}
+	for _, f := range first.Findings {
+		total += f.Count
+		l := f.Locations[0]
+		kinds[fmt.Sprint(l.File != "", l.Table != "")] = true
+	}
+	if len(first.Findings) < 8 || len(kinds) < 2 || len(first.Keys) == 0 || len(first.Uncovered) == 0 {
+		t.Fatalf("the fixture should report data and file findings, keys and uncovered columns: %v", ids(first))
+	}
+	base := writeReport(t, core.EnvelopeSchema, first.Findings...)
+
+	moved := "<?php\n// settings\n\n\n$stripe = '" + liveStripe() + "';\n"
+	j := everything(moved)
+	j.Opts.Baseline = base
+	res := runJob(t, j)
+	if len(res.Findings) != 0 || len(res.Keys) != 0 || len(res.Uncovered) != 0 {
+		t.Errorf("left: %v keys %+v uncovered %+v", ids(res), res.Keys, res.Uncovered)
+	}
+	if res.Hidden != total {
+		t.Errorf("Hidden %d, want %d", res.Hidden, total)
+	}
+
+	j = everything("")
+	j.Source = source(people(), comments(), batch(table("wp_wc_orders", "id", "billing_email"), []string{"1", "dee.novak@gmail.com"}))
+	j.Opts.Baseline = base
+	res = runJob(t, j)
+	f := find(res, core.FindingPIIEmail)
+	if f == nil || f.Locations[0].Table != "wp_wc_orders" || f.Count != 1 {
+		t.Errorf("a new table was hidden: %+v", res.Findings)
 	}
 }

@@ -324,16 +324,22 @@ var patternsByFirst = func() (m [256][]string) {
 
 // digitsAhead reports whether at least n digits follow v[i] before
 // anything but a digit or a separator, within the longest pattern's reach.
+// A pattern opens and closes at most one bracket, so a second "(" or ")"
+// ends the number: on text like "(0(0(0" the patterns are then never
+// tried at every digit.
 func digitsAhead(v []byte, i, n int) bool {
-	got := 0
+	got, opened, closed := 0, false, false
 	for end := min(len(v), i+20); i < end && got < n; {
 		if c := v[i]; c < utf8.RuneSelf {
 			switch {
 			case c >= '0' && c <= '9':
 				got++
+			case c == '(' && opened, c == ')' && closed:
+				return false
 			case !aheadSeparator[c]:
 				return false
 			}
+			opened, closed = opened || c == '(', closed || c == ')'
 			i++
 			continue
 		}
@@ -447,7 +453,7 @@ func phoneGuarded(v []byte, m phoneMatch, phoneCol bool) bool {
 func fictional(m phoneMatch) bool {
 	d := m.digits
 	if m.plus {
-		return core.FictionalPhone(d)
+		return fictionalE164(d)
 	}
 	cands := []string{d}
 	switch {
@@ -461,11 +467,54 @@ func fictional(m phoneMatch) bool {
 		return true // 555-01xx without an area code
 	}
 	for _, c := range cands {
-		if core.FictionalPhone(c) {
+		if fictionalE164(c) {
 			return true
 		}
 	}
 	return false
+}
+
+// fictionalE164 reports whether d, E.164 digits without the +, is in a
+// range kept for fiction: core.FictionalPhone or one of Ofcom's UK drama
+// ranges that core doesn't list.
+func fictionalE164(d string) bool {
+	if core.FictionalPhone(d) {
+		return true
+	}
+	if len(d) != 12 {
+		return false
+	}
+	for _, p := range ukDrama {
+		if strings.HasPrefix(d, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// ukDrama are Ofcom's geographic and freephone numbers for TV and radio
+// drama (ofcom.org.uk/phones-and-broadband/phone-numbers/numbers-for-drama),
+// in E.164 without the +. Each prefix covers the 1,000 numbers that follow
+// it by three digits; Ofcom never allocates them to a subscriber, so sample
+// data and theme demos use them. The mobile range 07700 900xxx is in core.
+var ukDrama = []string{
+	"441134960", // Leeds 0113 496 0000 to 0999
+	"441144960", // Sheffield
+	"441154960", // Nottingham
+	"441164960", // Leicester
+	"441174960", // Bristol
+	"441184960", // Reading
+	"441214960", // Birmingham
+	"441314960", // Edinburgh
+	"441414960", // Glasgow
+	"441514960", // Liverpool
+	"441614960", // Manchester
+	"441914980", // Tyneside 0191 498 0000 to 0999
+	"442079460", // London 020 7946 0000 to 0999
+	"442920180", // Cardiff 029 2018 0000 to 0999
+	"442896496", // Northern Ireland 028 9649 6000 to 6999
+	"441632960", // no area: 01632 960000 to 960999
+	"448081570", // freephone 08081 570000 to 570999
 }
 
 // nextToMoney reports whether a currency sign (one space between allowed)

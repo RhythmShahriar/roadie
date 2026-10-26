@@ -62,7 +62,7 @@ var siteURLNames = []string{"WP_HOME", "WP_SITEURL", "APP_URL"}
 // runs the Steps' checks.
 func (r *run) siteChecks(ctx context.Context, s core.Site) {
 	for _, name := range configFiles {
-		r.configFile(ctx, s, name)
+		r.configFile(name)
 	}
 	if !r.skip.skips("key.") {
 		r.codeFiles(ctx, s)
@@ -73,22 +73,75 @@ func (r *run) siteChecks(ctx context.Context, s core.Site) {
 	r.steps(ctx, s)
 }
 
+// configRead is one config file as read before the scan: its pairs, or
+// why it couldn't be read. A missing file has neither.
+type configRead struct {
+	pairs []core.Pair
+	skip  *core.Skipped
+}
+
+// readConfigs reads and parses the site's config files once, before the
+// data scan, which needs a few of their switches (WCPAY_DEV_MODE).
+func readConfigs(ctx context.Context, s core.Site) map[string]configRead {
+	out := map[string]configRead{}
+	for _, name := range configFiles {
+		b, err := s.ReadFile(ctx, name)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			out[name] = configRead{skip: &core.Skipped{Table: name, Reason: err.Error()}}
+			continue
+		}
+		pairs, err := parsePairs(name, b)
+		if err != nil {
+			out[name] = configRead{skip: &core.Skipped{Table: name, Reason: "not parsed: " + err.Error()}}
+			continue
+		}
+		out[name] = configRead{pairs: pairs}
+	}
+	return out
+}
+
+// wcpayDevMode reports whether wp-config.php puts WooPayments in dev
+// (sandbox) mode: WCPAY_DEV_MODE on, WP_ENVIRONMENT_TYPE development or
+// staging, or any WP_DEVELOPMENT_MODE. WooPayments then only uses a test
+// account, which can't take live payments, so its test_mode setting
+// doesn't matter. Source:
+// https://woocommerce.com/document/woopayments/testing-and-troubleshooting/sandbox-mode/
+func wcpayDevMode(configs map[string]configRead) bool {
+	for _, p := range configs["wp-config.php"].pairs {
+		v := strings.ToLower(strings.TrimSpace(p.Value))
+		switch p.Name {
+		case "WCPAY_DEV_MODE":
+			if v == "true" || v == "1" {
+				return true
+			}
+		case "WP_ENVIRONMENT_TYPE":
+			if v == "development" || v == "staging" {
+				return true
+			}
+		case "WP_DEVELOPMENT_MODE":
+			if v != "" && v != "false" && v != "0" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // configFile checks one config file: keys, the site URL and the config
 // checks that compare with production.
-func (r *run) configFile(ctx context.Context, s core.Site, name string) {
-	b, err := s.ReadFile(ctx, name)
-	if errors.Is(err, fs.ErrNotExist) {
+func (r *run) configFile(name string) {
+	c, ok := r.configs[name]
+	if !ok {
 		return
 	}
-	if err != nil {
-		r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, core.Skipped{Table: name, Reason: err.Error()})
+	if c.skip != nil {
+		r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, *c.skip)
 		return
 	}
-	pairs, err := parsePairs(name, b)
-	if err != nil {
-		r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, core.Skipped{Table: name, Reason: "not parsed: " + err.Error()})
-		return
-	}
+	pairs := c.pairs
 	r.countConfig()
 	if !r.skip.skips("key.") {
 		for _, h := range keys.ScanPairs(name, pairs) {
@@ -126,6 +179,59 @@ func (r *run) configFile(ctx context.Context, s core.Site, name string) {
 				Locations: []core.LocationCount{{Location: at}}})
 		}
 	}
+	if r.skip.skips("config.") {
+		return
+	}
+	if p, ok := sameLocalDatabase(pairs, prod); ok {
+		r.add(core.Finding{ID: core.FindingConfigPointsAtProduction, Severity: core.SeverityCritical,
+			Title: p.Name + " is production's on the same local DB_HOST", Detail: p.Name + " " + localDBDetail,
+			Fix: fixes[core.FindingConfigPointsAtProduction], Locations: []core.LocationCount{{Location: core.Location{File: name, Line: p.Line}}}})
+	}
+}
+
+// localDBDetail explains a sameLocalDatabase finding.
+const localDBDetail = "and DB_HOST match production's and DB_HOST is local, so a copy on production's server (a host's or plugin's staging) uses production's database"
+
+// dbNameKeys and dbUserKeys name the database and its user in
+// wp-config.php and in a Laravel .env.
+var (
+	dbNameKeys = []string{"DB_NAME", "DB_DATABASE"}
+	dbUserKeys = []string{"DB_USER", "DB_USERNAME"}
+)
+
+// sameLocalDatabase reports the database name pair when DB_HOST is the
+// same machine-local server as production's and the database name is
+// production's too (and the user, when both sides set one).
+// pointsAtProduction lets a machine-local DB_HOST pass on its own since
+// it names a different server on each machine; a staging copy on
+// production's own server with production's database name is the case
+// it would miss.
+func sameLocalDatabase(pairs []core.Pair, prod map[string]string) (core.Pair, bool) {
+	val := map[string]core.Pair{}
+	for _, p := range pairs {
+		val[p.Name] = p
+	}
+	same := func(k string) bool {
+		pv, ok := prod[k]
+		p, have := val[k]
+		return ok && have && strings.TrimSpace(pv) != "" && strings.TrimSpace(pv) == strings.TrimSpace(p.Value)
+	}
+	host, ok := val["DB_HOST"]
+	if !ok || !same("DB_HOST") || !machineLocal(hostOf(strings.TrimSpace(host.Value))) {
+		return core.Pair{}, false
+	}
+	for _, k := range dbUserKeys {
+		_, inProd := prod[k]
+		if _, have := val[k]; have && inProd && !same(k) {
+			return core.Pair{}, false
+		}
+	}
+	for _, k := range dbNameKeys {
+		if same(k) {
+			return val[k], true
+		}
+	}
+	return core.Pair{}, false
 }
 
 // countConfig counts one parsed config file for the checks that read it.
@@ -237,7 +343,7 @@ func productionHosts(entries []string) []string {
 	return out
 }
 
-// hostOf returns the lower-case host of a URL, host:port or bare host.
+// hostOf returns the normalised host of a URL, host:port or bare host.
 func hostOf(v string) string {
 	v = strings.ToLower(strings.TrimSpace(v))
 	if v == "" {
@@ -248,16 +354,28 @@ func hostOf(v string) string {
 		if err != nil {
 			return ""
 		}
-		return strings.TrimSuffix(u.Hostname(), ".")
+		return normHost(u.Hostname())
 	}
 	// DB_HOST may be host:port or host:/path/to/socket.
 	if h, _, err := net.SplitHostPort(v); err == nil {
-		return h
+		return normHost(h)
 	}
 	if i := strings.IndexAny(v, ":/"); i >= 0 && !strings.Contains(v[:i], "[") {
 		v = v[:i]
 	}
-	return strings.Trim(strings.TrimSuffix(v, "."), "[]")
+	return normHost(v)
+}
+
+// normHost puts a host in the one form matchHost compares: lower case,
+// no brackets, no trailing dot (shop.com. is shop.com to DNS) and an IP
+// literal in its canonical form with any IPv4-in-IPv6 mapping removed
+// (::ffff:127.0.0.1 is 127.0.0.1).
+func normHost(h string) string {
+	h = strings.TrimRight(strings.Trim(strings.ToLower(strings.TrimSpace(h)), "[]"), ".")
+	if a, err := netip.ParseAddr(h); err == nil {
+		return a.Unmap().WithZone("").String()
+	}
+	return h
 }
 
 // matchHost reports whether host is one of hosts or under a *. glob.
