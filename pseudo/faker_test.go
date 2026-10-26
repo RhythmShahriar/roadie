@@ -400,6 +400,11 @@ func TestFakeEdgeCases(t *testing.T) {
 	if got := fake(t, f, core.KEmail, "jane@shop.com", core.FakeOpts{}); got[0] != 'u' {
 		t.Error("a caller's change reached the cache")
 	}
+	hit, _ := f.Fake(core.KEmail, []byte("jane@shop.com"), core.FakeOpts{}) // from the cache
+	hit[0] = 'X'
+	if got := fake(t, f, core.KEmail, "jane@shop.com", core.FakeOpts{}); got[0] != 'u' {
+		t.Error("a change to a cached fake reached the cache")
+	}
 }
 
 func TestDOB(t *testing.T) {
@@ -622,6 +627,24 @@ func BenchmarkFake(b *testing.B) {
 					f = mustFaker(b, testKey(byte(i)), Options{})
 					b.StartTimer()
 				}
+				_, _ = f.Fake(k.kind, vals[i%len(vals)], core.FakeOpts{})
+				i++
+			}
+		})
+		b.Run(string(k.kind)+"/evicting", func(b *testing.B) {
+			// The steady state of a long table: a full cache, every call
+			// a miss that evicts the oldest entry and reuses its buffer.
+			vals := make([][]byte, 1<<16)
+			for i := range vals {
+				vals[i] = benchValue(k.val, i)
+			}
+			f := mustFaker(b, testKey(1), Options{CacheSize: 1024})
+			for _, v := range vals {
+				_, _ = f.Fake(k.kind, v, core.FakeOpts{})
+			}
+			b.ReportAllocs()
+			i := 0
+			for b.Loop() {
 				_, _ = f.Fake(k.kind, vals[i%len(vals)], core.FakeOpts{})
 				i++
 			}

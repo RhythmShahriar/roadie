@@ -5,6 +5,7 @@ package pseudo
 
 import (
 	"bytes"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -67,9 +68,24 @@ func TestAllocs(t *testing.T) {
 		if _, err := f.Fake(kind, v, core.FakeOpts{}); err != nil {
 			t.Fatal(err)
 		}
-		if n := testing.AllocsPerRun(50, func() { _, _ = f.Fake(kind, v, core.FakeOpts{}) }); n > 2 {
-			t.Errorf("cached %s fake: %v allocations, want at most 2", kind, n)
+		if n := testing.AllocsPerRun(50, func() { _, _ = f.Fake(kind, v, core.FakeOpts{}) }); n > 1 {
+			t.Errorf("cached %s fake: %v allocations, want at most 1", kind, n)
 		}
+	}
+	// A miss in a full cache reuses the evicted entry's buffer: the fake
+	// handed back is the only allocation.
+	small := mustFaker(t, testKey(3), Options{CacheSize: 4})
+	misses := make([][]byte, 64)
+	for i := range misses {
+		misses[i] = fmt.Appendf(nil, "customer%d@shop.com", i)
+		_, _ = small.Fake(core.KEmail, misses[i], core.FakeOpts{})
+	}
+	i := 0
+	if n := testing.AllocsPerRun(50, func() {
+		_, _ = small.Fake(core.KEmail, misses[i%len(misses)], core.FakeOpts{})
+		i++
+	}); n > 1 {
+		t.Errorf("evicting email fake: %v allocations, want at most 1", n)
 	}
 	kn := NewKnown(testKey(3))
 	kn.Add(core.KFullName, []byte("Jane Roe"))

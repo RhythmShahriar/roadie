@@ -50,6 +50,7 @@ type faker struct {
 	opt   Options
 	mac   hash.Hash // HMAC-SHA256 keyed by key, reset for every value
 	in    []byte    // scratch: kind || 0x00 || normalised value
+	norm  []byte    // scratch: the normalised value
 	sum   []byte    // scratch: the last HMAC
 	cache *lru
 	uniq  *uniqueSet // shared by every clone
@@ -139,7 +140,8 @@ func (f *faker) Fake(kind core.FakeKind, original []byte, o core.FakeOpts) ([]by
 			hk = core.KEmail
 		}
 	}
-	n := normalise(hk, original)
+	f.norm = appendNormalise(f.norm[:0], hk, original)
+	n := f.norm
 	ck := f.cache.key(kind, n, o)
 	if out, ok := f.cache.get(ck, kind, n, o); ok {
 		return bytes.Clone(out), nil
@@ -157,8 +159,10 @@ func (f *faker) Fake(kind core.FakeKind, original []byte, o core.FakeOpts) ([]by
 			return nil, err
 		}
 	}
+	// The cache keeps its own copy, so out, fresh from format, is the
+	// caller's without a second copy.
 	f.cache.put(ck, kind, n, o, out)
-	return bytes.Clone(out), nil
+	return out, nil
 }
 
 // knownKind reports whether kind is one of core.FakeKinds.
@@ -202,8 +206,12 @@ func newUniqueSet() *uniqueSet {
 // add records fake for the original sum stands for; a different original
 // already holding fake is a fake-collision error (exit 3).
 func (u *uniqueSet) add(kind core.FakeKind, fake, sum []byte) error {
-	b := make([]byte, 0, len(kind)+1+len(fake))
-	k := maphash.Bytes(u.seed, append(append(append(b, kind...), 0), fake...))
+	var h maphash.Hash
+	h.SetSeed(u.seed)
+	_, _ = h.WriteString(string(kind))
+	_ = h.WriteByte(0)
+	_, _ = h.Write(fake)
+	k := h.Sum64()
 	id := binary.BigEndian.Uint64(sum[8:16])
 	s := &u.shards[k%uint64(len(u.shards))]
 	s.mu.Lock()
@@ -231,8 +239,8 @@ func collision(kind core.FakeKind) error {
 }
 
 // lru is a bounded least-recently-used cache of fakes for one worker.
-// Entries live in one slice linked by index, so a full cache allocates
-// nothing but the fake it stores.
+// Entries live in one slice linked by index and an evicted entry's
+// buffer holds the next value, so a full cache allocates nothing.
 type lru struct {
 	seed       maphash.Seed
 	scratch    []byte // the bytes of the last key
@@ -245,9 +253,9 @@ type lru struct {
 type lruEntry struct {
 	key        uint64
 	kind       core.FakeKind
-	norm       string
 	opts       core.FakeOpts
-	fake       []byte
+	buf        []byte // the normalised value, then the fake
+	nlen       int    // the length of the normalised value in buf
 	prev, next int32
 }
 
@@ -276,18 +284,17 @@ func (c *lru) get(k uint64, kind core.FakeKind, n []byte, o core.FakeOpts) ([]by
 		return nil, false
 	}
 	e := &c.ents[i]
-	if e.kind != kind || e.opts != o || e.norm != string(n) {
+	if e.kind != kind || e.opts != o || !bytes.Equal(e.buf[:e.nlen], n) {
 		return nil, false
 	}
 	c.touch(i)
-	return e.fake, true
+	return e.buf[e.nlen:], true
 }
 
 // put stores fake, evicting the least recently used entry when full.
 func (c *lru) put(k uint64, kind core.FakeKind, n []byte, o core.FakeOpts, fake []byte) {
 	if i, ok := c.idx[k]; ok {
-		e := &c.ents[i]
-		e.kind, e.norm, e.opts, e.fake = kind, string(n), o, bytes.Clone(fake)
+		c.ents[i].set(kind, n, o, fake)
 		c.touch(i)
 		return
 	}
@@ -300,9 +307,17 @@ func (c *lru) put(k uint64, kind core.FakeKind, n []byte, o core.FakeOpts, fake 
 		c.unlink(i)
 		delete(c.idx, c.ents[i].key)
 	}
-	c.ents[i] = lruEntry{key: k, kind: kind, norm: string(n), opts: o, fake: bytes.Clone(fake), prev: -1, next: -1}
+	e := &c.ents[i]
+	e.key, e.prev, e.next = k, -1, -1
+	e.set(kind, n, o, fake)
 	c.idx[k] = i
 	c.pushFront(i)
+}
+
+// set fills e, reusing the buffer of the value it held before.
+func (e *lruEntry) set(kind core.FakeKind, n []byte, o core.FakeOpts, fake []byte) {
+	e.kind, e.opts, e.nlen = kind, o, len(n)
+	e.buf = append(append(e.buf[:0], n...), fake...)
 }
 
 func (c *lru) touch(i int32) {

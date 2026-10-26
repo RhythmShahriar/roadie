@@ -22,21 +22,39 @@ var folders = sync.Pool{New: func() any { c := cases.Fold(); return &c }}
 
 // normalise is Normalise.
 func normalise(kind core.FakeKind, b []byte) []byte {
+	if out := appendNormalise(nil, kind, b); out != nil {
+		return out
+	}
+	return []byte{}
+}
+
+// appendNormalise appends the normal form of b as kind to out, so the
+// faker can reuse one buffer for every value it sees.
+func appendNormalise(out []byte, kind core.FakeKind, b []byte) []byte {
 	b = bytes.TrimSpace(b)
 	switch kind {
 	case core.KEmail:
-		return bytes.ToLower(b)
+		if !isASCII(b) {
+			return append(out, bytes.ToLower(b)...)
+		}
+		for _, c := range b {
+			if c >= 'A' && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			out = append(out, c)
+		}
+		return out
 	case core.KPhone:
-		return normPhone(b)
+		return appendPhone(out, b)
 	case core.KFirstName, core.KLastName, core.KFullName, core.KStreet, core.KAddress,
 		core.KCity, core.KCompany:
-		return normText(b)
+		return appendNormText(out, b)
 	case core.KIP:
 		if ip, err := netip.ParseAddr(string(b)); err == nil {
-			return []byte(ip.Unmap().WithZone("").String())
+			return ip.Unmap().WithZone("").AppendTo(out)
 		}
 	}
-	return bytes.Clone(b)
+	return append(out, b...)
 }
 
 // normPhone keeps the digits of b and a leading '+'.
@@ -57,13 +75,8 @@ func appendPhone(out, b []byte) []byte {
 	return out
 }
 
-// normText makes b NFC, case-folds it and makes every run of white space
-// one space. b is already trimmed.
-func normText(b []byte) []byte {
-	return appendNormText(make([]byte, 0, len(b)), b)
-}
-
-// appendNormText appends normText(b) to out. ASCII text needs no
+// appendNormText appends b made NFC and case-folded, with every run of
+// white space one space, to out. b is already trimmed. ASCII text needs no
 // allocation beyond out's growth, which keeps Known.Contains on the
 // scrubber's hot path free of garbage.
 func appendNormText(out, b []byte) []byte {
