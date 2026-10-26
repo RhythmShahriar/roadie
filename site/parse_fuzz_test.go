@@ -19,7 +19,8 @@ func FuzzParseFind(f *testing.F) {
 			return
 		}
 		for _, fi := range parseFind(out, r) {
-			if r != "." && !strings.HasPrefix(fi.Rel, r) {
+			if fi.Rel == ".." || strings.HasPrefix(fi.Rel, "../") || strings.HasPrefix(fi.Rel, "/") ||
+				(r != "." && !strings.HasPrefix(fi.Rel, r+"/")) {
 				t.Fatalf("%q outside %q", fi.Rel, r)
 			}
 			if fi.Dir && fi.Size != 0 {

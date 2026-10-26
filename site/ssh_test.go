@@ -369,3 +369,17 @@ func TestParseFind(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 }
+
+func TestParseFindDropsEscapes(t *testing.T) {
+	out := []byte("f 1 ..\nf 1 ../x\nd 0 /etc\nf 1 a/../../b\nf 1 .\nf 2 a/./b\n")
+	for _, base := range []string{".", "wp-content"} {
+		got := parseFind(out, base)
+		want := "a/b"
+		if base != "." {
+			want = base + "/a/b"
+		}
+		if len(got) != 1 || got[0].Rel != want || got[0].Size != 2 {
+			t.Fatalf("base %q: %+v", base, got)
+		}
+	}
+}

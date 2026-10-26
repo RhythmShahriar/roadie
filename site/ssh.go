@@ -199,6 +199,13 @@ func parseFind(out []byte, base string) []core.FileInfo {
 		if err != nil {
 			continue
 		}
+		// find prints names relative to the listed folder; a hostile or
+		// broken host could print "..", "../x" or "/etc", which must
+		// never become a path outside the site.
+		name = path.Clean(name)
+		if name == "." || name == ".." || path.IsAbs(name) || strings.HasPrefix(name, "../") {
+			continue
+		}
 		rel := name
 		if base != "." {
 			rel = path.Join(base, name)
