@@ -1,0 +1,126 @@
+{
+  "config": {
+    "basic_auth": false,
+    "columns": [],
+    "drop": [],
+    "keys": {
+      "ignore": [],
+      "mode": "swap",
+      "test_keys": {
+        "paypal": "${ROADIE_PAYPAL_TEST}",
+        "stripe": "sk_t•••••"
+      }
+    },
+    "laravel": {
+      "env": {},
+      "env_file": ".env",
+      "tables": {}
+    },
+    "noindex": true,
+    "production": [
+      "shop.com"
+    ],
+    "profiles": [
+      "auto"
+    ],
+    "pseudonymise": {
+      "consistency": "per-run",
+      "email_domain": "example.invalid",
+      "free_text": "scrub",
+      "keep": [
+        "country",
+        "state"
+      ],
+      "keep_users": [
+        "admin"
+      ],
+      "locale": "en",
+      "on_unparseable": "blank",
+      "passwords": "reset",
+      "phone_style": "echo"
+    },
+    "remote": {
+      "wp": "wp"
+    },
+    "side_effects": {
+      "action_scheduler": "pause",
+      "cron": "pause",
+      "echo": {
+        "install": true,
+        "mode": "seal",
+        "proxy": "",
+        "url": "http://127.0.0.1:8025"
+      },
+      "gateways": "test-mode",
+      "mail": "seal",
+      "subscriptions": "staging",
+      "webhooks": "pause"
+    },
+    "source": "mysql://shop:•••@db.shop.com/shop",
+    "stack": "wordpress",
+    "target": "/var/www/staging",
+    "truncate": [],
+    "url": "https://staging.shop.test",
+    "url_map": {},
+    "verify": {
+      "allow_emails": [],
+      "allow_phones": [],
+      "fail_on": "high",
+      "ignore": [],
+      "sign": true,
+      "skip": []
+    }
+  },
+  "sources": {
+    "basic_auth": "default",
+    "columns": "default",
+    "drop": "default",
+    "keys.ignore": "default",
+    "keys.mode": "default",
+    "keys.test_keys": "file",
+    "laravel.env": "default",
+    "laravel.env_file": "default",
+    "laravel.tables": "default",
+    "noindex": "default",
+    "production": "file",
+    "profiles": "default",
+    "pseudonymise.consistency": "default",
+    "pseudonymise.email_domain": "default",
+    "pseudonymise.free_text": "default",
+    "pseudonymise.keep": "default",
+    "pseudonymise.keep_users": "file",
+    "pseudonymise.locale": "default",
+    "pseudonymise.on_unparseable": "default",
+    "pseudonymise.passwords": "default",
+    "pseudonymise.phone_style": "default",
+    "remote.wp": "default",
+    "side_effects.action_scheduler": "default",
+    "side_effects.cron": "default",
+    "side_effects.echo.install": "default",
+    "side_effects.echo.mode": "default",
+    "side_effects.echo.proxy": "default",
+    "side_effects.echo.url": "default",
+    "side_effects.gateways": "default",
+    "side_effects.mail": "default",
+    "side_effects.subscriptions": "default",
+    "side_effects.webhooks": "default",
+    "source": "file",
+    "stack": "file",
+    "target": "file",
+    "truncate": "default",
+    "url": "flag",
+    "url_map": "default",
+    "verify.allow_emails": "default",
+    "verify.allow_phones": "default",
+    "verify.fail_on": "default",
+    "verify.ignore": "default",
+    "verify.sign": "default",
+    "verify.skip": "default"
+  },
+  "production_from": {
+    "shop.com": "file"
+  },
+  "unset": {
+    "keys.test_keys.paypal": "ROADIE_PAYPAL_TEST"
+  }
+}

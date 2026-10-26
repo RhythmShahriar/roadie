@@ -1,0 +1,54 @@
+source: ""
+target: ""
+url: ""
+production: []
+url_map: {}
+stack: auto
+profiles:
+    - auto
+remote:
+    wp: wp
+pseudonymise:
+    email_domain: example.invalid
+    phone_style: echo
+    locale: en
+    keep:
+        - country
+        - state
+    keep_users: []
+    consistency: per-run
+    on_unparseable: blank
+    passwords: reset
+    free_text: scrub
+drop: []
+truncate: []
+columns: []
+keys:
+    mode: swap
+    test_keys: {}
+    ignore: []
+side_effects:
+    echo:
+        install: true
+        url: http://127.0.0.1:8025
+        mode: seal
+        proxy: ""
+    cron: pause
+    action_scheduler: pause
+    webhooks: pause
+    gateways: test-mode
+    subscriptions: staging
+    mail: seal
+noindex: true
+basic_auth: false
+verify:
+    fail_on: high
+    allow_emails: []
+    allow_phones: []
+    skip: []
+    sign: true
+    ignore: []
+laravel:
+    env_file: .env
+    tables: {}
+    env: {}

@@ -8,10 +8,7 @@
 // engine lane replaces the bodies, which return core.ErrNotBuilt until then.
 package roadiecfg
 
-import (
-	"github.com/RhythmShahriar/roadie/core"
-	"github.com/RhythmShahriar/roadie/pseudo"
-)
+import "github.com/RhythmShahriar/roadie/pseudo"
 
 // Config holds every key of PRD 8.1; the yaml tags are the snake_case keys.
 type Config struct {
@@ -74,8 +71,19 @@ type Config struct {
 		Env     map[string]string            `yaml:"env"`
 	} `yaml:"laravel"`
 	// Sources maps a dotted key to where its value came from: "flag",
-	// "file", "echo", "soundcheck" or "default", for config show.
+	// "file", "echo", "soundcheck" or "default", for config show. A
+	// production list merged from several files names each, "file, echo".
 	Sources map[string]string `yaml:"-"`
+	// ProductionFrom maps each production entry to the file it came from:
+	// "file", "echo" or "soundcheck" (or "flag" once the CLI adds one).
+	ProductionFrom map[string]string `yaml:"-"`
+	// Unset maps a dotted key to the ${ROADIE_*} variables it reads that
+	// aren't set. config check lists them; Need fails a run that uses one.
+	Unset map[string]string `yaml:"-"`
+
+	interp map[string]string // dotted key -> variable read into it, masked by Show
+	lines  map[string]int    // dotted key -> line in the file, for messages
+	file   string            // the file's display name, "" for Default
 }
 
 // ColumnRule is one entry of columns:.
@@ -95,49 +103,77 @@ type Ignore struct {
 	Until    string `yaml:"until"`
 }
 
-// Find returns the nearest .roadie/config.yaml at or above dir.
+// Find returns the absolute path of the nearest .roadie/config.yaml in
+// dir or a folder above it, as git finds .git. The search ends at the
+// repository root (the folder holding .git, which is searched) and below
+// $HOME (which isn't, unless dir is $HOME): a stray ~/.roadie would
+// otherwise catch every project outside a repository. With nothing found
+// it returns ErrNoConfig, which matches fs.ErrNotExist.
 func Find(dir string) (path string, err error) {
-	return "", core.ErrNotBuilt
+	return find(dir)
 }
 
-// Load reads path strictly; problems are a *core.Error with code config.
-// env reads ROADIE_ variables for ${ROADIE_*} interpolation.
+// Load reads path strictly; problems are a *core.Error with code config
+// (exit 2) naming the line. env reads ROADIE_ variables for ${ROADIE_*}
+// interpolation; nil reads none. The production: lists of
+// .echo/config.yaml and .soundcheck/config.yaml in the same project are
+// merged in.
 func Load(path string, env func(string) (string, bool)) (*Config, error) {
-	return nil, core.ErrNotBuilt
+	b, err := readFile(path)
+	if err != nil {
+		return nil, err
+	}
+	l := &loader{file: displayName(path), env: env, lines: map[string]int{}, present: map[string]bool{},
+		interp: map[string]string{}, unset: map[string]string{}}
+	c, err := l.load(b)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.MergeProduction(ProjectDir(path)); err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
-// Default returns the config with every default filled in.
+// Default returns the config with every default of PRD 8.1 filled in.
 func Default() *Config {
-	return nil
+	return defaults()
 }
 
-// InitTemplate returns the exact PRD 8.1 text config init writes for stack.
+// InitTemplate returns the exact PRD 8.1 text config init writes for
+// stack: wordpress and woocommerce (and auto or "") get the same file,
+// laravel and sql their own. Any other stack gives nil.
 func InitTemplate(stack string) []byte {
-	return nil
+	return initTemplate(stack)
 }
 
-// Show prints the effective config, as YAML or JSON.
+// Show prints the effective config as YAML with each value's source as
+// a comment, or as JSON with the sources beside it. Test keys and every
+// interpolated value are masked; a DSN password never shows.
 func (c *Config) Show(json bool) ([]byte, error) {
-	return nil, core.ErrNotBuilt
+	return c.show(json)
 }
 
-// LoadKey returns the consistency key and where it came from: "env",
-// "file" or "new".
+// LoadKey returns the consistency key of the project in dir and where it
+// came from: "env" (ROADIE_KEY, base64 of 32 bytes, wins), "file"
+// (.roadie/key) or "new" (made now and not saved; SaveKey keeps it).
 func LoadKey(dir string, env func(string) (string, bool)) (pseudo.Key, string, error) {
-	return pseudo.Key{}, "", core.ErrNotBuilt
+	return loadKey(dir, env)
 }
 
-// SaveKey writes the key to .roadie/key (0600).
+// SaveKey writes the key to .roadie/key (0600, folder 0700).
 func SaveKey(dir string, k pseudo.Key) error {
-	return core.ErrNotBuilt
+	return saveKey(dir, k)
 }
 
-// ForgetKey removes .roadie/key.
+// ForgetKey removes .roadie/key; a missing file is not an error.
 func ForgetKey(dir string) error {
-	return core.ErrNotBuilt
+	return forgetKey(dir)
 }
 
-// ExcludeFromGit adds paths to .git/info/exclude and reports whether it changed.
+// ExcludeFromGit adds paths (relative to dir, slash-separated) to the
+// .git/info/exclude of the work tree dir is in and reports whether it
+// changed the file. Outside a work tree it does nothing.
 func ExcludeFromGit(dir string, paths []string) (bool, error) {
-	return false, core.ErrNotBuilt
+	return excludeFromGit(dir, paths)
 }
