@@ -1,19 +1,19 @@
 # Positive and negative rows for every rule of the learndash profile.
-# Its tables are network-wide ({prefix} only), so a blog's wp_2_ copy is a
-# lookalike.
+# Its tables are {prefix}{site}: blog 2 exists, so wp_2_ copies match;
+# blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
 tables: [wp_2_options]
 rules:
   "learndash.learndash_pro_quiz_toplist.name":
-    positive: {table: wp_learndash_pro_quiz_toplist, row: {name: "Anna Lee"}}
-    negative: {table: wp_2_learndash_pro_quiz_toplist, row: {name: "Anna Lee"}}
+    positive: {table: wp_2_learndash_pro_quiz_toplist, row: {name: "Anna Lee"}}
+    negative: {table: wp_12_learndash_pro_quiz_toplist, row: {name: "Anna Lee"}}
   "learndash.learndash_pro_quiz_toplist.email":
     positive: {table: wp_learndash_pro_quiz_toplist, row: {email: "anna.lee@example.com"}}
-    negative: {table: wp_2_learndash_pro_quiz_toplist, row: {email: "anna.lee@example.com"}}
+    negative: {table: wp_12_learndash_pro_quiz_toplist, row: {email: "anna.lee@example.com"}}
   "learndash.learndash_pro_quiz_toplist.ip":
     positive: {table: wp_learndash_pro_quiz_toplist, row: {ip: "203.0.113.9"}}
-    negative: {table: wp_2_learndash_pro_quiz_toplist, row: {ip: "203.0.113.9"}}
+    negative: {table: wp_12_learndash_pro_quiz_toplist, row: {ip: "203.0.113.9"}}
   "learndash.learndash_pro_quiz_statistic_ref.form_data":
     positive: {table: wp_learndash_pro_quiz_statistic_ref, row: {form_data: "Call Anna on +44 7700 900123"}}
-    negative: {table: wp_2_learndash_pro_quiz_statistic_ref, row: {form_data: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_learndash_pro_quiz_statistic_ref, row: {form_data: "Call Anna on +44 7700 900123"}}
 lists:
-  "keep:{prefix}learndash_user_activity": {positive: wp_learndash_user_activity, negative: wp_2_learndash_user_activity}
+  "keep:{prefix}{site}learndash_user_activity": {positive: wp_learndash_user_activity, negative: wp_12_learndash_user_activity}

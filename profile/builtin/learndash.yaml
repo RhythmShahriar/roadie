@@ -2,18 +2,20 @@
 # SPDX-License-Identifier: MIT
 
 # LearnDash (paid): course progress and the quiz leaderboard, whose
-# tables come from WP Pro Quiz under a learndash_pro_quiz_ name.
+# tables come from WP Pro Quiz under a learndash_pro_quiz_ name. Its
+# tables are named {prefix}{site} so they are found whether a network
+# keeps them once or per blog; on a single site both are the same name.
 id: learndash
 name: LearnDash
 stack: wordpress
 checked_against: "docs: https://plugins.svn.wordpress.org/wp-pro-quiz/trunk/lib/helper/WpProQuiz_Helper_DbUpgrade.php"
 detect:
-  tables_any: ["{prefix}learndash_user_activity", "{prefix}learndash_pro_quiz_toplist"]
+  tables_any: ["{prefix}{site}learndash_user_activity", "{prefix}{site}learndash_pro_quiz_toplist"]
   files: [wp-content/plugins/sfwd-lms/sfwd_lms.php]
 rules:
-  - {table: "{prefix}learndash_pro_quiz_toplist", column: name, rule: full_name, explain: "the name on the leaderboard"}
-  - {table: "{prefix}learndash_pro_quiz_toplist", column: email, rule: email, explain: "the email on the leaderboard"}
-  - {table: "{prefix}learndash_pro_quiz_toplist", column: ip, rule: ip, explain: "the IP address of the attempt"}
-  - {table: "{prefix}learndash_pro_quiz_statistic_ref", column: form_data, rule: text, explain: "the quiz's custom form fields, such as name and email"}
+  - {table: "{prefix}{site}learndash_pro_quiz_toplist", column: name, rule: full_name, explain: "the name on the leaderboard"}
+  - {table: "{prefix}{site}learndash_pro_quiz_toplist", column: email, rule: email, explain: "the email on the leaderboard"}
+  - {table: "{prefix}{site}learndash_pro_quiz_toplist", column: ip, rule: ip, explain: "the IP address of the attempt"}
+  - {table: "{prefix}{site}learndash_pro_quiz_statistic_ref", column: form_data, rule: text, explain: "the quiz's custom form fields, such as name and email"}
 keep:
-  - "{prefix}learndash_user_activity" # course progress by user ID, needed to test courses
+  - "{prefix}{site}learndash_user_activity" # course progress by user ID, needed to test courses
