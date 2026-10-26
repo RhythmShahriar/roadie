@@ -68,8 +68,8 @@ func randomPassword() (string, error) {
 }
 
 // validUser reports a user name of 1 to 64 letters, digits or . _ - @,
-// which every server and its config syntax read the same way (no ':',
-// the htpasswd separator, and nothing a Caddyfile or nginx would quote).
+// which every server and its config syntax read the same way: no ':'
+// (the htpasswd separator) and nothing a Caddyfile or nginx would quote.
 func validUser(u string) bool {
 	if u == "" || len(u) > 64 {
 		return false

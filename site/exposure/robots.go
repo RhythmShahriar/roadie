@@ -207,8 +207,8 @@ func noindexHook(ctx context.Context, s core.Site) bool {
 }
 
 // Blocks reports whether a robots.txt disallows the whole site for every
-// agent. A crawler obeys only the group that names it, if one does, and
-// RFC 9309 merges every group for the same agent; so the file blocks only
+// agent. A crawler obeys only the group that names it (if one does);
+// RFC 9309 merges every group for the same agent. So the file blocks only
 // when it has a group for "*" and every group, for any agent, holds
 // "Disallow: /" and no Allow rule that opens a path again. A group of
 // user-agent lines with no rules lets its agents in.
