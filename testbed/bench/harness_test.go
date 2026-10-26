@@ -8,12 +8,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -573,16 +576,83 @@ func TestNeedsDocker(t *testing.T) {
 	}
 }
 
-// fakeRoadie writes a stand-in rhythm-roadie that prints envelope and
-// exits with code, for runs of the harness without the real binary.
+// fakeName is the base name that turns this test binary into a stand-in
+// rhythm-roadie; fakeReply is the file beside it with what to print.
+const (
+	fakeName  = "rhythm-roadie"
+	fakeReply = "fake-roadie.txt"
+)
+
+// TestMain runs the tests, unless this binary was copied to fakeName by
+// fakeRoadie: then it plays Roadie. The harness strips the environment,
+// so the switch is the file name and not an env variable.
+func TestMain(m *testing.M) {
+	if strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == fakeName {
+		os.Exit(playRoadie())
+	}
+	os.Exit(m.Run())
+}
+
+// playRoadie prints the envelope stored beside the executable and
+// returns its exit code; the file's first line is the code.
+func playRoadie() int {
+	exe, err := os.Executable()
+	if err != nil {
+		return 70
+	}
+	b, err := os.ReadFile(filepath.Join(filepath.Dir(exe), fakeReply)) // #nosec G304 -- the test's own file
+	if err != nil {
+		return 70
+	}
+	code, envelope, _ := strings.Cut(string(b), "\n")
+	n, err := strconv.Atoi(code)
+	if err != nil {
+		return 70
+	}
+	_, _ = os.Stdout.WriteString(envelope + "\n")
+	return n
+}
+
+// fakeRoadie copies this test binary as a stand-in rhythm-roadie that
+// prints envelope and exits with code, for runs of the harness without
+// the real binary. A copy of the test binary runs on every OS, where a
+// shell script would not run on Windows.
 func fakeRoadie(t *testing.T, envelope string, code int) string {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "rhythm-roadie")
-	script := "#!/bin/sh\ncat <<'EOF'\n" + envelope + "\nEOF\nexit " + string(rune('0'+code)) + "\n"
-	if err := os.WriteFile(p, []byte(script), 0o700); err != nil { // #nosec G306 -- a test script
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(self) // #nosec G304 -- this test binary
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	p := filepath.Join(dir, fakeName)
+	if runtime.GOOS == "windows" {
+		p += ".exe"
+	}
+	if err := os.WriteFile(p, b, 0o700); err != nil { // #nosec G306 -- a test binary must be executable
+		t.Fatal(err)
+	}
+	reply := strconv.Itoa(code) + "\n" + envelope
+	if err := os.WriteFile(filepath.Join(dir, fakeReply), []byte(reply), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return p
+}
+
+// The stand-in prints its envelope and exits with its code.
+func TestFakeRoadie(t *testing.T) {
+	p := fakeRoadie(t, `{"kind":"verify"}`, 3)
+	out, err := exec.Command(p, "verify").Output() // #nosec G204 -- the test's own stand-in
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 3 {
+		t.Fatalf("exit: %v", err)
+	}
+	if strings.TrimSpace(string(out)) != `{"kind":"verify"}` {
+		t.Errorf("printed %q", out)
+	}
 }
 
 // The whole harness on the control inputs, with a stand-in binary: a
