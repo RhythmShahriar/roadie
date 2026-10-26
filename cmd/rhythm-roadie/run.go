@@ -90,6 +90,9 @@ func runEngine(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 	r, err := dep.run(ctx, job)
 	bar.Done()
 	r = settle(r, err, string(mode), job)
+	if r.Stack.Name != "" {
+		lastRunStack = r.Stack
+	}
 
 	reportPath, werr := out.write(r)
 	if out.live() {

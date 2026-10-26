@@ -159,6 +159,82 @@ func TestPickerCopyFlow(t *testing.T) {
 	}
 }
 
+// The saved config is committed, so a DSN's password never lands in it;
+// the template follows the stack the run found and the reports stay out
+// of git, as with config init.
+func TestPickerSaveDropsPasswords(t *testing.T) {
+	t.Chdir(t.TempDir())
+	var stacks []string
+	excluded := false
+	testDeps(t, func(d *deps) {
+		d.initTemplate = func(stack string) []byte {
+			stacks = append(stacks, stack)
+			return []byte("# " + stack + "\nsource:\ntarget:\nurl:\n")
+		}
+		d.excludeFromGit = func(string, []string) (bool, error) { excluded = true; return true, nil }
+	})
+	old := lastRunStack
+	t.Cleanup(func() { lastRunStack = old })
+	lastRunStack = core.StackInfo{Name: core.StackLaravel}
+	recordRuns(t)
+	srcPw, tgtPw := "Pr0d-"+"s3cret/x@y", "St4g-"+"s3cret"
+	src := "mysql://shop:" + srcPw + "@db.shop.test:3306/shop"
+	tgt := "postgres://app:" + tgtPw + "@127.0.0.1:33101/staging"
+	a := &scriptAsker{answers: []string{"copy", src, tgt, "https://staging.shop.test"}}
+	var stderr bytes.Buffer
+	if code := pick(context.Background(), a, newLineReader(strings.NewReader("y\n\n")), io.Discard, &stderr); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	b, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pw := range []string{srcPw, tgtPw, "s3cret"} {
+		if strings.Contains(string(b), pw) || strings.Contains(stderr.String(), pw) {
+			t.Errorf("the password %q was saved or shown:\n%s\n%s", pw, b, stderr.String())
+		}
+	}
+	want := "# laravel\nsource: \"mysql://shop@db.shop.test:3306/shop\"\ntarget: \"postgres://app@127.0.0.1:33101/staging\"\nurl: \"https://staging.shop.test\"\n"
+	if string(b) != want {
+		t.Errorf("config:\n%s\nwant\n%s", b, want)
+	}
+	for _, line := range []string{
+		"Wrote .roadie/config.yaml for a Laravel app with source:, target: and url: set.",
+		"Left the password out of source: in .roadie/config.yaml; set ROADIE_FROM_PASSWORD when you run Roadie.",
+		"Left the password out of target: in .roadie/config.yaml; set ROADIE_TO_PASSWORD when you run Roadie.",
+		"Added .roadie/reports, .roadie/key and .roadie/backups to .git/info/exclude.",
+	} {
+		if !strings.Contains(stderr.String(), line) {
+			t.Errorf("missing %q in\n%s", line, stderr.String())
+		}
+	}
+	if !slices.Equal(stacks, []string{"laravel"}) || !excluded {
+		t.Errorf("template for %q, excluded %v", stacks, excluded)
+	}
+}
+
+func TestWithoutPassword(t *testing.T) {
+	pw := "p" + "w"
+	for in, want := range map[string]string{
+		"mysql://u:" + pw + "@h/db":          "mysql://u@h/db",
+		"mysql://u:" + pw + "/x@y@h:3306/db": "mysql://u@h:3306/db",
+		"postgresql://u:" + pw + "@h?ssl=1":  "postgresql://u@h?ssl=1",
+		"mysql://u:@h/db":                    "mysql://u@h/db",
+	} {
+		if got, ok := withoutPassword(in); got != want || !ok {
+			t.Errorf("withoutPassword(%q) = %q %v, want %q", in, got, ok, want)
+		}
+	}
+	for _, in := range []string{
+		"mysql://u@h/db", "mysql://h:3306/db", "ssh://deploy@shop.com:22/var/www/shop", "ssh://deploy@shop.com/var/www/shop",
+		"prod.sql.gz", "/var/www/staging", "@staging", "sqlite:///tmp/a.db", "",
+	} {
+		if got, ok := withoutPassword(in); got != in || ok {
+			t.Errorf("withoutPassword(%q) = %q %v, want it unchanged", in, got, ok)
+		}
+	}
+}
+
 func TestPickerCopyDeclined(t *testing.T) {
 	t.Chdir(t.TempDir())
 	for _, input := range []string{"\n", "n\n", ""} { // empty line, no and EOF all mean no

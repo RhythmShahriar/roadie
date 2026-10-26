@@ -96,13 +96,19 @@ func configInit(ctx context.Context, p *parsed, stdout, stderr io.Writer) error 
 			plural(int64(len(suggestions)), "column", "columns"))
 	}
 	fmt.Fprintln(stdout, "Set source:, target: and url: in it, then run rhythm-roadie plan.")
+	excludeReports(stdout, stderr)
+	return nil
+}
+
+// excludeReports adds gitExcludes to .git/info/exclude (for config init
+// and the picker's save) and says so when it changed anything.
+func excludeReports(stdout, stderr io.Writer) {
 	changed, err := dep.excludeFromGit(".", gitExcludes)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s config: couldn't update .git/info/exclude: %v\n", prog(), err)
 	} else if changed {
 		fmt.Fprintln(stdout, "Added .roadie/reports, .roadie/key and .roadie/backups to .git/info/exclude.")
 	}
-	return nil
 }
 
 // initScan reads the --from source's schema read-only, as plan

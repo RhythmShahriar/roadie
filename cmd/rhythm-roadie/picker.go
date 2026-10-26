@@ -19,6 +19,8 @@ import (
 	"github.com/charmbracelet/huh"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
+
+	"github.com/RhythmShahriar/roadie/core"
 )
 
 // choice is one line of the picker.
@@ -130,13 +132,56 @@ func pickCopy(ctx context.Context, a asker, lr *lineReader, stdout, stderr io.Wr
 		return code // never overwrite a config the user already has
 	}
 	if lr.yesNo(ctx, stderr, "Save these answers to .roadie/config.yaml? [Y/n]", true) {
-		if err := saveAnswers(configPath, dep.initTemplate("wordpress"), src, tgt, url); err != nil {
+		// The config is committed (PRD 8.1): a DSN keeps its user, host
+		// and database but never its password.
+		src, srcPw := withoutPassword(src)
+		tgt, tgtPw := withoutPassword(tgt)
+		stack := detectedStack(lastRunStack)
+		if stack == "" {
+			stack = "wordpress"
+		}
+		if err := saveAnswers(configPath, dep.initTemplate(stack), src, tgt, url); err != nil {
 			fmt.Fprintf(stderr, "%s: couldn't save the answers: %v\n", prog(), err)
 			return max(code, cli.ExitUnavailable)
 		}
-		fmt.Fprintf(stderr, "Wrote %s with source:, target: and url: set.\n", configPath)
+		fmt.Fprintf(stderr, "Wrote %s for %s with source:, target: and url: set.\n", configPath, stackWords[stack])
+		for _, pw := range []struct {
+			left     bool
+			key, env string
+		}{{srcPw, "source", "ROADIE_FROM_PASSWORD"}, {tgtPw, "target", "ROADIE_TO_PASSWORD"}} {
+			if pw.left {
+				fmt.Fprintf(stderr, "Left the password out of %s: in %s; set %s when you run Roadie.\n", pw.key, configPath, pw.env)
+			}
+		}
+		excludeReports(stderr, stderr)
 	}
 	return code
+}
+
+// lastRunStack is the stack the last copy, prepare or plan in this
+// process found; the picker saves the config template for it.
+var lastRunStack core.StackInfo
+
+// withoutPassword drops the password from a URL-style endpoint
+// (mysql://user:secret@host/db gives mysql://user@host/db) and reports
+// whether there was one. The password ends at the last @ of the address,
+// since a password may hold / or @ unescaped; a user part with / or @ in
+// it isn't one (ssh://deploy@host:22/path has no password).
+func withoutPassword(s string) (string, bool) {
+	i := strings.Index(s, "://")
+	if i < 0 {
+		return s, false
+	}
+	rest := s[i+3:]
+	colon := strings.Index(rest, ":")
+	if colon < 0 || strings.ContainsAny(rest[:colon], "/@?#") {
+		return s, false
+	}
+	at := strings.LastIndex(rest, "@")
+	if at < colon {
+		return s, false
+	}
+	return s[:i+3] + rest[:colon] + rest[at:], true
 }
 
 // configPath is where config init and the picker write the settings.
