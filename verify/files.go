@@ -4,6 +4,7 @@
 package verify
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io/fs"
@@ -299,7 +300,7 @@ func (r *run) codeFile(rel string, b []byte) {
 	for len(b) > 0 {
 		line++
 		l := b
-		if i := strings.IndexByte(string(b[:min(len(b), 1<<16)]), '\n'); i >= 0 {
+		if i := bytes.IndexByte(b[:min(len(b), 1<<16)], '\n'); i >= 0 {
 			l, b = b[:i], b[i+1:]
 		} else if len(b) > 1<<16 {
 			l, b = b[:1<<16], b[1<<16:]
