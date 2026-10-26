@@ -1,0 +1,18 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# What the benchmark runs as WP-CLI's search-replace, in this order, as
+#   wp search-replace <from> <to> --all-tables --precise --skip-plugins --skip-themes
+# against a copy of the input loaded into a scratch database. One pair
+# per line, separated by a tab. It is the usual migration recipe from the
+# WP-CLI handbook and the hosts' guides: the full URL in both schemes,
+# then protocol-relative, then the JSON-escaped and URL-encoded spellings
+# that page builders store. Improve it and rerun the benchmark: the
+# score follows this file.
+https://shop.example.com	http://staging-wp
+http://shop.example.com	http://staging-wp
+//shop.example.com	//staging-wp
+https:\/\/shop.example.com	http:\/\/staging-wp
+\/\/shop.example.com	\/\/staging-wp
+https%3A%2F%2Fshop.example.com	http%3A%2F%2Fstaging-wp
+https%3a%2f%2fshop.example.com	http%3a%2f%2fstaging-wp

@@ -4,10 +4,11 @@
 // Command bench is the testbed's harness (PRD 22, qa.md 6.3). It runs
 // every scenario of testbed/scenarios.yaml against the sealed Docker
 // testbed, judges each with the independent oracle, the side-effect
-// drill, the boot check and Roadie's own verify, runs the control pass
-// and writes testbed/bench/work/results.json:
+// drill, the boot check and Roadie's own verify, runs the control pass,
+// judges the other tools on the same inputs (testbed/tools, -tools) and
+// writes testbed/bench/work/results.json:
 //
-//	go run -tags testbed ./testbed/bench [-bin bin/rhythm-roadie] [-only r01,v01]
+//	go run -tags testbed ./testbed/bench [-bin bin/rhythm-roadie] [-only r01,v01] [-tools all|none|wp-cli,...]
 //	go run -tags testbed ./testbed/bench -diff first/results.json second/results.json
 //	go run -tags testbed ./testbed/bench -drill [-for 5m]
 //
@@ -57,6 +58,7 @@ type options struct {
 	drillFor                                      time.Duration
 	perRun                                        bool
 	baseline                                      string
+	tools, greenmask                              string
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -75,6 +77,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fl.DurationVar(&o.drillFor, "drill-for", 5*time.Minute, "how long the side-effect drill runs after each prepare and copy")
 	fl.BoolVar(&o.perRun, "per-run", false, "leave the consistency key per run (outputs then differ between runs)")
 	fl.StringVar(&o.baseline, "baseline", "", "an earlier results.json: fail when r17's MB/s drops more than 20% below it")
+	fl.StringVar(&o.tools, "tools", "all", "the other tools to judge after the scenarios: "+strings.Join(ToolNames(), ", ")+", all or none")
+	fl.StringVar(&o.greenmask, "greenmask", "0.2.26", "the Greenmask release judged (testbed/Makefile pins it)")
 	diff := fl.Bool("diff", false, "compare the scored parts of two results.json files (the arguments)")
 	drill := fl.Bool("drill", false, "run only the side-effect drill on the running staging and print gate 3")
 	fl.DurationVar(&o.drillFor, "for", 5*time.Minute, "with -drill: how long the drill runs")
@@ -131,9 +135,15 @@ func runBench(ctx context.Context, o options, stdout, stderr io.Writer) int {
 			}
 		}
 	}
+	tools, err := ParseTools(o.tools)
+	if err != nil {
+		fmt.Fprintln(stderr, "bench:", err)
+		return 2
+	}
 	h := &Harness{Runtime: abs(o.runtime), Fixtures: abs("testbed/fixtures"), Work: abs(o.work), Seed: o.seed,
 		PHP: oracle.PHP{Cmd: strings.Fields(o.php)}, DrillFor: o.drillFor, Rounds: o.rounds, PerRun: o.perRun,
-		NeedDocker: needsDocker(f, only), Log: stderr}
+		NeedDocker: needsDocker(f, only) || toolsNeedDocker(tools, only), Log: stderr,
+		Tools: tools, ToolsDir: abs("testbed/tools"), GreenmaskVersion: o.greenmask}
 	if h.Bin, err = binary(ctx, o, h.Work); err != nil {
 		fmt.Fprintln(stderr, "bench:", err)
 		return 3
@@ -143,6 +153,7 @@ func runBench(ctx context.Context, o options, stdout, stderr io.Writer) int {
 		return 3
 	}
 	res := h.RunAll(ctx, f, only)
+	res.Tools = h.RunTools(ctx, only)
 	if o.baseline != "" {
 		if err := CompareBaseline(res.Run.Perf, abs(o.baseline)); err != nil {
 			fmt.Fprintln(stderr, "bench: -baseline:", err)
@@ -165,6 +176,15 @@ func runBench(ctx context.Context, o options, stdout, stderr io.Writer) int {
 		}
 		for _, n := range p.Notes {
 			fmt.Fprintln(stdout, "r17:", n)
+		}
+	}
+	for _, t := range res.Tools {
+		if t.NotRun != "" {
+			fmt.Fprintf(stdout, "%s: not run (%s)\n", t.Title, t.NotRun)
+			continue
+		}
+		for _, in := range t.Inputs {
+			fmt.Fprintf(stdout, "%s on %s: %s (%s)\n", t.Title, in.Input, in.Outcome, in.Detail)
 		}
 	}
 	fmt.Fprintln(stdout, "results:", path)

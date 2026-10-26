@@ -1,0 +1,81 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Replibyte's configuration for the WooCommerce inputs (r01, r12), the
+# best we could write from its documentation (replibyte.com/docs:
+# configuration and transformers). Replibyte transforms whole columns by
+# name: it can't tell one meta_key from another, read serialized PHP or
+# JSON, or find a value inside free text. Columns that mix personal
+# values with settings (wp_usermeta, wp_wc_orders_meta, wp_options) are
+# left alone, because a column-wide transformer would break every
+# setting in them. Free text that only ever holds people's words (order
+# notes) is redacted.
+#
+# The benchmark runs, with no network:
+#   replibyte -c conf.yaml dump create -s mysql -i < db.sql
+#   replibyte -c conf.yaml dump restore local -v latest -o > out.sql
+# @@DATASTORE@@ is the work folder's datastore. connection_uri is never
+# dialled: the dump comes from stdin.
+source:
+  connection_uri: mysql://shop:unused@127.0.0.1:3306/shop
+  transformers:
+    - database: shop
+      table: wp_users
+      columns:
+        - name: user_email
+          transformer_name: email
+        - name: display_name
+          transformer_name: first-name
+        - name: user_nicename
+          transformer_name: random
+        - name: user_url
+          transformer_name: redacted
+    - database: shop
+      table: wp_comments
+      columns:
+        - name: comment_author
+          transformer_name: first-name
+        - name: comment_author_email
+          transformer_name: email
+        - name: comment_author_IP
+          transformer_name: redacted
+        - name: comment_content
+          transformer_name: redacted
+    - database: shop
+      table: wp_wc_orders
+      columns:
+        - name: billing_email
+          transformer_name: email
+        - name: ip_address
+          transformer_name: redacted
+        - name: user_agent
+          transformer_name: redacted
+        - name: customer_note
+          transformer_name: redacted
+    - database: shop
+      table: wp_wc_order_addresses
+      columns:
+        - name: first_name
+          transformer_name: first-name
+        - name: last_name
+          transformer_name: random
+        - name: address_1
+          transformer_name: random
+        - name: email
+          transformer_name: email
+        - name: phone
+          transformer_name: phone-number
+    - database: shop
+      table: wp_wc_customer_lookup
+      columns:
+        - name: username
+          transformer_name: random
+        - name: first_name
+          transformer_name: first-name
+        - name: last_name
+          transformer_name: random
+        - name: email
+          transformer_name: email
+datastore:
+  local_disk:
+    dir: "@@DATASTORE@@"

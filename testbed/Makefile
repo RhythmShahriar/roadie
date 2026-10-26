@@ -16,6 +16,7 @@
 #   make bench [ONLY=r01]  the benchmark into bench/work/results.json
 #   make reproduce         the benchmark twice; fails if the score differs
 #   make drill             the side-effect drill alone on the running staging
+#   make tools             fetch the other tools the benchmark judges (make up runs it)
 #
 # Nothing here prints a secret: the passwords, Echo's token, the SSH keys
 # and the fake API keys are written to runtime/ (0600, gitignored) and
@@ -30,7 +31,7 @@ export GOWORK := off
 export TESTBED_UID := $(shell id -u)
 export TESTBED_GID := $(shell id -g)
 
-# The other tools and plugins, pinned: "<url> <sha256> <folder>" per line.
+# The plugins, pinned: "<url> <sha256> <folder>" per line.
 # A new version means a new line here and a new sha256, checked at build.
 define PLUGINS
 https://downloads.wordpress.org/plugin/woocommerce.9.8.5.zip 9008e72eacda8f3bda01d0b704502eaddd8bc147651d61bd9aa7a015bf583964 woocommerce
@@ -41,15 +42,29 @@ https://github.com/Automattic/woocommerce-subscriptions-core/archive/refs/tags/8
 endef
 export TESTBED_PLUGINS := $(PLUGINS)
 
+# The other tools the benchmark judges (tools/README.md), pinned:
+# "<name> <version> <url> <sha256>" per line, fetched by make tools into
+# runtime/tools/<name>/. "unverified" means nobody has checked that
+# release's sha256 yet: it is never downloaded and the benchmark reports
+# the tool as not run with that reason. WP-CLI is the one in the pinned
+# sshd image (2.12.0). Greenmask is judged but not fetched: its pinned
+# release reads PostgreSQL only and the inputs it would meet are MySQL.
+define TOOLS
+replibyte 0.10.0 https://github.com/Qovery/Replibyte/releases/download/v0.10.0/replibyte_v0.10.0_x86_64-unknown-linux-musl.tar.gz unverified
+staging-shield 1.0.2 https://downloads.wordpress.org/plugin/staging-shield.1.0.2.zip unverified
+endef
+export TESTBED_TOOLS := $(TOOLS)
+GREENMASK_VERSION := 0.2.26
+
 # PHP for the seed-time serialized list and the oracle's integrity check,
 # in a container so the host needs no PHP.
 PHP_IMAGE := php:8.3-cli@sha256:98d555ff97b3865140ad31032508c3ca089fa97a8944b14ca9dc03ea05d788cd
 PHP       := docker run --rm -i --network none $(PHP_IMAGE) php
 SEED      ?= 1
 
-.PHONY: up down reset seal oracle bench reproduce drill roadie-bin binaries keys seed gen install load formats status logs
+.PHONY: up down reset seal oracle bench reproduce drill roadie-bin binaries keys seed gen install load formats tools status logs
 
-up: binaries keys seed gen ## build, start and seed everything
+up: binaries keys seed gen tools ## build, start and seed everything
 	$(COMPOSE) build -q sinkhole prod-wp laravel sshd
 	$(COMPOSE) up -d --wait
 	$(MAKE) --no-print-directory install formats load ID=r01
@@ -107,6 +122,9 @@ gen: ## r17: the large generated dumps (GEN_SIZE=2GB)
 		&& touch testbed/$(GEN_DIR)/.size-$(GEN_SIZE)-$(SEED); \
 	fi
 
+tools: ## fetch the other tools the benchmark judges into runtime/tools/
+	@sh tools/fetch.sh $(RUNTIME)/tools
+
 install: ## install WordPress and the plugins on both sites
 	docker exec -u www-data roadie-testbed-prod-wp-1 testbed-seed
 	docker exec -u www-data roadie-testbed-staging-wp-1 testbed-seed
@@ -159,7 +177,7 @@ oracle: ## judge an output: make oracle ID=r01 DUMP=out.sql [TREE=dir]
 # in every container. DRILL is how long the side-effect drill runs after
 # each copy and prepare (5m for the published numbers).
 DRILL ?= 5m
-BENCH := cd $(ROOT) && $(GO) run -tags testbed ./testbed/bench -bin testbed/$(RUNTIME)/bin/rhythm-roadie -php "$(PHP)" -seed $(SEED) -drill-for $(DRILL)
+BENCH := cd $(ROOT) && $(GO) run -tags testbed ./testbed/bench -bin testbed/$(RUNTIME)/bin/rhythm-roadie -php "$(PHP)" -seed $(SEED) -drill-for $(DRILL) -greenmask $(GREENMASK_VERSION)
 
 roadie-bin:
 	@mkdir -p $(RUNTIME)/bin

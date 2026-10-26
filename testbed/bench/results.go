@@ -34,6 +34,9 @@ type Results struct {
 	Version int     `json:"version"`
 	Scored  Scored  `json:"scored"`
 	Run     RunInfo `json:"run"`
+	// Tools are the other tools judged on the same inputs (tools.go);
+	// -diff compares their outcomes and counts, not their side effects.
+	Tools []ToolResult `json:"tools,omitempty"`
 }
 
 // Scored is the part of results.json that is the score.
@@ -310,6 +313,8 @@ func DiffResults(a, b string, w io.Writer) (same bool, err error) {
 		return false, fmt.Errorf("no scenarios in %s or %s: was a run aborted?", a, b)
 	}
 	la, lb := scoredLines(ra.Scored), scoredLines(rb.Scored)
+	toolLines(ra.Tools, la)
+	toolLines(rb.Tools, lb)
 	keys := map[string]bool{}
 	for k := range la {
 		keys[k] = true

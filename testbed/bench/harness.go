@@ -53,6 +53,12 @@ type Harness struct {
 	NeedDocker bool
 	Ex         Execer
 	Log        io.Writer
+	// Tools are the other tools to judge after the scenarios (ToolNames),
+	// with their committed configuration in ToolsDir (testbed/tools).
+	Tools    []string
+	ToolsDir string
+	// GreenmaskVersion is the Greenmask release judged (testbed/Makefile).
+	GreenmaskVersion string
 
 	db       map[string]string // runtime/db.env
 	echoTok  string
@@ -63,6 +69,7 @@ type Harness struct {
 	kept     []keptOutput
 	manifest map[string]manifest.Scenario
 	perf     *Perf
+	dockerUp bool
 }
 
 // keptOutput is an r-scenario's output dump g05 verifies again.
@@ -121,6 +128,7 @@ func (h *Harness) Init(ctx context.Context) error {
 	if h.sshPath, err = exec.LookPath("ssh"); err != nil {
 		h.sshPath = ""
 	}
+	h.dockerUp = true
 	return nil
 }
 
