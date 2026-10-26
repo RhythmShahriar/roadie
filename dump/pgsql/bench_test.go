@@ -82,7 +82,7 @@ func BenchmarkCopy(b *testing.B) {
 	}
 }
 
-// The generated COPY dump reads back byte for byte, and an untouched
+// The generated COPY dump reads back byte for byte; an untouched
 // COPY row costs fewer than 4 allocations.
 func TestGenCopyDump(t *testing.T) {
 	var buf bytes.Buffer
