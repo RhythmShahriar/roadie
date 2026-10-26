@@ -978,3 +978,38 @@ func TestRunSameLocalDatabase(t *testing.T) {
 		t.Errorf("skipped config still checked: %+v", res.Findings)
 	}
 }
+
+// An address used as a key of a nested value is a finding; its location
+// masks it, as every leaf path below it does.
+func TestRunPersonalKeys(t *testing.T) {
+	value := `{"ada.kowalczyk@gmail.com":{"plan":"gold","since":"2024"},"admin":{"plan":"x"}}`
+	res := runJob(t, Job{Source: source(options([]string{"1", "loyalty_members", value}))})
+	f := find(res, core.FindingPIIEmail)
+	if f == nil || len(f.Locations) == 0 {
+		t.Fatalf("no pii.email for an address key: %+v", res.Findings)
+	}
+	for _, fd := range res.Findings {
+		for _, l := range fd.Locations {
+			if strings.Contains(l.Path, "kowalczyk") || strings.Contains(l.Path, "gmail") {
+				t.Errorf("%s location shows the address: %q", fd.ID, l.Path)
+			}
+		}
+	}
+	// Keys with no address are no finding.
+	res = runJob(t, Job{Source: source(options([]string{"1", "loyalty_tiers", `{"gold":{"min":"100"},"silver":{"min":"10"}}`}))})
+	if f := find(res, core.FindingPIIEmail); f != nil {
+		t.Errorf("plain keys: %+v", f)
+	}
+}
+
+func TestMaskPath(t *testing.T) {
+	for in, want := range map[string]string{
+		`json:ada\.kowalczyk@gmail\.com.plan`: core.MaskEmail("ada.kowalczyk@gmail.com.plan"),
+		"serialized:billing.email":            "serialized:billing.email",
+		`json:a\.b@c\.de.x.json:y`:            core.MaskEmail("a.b@c.de.x.json") + ":y",
+	} {
+		if got := maskPath(in); !strings.HasSuffix(got, want) || strings.Contains(got, "kowalczyk") {
+			t.Errorf("maskPath(%q) = %q, want ...%q", in, got, want)
+		}
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -215,6 +216,7 @@ func (f *field) value(v []byte, sc core.ScanContext, at core.Location) {
 			for _, l := range f.pending {
 				f.leaf(l.path, f.arena[l.start:l.end])
 			}
+			f.keys()
 			return
 		}
 	}
@@ -225,6 +227,49 @@ func (f *field) value(v []byte, sc core.ScanContext, at core.Location) {
 		f.unparsed[sc.Table+"\x00"+sc.Column]++
 	}
 	f.leaf("", v)
+}
+
+// keys scans the keys of a nested value. A plugin that keys its data by
+// the customer's address ({"jane@shop.com": {...}}) keeps it in the
+// leaf's path, where neither a rule nor the value detectors reach it.
+// Each distinct path with an @ in it is read once as text; the finding
+// points at the column, since the path itself would show the address.
+func (f *field) keys() {
+	s := f.s
+	var seen []string
+	for _, l := range f.pending {
+		if strings.IndexByte(l.path, '@') < 0 || slices.Contains(seen, l.path) {
+			continue
+		}
+		seen = append(seen, l.path)
+		f.lat = f.at
+		f.lat.Path = maskPath(l.path)
+		// nested escapes a dot inside a key (ada\.lee@shop\.com).
+		key := []byte(strings.ReplaceAll(l.path, `\.`, "."))
+		if !f.public {
+			for _, d := range s.detectors {
+				d.Scan(key, f.sc, f.emitFn)
+			}
+		}
+		if s.survivors != nil {
+			s.survivors.Scan(key, f.sc, f.emitFn)
+		}
+	}
+}
+
+// pathEmail is an address inside a leaf path, whose dots nested may
+// have escaped with a backslash.
+var pathEmail = regexp.MustCompile(`(?:[A-Za-z0-9_%+-]|\\?\.)+@[A-Za-z0-9-]+(?:\\?\.[A-Za-z0-9-]+)+`)
+
+// maskPath masks every address in a leaf path, for the location of a
+// finding: json:jane@shop\.com.name reads as json:ja•••@sh•••.name.
+func maskPath(p string) string {
+	if strings.IndexByte(p, '@') < 0 {
+		return p
+	}
+	return pathEmail.ReplaceAllStringFunc(p, func(m string) string {
+		return core.MaskEmail(strings.ReplaceAll(m, `\.`, "."))
+	})
 }
 
 // collect keeps one walked leaf until the walk ends. The bytes are
@@ -245,7 +290,7 @@ func (f *field) emit(h core.Hit) {
 func (f *field) leaf(p string, l []byte) {
 	s := f.s
 	f.lat = f.at
-	f.lat.Path = p
+	f.lat.Path = maskPath(p)
 	lsc := f.sc
 	inner, key := keys.LeafKey(p)
 	if p != "" {
