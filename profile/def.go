@@ -209,9 +209,11 @@ func BareTable(t string) string {
 //go:embed builtin/*.yaml
 var builtinFS embed.FS
 
-// BuiltinVersion is the version of the profiles built into this binary.
-// A downloaded pack is used only when it is newer.
-const BuiltinVersion = "2026.10.0"
+// BuiltinVersion is the version of the profiles built into this binary
+// when the binary's own version isn't a release (a dev build): the
+// release they first shipped in. A downloaded pack is used only when its
+// release version is newer (see Version).
+const BuiltinVersion = "1.0.0"
 
 // builtin parses every embedded profile, sorted by ID.
 func builtin() ([]Def, error) {

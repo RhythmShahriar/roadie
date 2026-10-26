@@ -5,14 +5,14 @@
 // form, mail-log and shop plugins, Laravel and generic SQL), detects which
 // apply to a schema and compiles them with the config into rules per table.
 //
-// The exported names in this file are the frozen cross-lane API; the
-// engine lane replaces the bodies, which return core.ErrNotBuilt until then.
+// The exported names in this file are the frozen cross-lane API.
 package profile
 
 import (
 	"context"
 	"io"
 	"slices"
+	"strings"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
 	"github.com/RhythmShahriar/roadie/core"
@@ -51,12 +51,12 @@ func Builtin() ([]Def, error) {
 
 // Load returns the profiles and the pack version, from the signed pack
 // cache when present, else the built-in ones.
+//
+// The cached pack is used only when its version is newer than the
+// built-in profiles' (Version); its profiles replace the built-in ones
+// with the same ID. offline, or RHYTHM_OFFLINE, uses the built-in ones.
 func Load(ctx context.Context, offline bool) ([]Def, string, error) {
-	defs, err := builtin()
-	if err != nil {
-		return nil, "", err
-	}
-	return defs, BuiltinVersion, nil
+	return loadWith(deps, offline)
 }
 
 // Detect returns the IDs of the profiles that apply, sorted: a table of
@@ -141,11 +141,18 @@ func (c *Compiled) WithRules(rs []core.Rule) *Compiled { return &Compiled{c: c.c
 func (c *Compiled) All() []core.Rule { return c.c.all() }
 
 // Update refreshes the signed profile pack (rhythm-roadie update).
+//
+// It downloads checksums.txt, its Sigstore bundle and
+// rhythm-roadie_profiles.tar.gz from the latest release, verifies the
+// bundle as kit update verifies the binary, checks the archive against
+// checksums.txt and keeps its profiles in the cache. RHYTHM_OFFLINE
+// skips the network and reports the profiles in use.
 func Update(ctx context.Context, w io.Writer) ([]cli.DataPack, error) {
-	return nil, core.ErrNotBuilt
+	return deps.install(ctx, w, "")
 }
 
 // UpdatePinned brings the pack to the pinned versions.
+// The pin is pins["profiles"]; without one it is Update.
 func UpdatePinned(ctx context.Context, w io.Writer, pins map[string]string) ([]cli.DataPack, error) {
-	return nil, core.ErrNotBuilt
+	return deps.install(ctx, w, strings.TrimPrefix(pins[PackName], "v"))
 }
