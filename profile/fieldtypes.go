@@ -31,8 +31,10 @@ type fieldKind struct {
 
 // gfTypes maps a Gravity Forms field type to its rule; name and address
 // fields are split by input below.
+// A date field is most often a date of birth; the dob rule shifts it by
+// days within its year, which leaves an appointment date usable too.
 var gfTypes = map[string]fieldKind{
-	"email": {rule: "email"}, "phone": {rule: "phone"}, "website": {rule: "url"},
+	"email": {rule: "email"}, "phone": {rule: "phone"}, "website": {rule: "url"}, "date": {rule: "dob"},
 	"text": {rule: "text"}, "textarea": {rule: "text"}, "hidden": {rule: "text"},
 }
 

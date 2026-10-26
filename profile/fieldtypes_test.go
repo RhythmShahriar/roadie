@@ -87,7 +87,7 @@ func TestGravityFormsFieldTypes(t *testing.T) {
 		{"id":3,"type":"email"},{"id":"4","type":"phone"},
 		{"id":1,"type":"name","inputs":[{"id":"1.2"},{"id":"1.3"},{"id":"1.6"}]},
 		{"id":7,"type":"address","inputs":[{"id":"7.1"},{"id":"7.3"},{"id":"7.5"},{"id":"7.6"}]},
-		{"id":8,"type":"name"},{"id":9,"type":"checkbox"},{"id":"1*","type":"email"}]}`}))
+		{"id":8,"type":"name"},{"id":9,"type":"checkbox"},{"id":"1*","type":"email"},{"id":10,"type":"date"}]}`}))
 	ft.Observe("wp_gf_form_meta", row(map[string]string{"form_id": "2", "display_meta": `{"fields":[{"id":5,"type":"email"},{"id":3,"type":"textarea"}]}`}))
 	ft.Observe("wp_2_gf_form_meta", row(map[string]string{"form_id": "1", "display_meta": `{"fields":[{"id":2,"type":"email"}]}`}))
 	ft.Observe("wp_gf_form_meta", row(map[string]string{"form_id": "3", "display_meta": `not json`}))
@@ -112,6 +112,8 @@ func TestGravityFormsFieldTypes(t *testing.T) {
 		{"wp_gf_entry_meta", "1", "7.6", core.Keep, ""}, // country, kept by default
 		{"wp_gf_entry_meta", "1", "8", core.Fake, core.KFullName},
 		{"wp_gf_entry_meta", "1", "9", core.Scrub, core.KText},
+		{"wp_gf_entry_meta", "1", "10", core.Fake, core.KDOB},
+		{"wp_gf_entry_meta", "2", "10", core.Scrub, core.KText}, // form 2 has no date field
 		{"wp_2_gf_entry_meta", "1", "2", core.Fake, core.KEmail},
 		{"wp_2_gf_entry_meta", "1", "3", core.Scrub, core.KText}, // blog 2's form 1 differs
 	}
