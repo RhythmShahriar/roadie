@@ -16,6 +16,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/RhythmShahriar/echo/client"
 	"github.com/RhythmShahriar/echo/model"
@@ -90,6 +92,40 @@ func echoURL(s string) (*url.URL, error) {
 	}
 	return nil, core.Errorf(core.ErrConfig, cli.ExitUsage,
 		"verify --echo: %s is plain http beyond this machine and its network, where anyone on the way could read or fake its answers. Use https:// for an Echo elsewhere.", u.Redacted())
+}
+
+// echoClient is the client for --echo. Redirects stay on Echo's own
+// scheme, host and port: an https Echo elsewhere must not bounce the
+// requests, and the answers verify trusts, to another server.
+func echoClient(echo *url.URL) *http.Client {
+	return &http.Client{Timeout: echoTimeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("too many redirects")
+		}
+		if req.URL.Scheme != echo.Scheme || !strings.EqualFold(req.URL.Host, echo.Host) {
+			return fmt.Errorf("redirect off Echo's host to %s", req.URL.Redacted())
+		}
+		return nil
+	}}
+}
+
+// printable returns s without control or format characters (escape
+// sequences, bidi overrides) and cut to at most n runes, for text from
+// another program that ends up in a finding title.
+func printable(s string, n int) string {
+	var b strings.Builder
+	for _, r := range s {
+		if n == 0 {
+			b.WriteString("...")
+			break
+		}
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == utf8.RuneError {
+			continue
+		}
+		b.WriteRune(r)
+		n--
+	}
+	return b.String()
 }
 
 // localHost reports whether host is localhost or a loopback, private or
@@ -394,7 +430,7 @@ func (r *run) echo(ctx context.Context) {
 		return
 	}
 	c := client.New(u.String(), "")
-	c.HTTP = &http.Client{Timeout: echoTimeout}
+	c.HTTP = echoClient(u)
 	r.count(core.FindingSideEffectMail, 1)
 	at := core.Location{File: u.Redacted()}
 	mail := func(title, fix string) {
@@ -415,7 +451,7 @@ func (r *run) echo(ctx context.Context) {
 		return
 	}
 	if h.Mode != "seal" {
-		mail("Echo is in "+h.Mode+" mode, so mail from this copy reaches real people",
+		mail("Echo is in "+printable(h.Mode, 40)+" mode, so mail from this copy reaches real people",
 			"Run Echo in seal mode: rhythm echo up --mode seal.")
 	}
 	sent := int64(0)

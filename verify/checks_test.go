@@ -586,3 +586,67 @@ func FuzzPHPArrayValue(f *testing.F) {
 		}
 	})
 }
+
+// Echo's redirects stay on its own host: a redirect elsewhere is not
+// followed and the check fails closed.
+func TestEchoRedirectOffHost(t *testing.T) {
+	hit := false
+	other := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"tool":"rhythm-echo","version":"1.1.2","mode":"seal","wire":1,"providers":[]}`)
+	}), false)
+	bounce := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+r.URL.Path, http.StatusFound)
+	}), false)
+	res := siteRun(t, Options{Echo: true, EchoURL: bounce.URL})
+	if f := find(res, core.FindingSideEffectMail); f == nil || !strings.Contains(f.Title, "isn't reachable") {
+		t.Errorf("redirect off host: %+v", res.Findings)
+	}
+	if hit {
+		t.Error("verify followed Echo's redirect to another host")
+	}
+	// A redirect on Echo's own host is followed.
+	same := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/health":
+			http.Redirect(w, r, "/v1/health2", http.StatusFound)
+		case "/v1/health2":
+			_, _ = io.WriteString(w, `{"tool":"rhythm-echo","version":"1.1.2","mode":"seal","wire":1,"providers":[]}`)
+		default:
+			_, _ = io.WriteString(w, `{"messages":[]}`)
+		}
+	}), false)
+	res = siteRun(t, Options{Echo: true, EchoURL: same.URL})
+	if find(res, core.FindingSideEffectMail) != nil {
+		t.Errorf("redirect on host: %+v", res.Findings)
+	}
+}
+
+// Echo's mode reaches a finding title without control or bidi
+// characters.
+func TestEchoModeControlChars(t *testing.T) {
+	s := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/health" {
+			_, _ = io.WriteString(w, `{"tool":"rhythm-echo","version":"1.1.2","mode":"obs\u001b[2Jerve‮\u0007","wire":1,"providers":[]}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"messages":[]}`)
+	}), false)
+	res := siteRun(t, Options{Echo: true, EchoURL: s.URL})
+	f := find(res, core.FindingSideEffectMail)
+	if f == nil || f.Title != "Echo is in obs[2Jerve mode, so mail from this copy reaches real people" {
+		t.Errorf("mode title: %+v", res.Findings)
+	}
+	for _, c := range []struct {
+		in   string
+		n    int
+		want string
+	}{{"seal", 40, "seal"}, {"a\nb\tc", 40, "abc"}, {"", 40, ""}, {"abcdef", 3, "abc..."}, {"abc", 3, "abc"}, {"\xffok", 40, "ok"}} {
+		if got := printable(c.in, c.n); got != c.want {
+			t.Errorf("printable(%q, %d) = %q, want %q", c.in, c.n, got, c.want)
+		}
+	}
+}
