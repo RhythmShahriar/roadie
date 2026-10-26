@@ -186,16 +186,37 @@ func hexVal(c byte) int {
 
 // hostEnds reports whether a host may end before text[i]: the next byte
 // isn't a host byte, nor a dot that starts another label, so shop.com
-// doesn't match in shop.com.au or shop.community.
+// doesn't match in shop.com.au or shop.community. A dot spelled %2E or
+// as an HTML entity counts too, so shop.com%2Eau and shop.com&#46;au
+// stay as they are.
 func hostEnds(text []byte, i int) bool {
 	if i >= len(text) {
 		return true
 	}
-	c := text[i]
-	if c == '.' {
-		return i+1 >= len(text) || !alnum(text[i+1])
+	n := dotAt(text, i)
+	if n > 0 {
+		return i+n >= len(text) || !alnum(text[i+n])
 	}
-	return !hostByte(c)
+	return !hostByte(text[i])
+}
+
+// dotSpellings are the encoded dots dotAt knows, matched without case.
+var dotSpellings = [][]byte{[]byte("%2e"), []byte("&#46;"), []byte("&#x2e;"), []byte("&period;")}
+
+// dotAt returns the length of the dot at text[i] in any spelling, or 0.
+func dotAt(text []byte, i int) int {
+	if text[i] == '.' {
+		return 1
+	}
+	if text[i] != '%' && text[i] != '&' {
+		return 0
+	}
+	for _, d := range dotSpellings {
+		if i+len(d) <= len(text) && bytes.EqualFold(text[i:i+len(d)], d) {
+			return len(d)
+		}
+	}
+	return 0
 }
 
 // userinfo reports whether the host that ends at i is the user part of

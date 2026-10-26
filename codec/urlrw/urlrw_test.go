@@ -60,6 +60,13 @@ func TestRewriteForms(t *testing.T) {
 		{"https%3A%2F%2Fshop.com%40other.example", "https%3A%2F%2Fshop.com%40other.example", 0},
 		{"https://myshop.com", "https://myshop.com", 0},
 		{"https://shop.com.au", "https://shop.com.au", 0},
+		{"https://shop.com&#46;au", "https://shop.com&#46;au", 0},
+		{"https://shop.com&#x2E;au/x", "https://shop.com&#x2E;au/x", 0},
+		{"https://shop.com&period;au", "https://shop.com&period;au", 0},
+		{"https%3A%2F%2Fshop.com%2Eau/x", "https%3A%2F%2Fshop.com%2Eau/x", 0},
+		{"https://shop.com%2ecommunity", "https://shop.com%2ecommunity", 0},
+		{"https://shop.com%2E", "https://staging.shop.test%2E", 1},
+		{"https://shop.com&#46; next", "https://staging.shop.test&#46; next", 1},
 		{"https://shop.community", "https://shop.community", 0},
 		{"https://shop.com-x.net", "https://shop.com-x.net", 0},
 		{"https://fr.shop.com", "https://fr.shop.com", 0},
@@ -375,6 +382,7 @@ func FuzzURLRewrite(f *testing.F) {
 		"https://shop.com/x", `https:\/\/shop.com`, "https%3A%2F%2Fshop.com", "https:&#x2F;&#x2F;shop.com",
 		"//www.shop.com", "jane@shop.com", "https://shop.com@other.example", "https%3A%2F%2Fshop.com%40x", "https://myshop.com", "https://shop.com.au", "https://shop.community",
 		`/\/shop.com`, "&#0047;/shop.com", "%2f/SHOP.com:80", "https://staging.shop.test",
+		"https://shop.com%2Eau", "https://shop.com&#46;au", "https://shop.com&#x2e;au", "https://shop.com&period;au",
 	} {
 		f.Add([]byte(s))
 	}
@@ -396,7 +404,7 @@ func FuzzURLRewrite(f *testing.F) {
 		if n2 != 0 || !bytes.Equal(again, out) {
 			t.Fatalf("not idempotent: %q then %q", out, again)
 		}
-		for _, l := range []string{"myshop.com", "shop.com.au", "shop.community", "@shop.com"} {
+		for _, l := range []string{"myshop.com", "shop.com.au", "shop.community", "@shop.com", "shop.com%2eau", "shop.com&#46;au", "shop.com&#x2e;au", "shop.com&period;au"} {
 			if bytes.Count(asciiLower(out), []byte(l)) < bytes.Count(asciiLower(b), []byte(l)) {
 				t.Fatalf("lookalike %s changed: %q to %q", l, b, out)
 			}
