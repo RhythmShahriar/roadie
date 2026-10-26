@@ -166,7 +166,11 @@ func (kn *known) Add(kind core.FakeKind, original []byte) {
 			}
 			if i+1 < len(words) {
 				next := n[words[i+1][0]:words[i+1][1]]
-				toks = append(toks, raw(pairToken(word, next), kb))
+				// A two-word name's pair is the value itself, already
+				// stored: storing it again only costs memory until Seal.
+				if pair := pairToken(word, next); !bytes.Equal(pair, n) {
+					toks = append(toks, raw(pair, kb))
+				}
 			}
 		}
 	}
@@ -178,7 +182,9 @@ func (kn *known) Add(kind core.FakeKind, original []byte) {
 	kn.adds++
 	for _, t := range toks {
 		kn.tabs[t.tab].add(t.h, t.k)
-		if t.tab == 0 {
+		// A token the filters already let through (a common first
+		// name, say) would only use up filter room.
+		if t.tab == 0 && !kn.mayHave(t.f) {
 			kn.filterAdd(t.f)
 		}
 	}
@@ -331,7 +337,10 @@ func (t *table) seal() {
 		t.h[w], t.k[w] = t.h[r], t.k[r]
 		w++
 	}
-	t.h, t.k = t.h[:w:w], t.k[:w:w]
+	if w < len(t.h) {
+		// Copy so the duplicates' room is freed and not just hidden.
+		t.h, t.k = slices.Clone(t.h[:w]), slices.Clone(t.k[:w])
+	}
 }
 
 // byHash sorts a table's two slices together.

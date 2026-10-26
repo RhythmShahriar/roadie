@@ -235,26 +235,87 @@ func TestKnownFalsePositives(t *testing.T) {
 }
 
 // 2 million emails fit in under 64 MB once sealed. The tables' and the
-// Bloom filters' own size is the measure: the heap of a test binary also holds what earlier
-// tests left for the collector.
+// Bloom filters' own size is the measure: the heap of a test binary also
+// holds what earlier tests left behind.
 func TestKnownMemory(t *testing.T) {
 	values := scaled(2_000_000)
-	size := 0
 	kn := bigKnown().(*known)
+	for _, tab := range kn.tabs {
+		if tab.hchunks != nil || tab.kchunks != nil {
+			t.Error("Seal kept the chunks")
+		}
+	}
+	at2M := float64(knownSize(kn)) / float64(values) * 2_000_000
+	t.Logf("%d emails: %.1f MB at 2M", values, at2M/1e6)
+	if at2M >= 64<<20 {
+		t.Errorf("2M emails would take %.1f MB, want under 64 MB", at2M/(1<<20))
+	}
+}
+
+// TestKnownMemoryNames measures full names, which hold more tokens than
+// emails: each word and each pair of a longer name as well as the whole
+// value and its hashes. Words repeat across customers, so Seal's dedup
+// shrinks the tables; the peak is just before Seal, when every token is
+// still held. The bounds here are the ones changes/values.md states.
+func TestKnownMemoryNames(t *testing.T) {
+	values := scaled(2_000_000)
+	k := NewKnown(testKey(7))
+	// At 2M: 2,000 first names and 100,003 last names, every pair
+	// distinct. The race detector's smaller set keeps the same ratios.
+	firsts, lasts := values/1000, values/20+3
+	for i := range values {
+		first, last := letters(i%firsts), letters(i%lasts)
+		k.Add(core.KFullName, []byte(first+" "+last))
+	}
+	kn := k.(*known)
+	// The last chunk's unused room doesn't grow with the set, so it is
+	// left out before scaling up the race detector's smaller set.
+	spare := 0
+	for _, tab := range kn.tabs {
+		if n := len(tab.hchunks); n > 0 {
+			spare += (chunkLen - len(tab.hchunks[n-1])) * 9
+		}
+	}
+	peak := float64(knownSize(kn)-spare) / float64(values) * 2_000_000
+	k.Seal()
+	sealed := float64(knownSize(kn)) / float64(values) * 2_000_000
+	t.Logf("%d full names at 2M: %.1f MB before Seal, %.1f MB after", values, peak/1e6, sealed/1e6)
+	if peak >= 96<<20 || sealed >= 64<<20 {
+		t.Errorf("2M full names would take %.1f MB before Seal and %.1f MB after, want under 96 MB and 64 MB",
+			peak/(1<<20), sealed/(1<<20))
+	}
+	if _, _, ok := k.Contains([]byte(letters(firsts-1) + " " + letters(firsts-1))); !ok {
+		t.Error("a full name added was not found")
+	}
+}
+
+// letters writes i in base 26 with a capital first letter, a made-up
+// name word for i.
+func letters(i int) string {
+	b := []byte{byte('A' + i%26)}
+	for i /= 26; i > 0; i /= 26 {
+		b = append(b, byte('a'+i%26))
+	}
+	if len(b) < 3 {
+		b = append(b, "xx"[:3-len(b)]...)
+	}
+	return string(b)
+}
+
+// knownSize is the memory a set's tables and filters hold, counting the
+// chunks a set holds before Seal.
+func knownSize(kn *known) int {
+	size := 0
 	for _, f := range kn.filters {
 		size += cap(f.bits) * 8
 	}
 	for _, tab := range kn.tabs {
 		size += cap(tab.h)*8 + cap(tab.k)
-		if tab.hchunks != nil || tab.kchunks != nil {
-			t.Error("Seal kept the chunks")
+		for i := range tab.hchunks {
+			size += cap(tab.hchunks[i])*8 + cap(tab.kchunks[i])
 		}
 	}
-	at2M := float64(size) / float64(values) * 2_000_000
-	t.Logf("%d values: %.1f MB of tables; %.1f MB at 2M", values, float64(size)/1e6, at2M/1e6)
-	if at2M >= 64<<20 {
-		t.Errorf("2M values would take %.1f MB, want under 64 MB", at2M/(1<<20))
-	}
+	return size
 }
 
 // The Bloom filter in front of the raw table never turns away a token
