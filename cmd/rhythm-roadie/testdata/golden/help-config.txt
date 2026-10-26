@@ -4,7 +4,7 @@ Usage:
   rhythm-roadie config init [--stack wordpress|woocommerce|laravel|sql] [--from <source>] [--force]
   rhythm-roadie config check [--json]
   rhythm-roadie config show [--json]
-  rhythm-roadie config key show|rotate|forget
+  rhythm-roadie config key show|rotate|forget [--force]
 
   init     write .roadie/config.yaml with every key commented
   check    parse and validate it, list the ${ROADIE_*} variables that are unset
@@ -18,7 +18,8 @@ Config:
       --stack <name>         init: wordpress (default), woocommerce, laravel or sql
       --from <source>        init: read this source's schema (read-only) and list its
                              unknown tables with personal-looking columns as suggestions
-      --force                init: replace an existing .roadie/config.yaml
+      --force                init: replace an existing .roadie/config.yaml;
+                             key rotate: replace the key without a terminal
 
 Output:
       --json                 JSON (schema rhythm-roadie/v1)

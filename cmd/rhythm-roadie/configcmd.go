@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"fmt"
 	"io"
 	"os"
@@ -437,6 +438,13 @@ func (p *parsed) projectDir() string {
 	return "."
 }
 
+// keyExists reports whether the key file is there. Any error but "not
+// there" counts as there, so forget still tries and reports it.
+func keyExists(path string) bool {
+	_, err := os.Stat(path)
+	return !errors.Is(err, fs.ErrNotExist)
+}
+
 // configKey is config key show|rotate|forget.
 func configKey(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 	acts := []string{"show", "rotate", "forget"}
@@ -454,7 +462,11 @@ func configKey(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 		}
 		switch source {
 		case "env":
-			fmt.Fprintf(stdout, "%s from ROADIE_KEY (it wins over %s)\n", k.Fingerprint(), keyFile)
+			if keyExists(keyFile) {
+				fmt.Fprintf(stdout, "%s from ROADIE_KEY (it wins over %s)\n", k.Fingerprint(), keyFile)
+			} else {
+				fmt.Fprintf(stdout, "%s from ROADIE_KEY\n", k.Fingerprint())
+			}
 		case "file":
 			fmt.Fprintf(stdout, "%s from %s\n", k.Fingerprint(), keyFile)
 		default:
@@ -482,10 +494,14 @@ func configKey(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 		}
 		return nil
 	case "forget":
-		if err := dep.forgetKey(dir); err != nil {
-			return runError(err)
+		if !keyExists(keyFile) {
+			fmt.Fprintf(stdout, "No %s to remove.\n", keyFile)
+		} else {
+			if err := dep.forgetKey(dir); err != nil {
+				return runError(err)
+			}
+			fmt.Fprintf(stdout, "Removed %s. Copies use a new key each run until one is kept again.\n", keyFile)
 		}
-		fmt.Fprintf(stdout, "Removed %s. Copies use a new key each run until one is kept again.\n", keyFile)
 		if fromEnv {
 			fmt.Fprintln(stdout, "ROADIE_KEY is still set and is used while it is.")
 		}

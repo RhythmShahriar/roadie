@@ -396,6 +396,20 @@ func TestConfigKey(t *testing.T) {
 		d.env = func(n string) (string, bool) { return "k", n == "ROADIE_KEY" && envKey }
 	})
 	keyFile := filepath.Join(".", ".roadie", "key")
+	// No key file: ROADIE_KEY wins over nothing, forget has nothing to do.
+	source = "env"
+	if out, _, code := runCmd(t, "config", "key", "show"); code != 0 || !strings.HasSuffix(out, " from ROADIE_KEY\n") {
+		t.Errorf("show from env without a file: exit %d %q", code, out)
+	}
+	if out, _, code := runCmd(t, "config", "key", "forget"); code != 0 || forgot != 0 || out != "No .roadie/key to remove.\n" {
+		t.Errorf("forget without a file: exit %d %q", code, out)
+	}
+	if err := os.MkdirAll(".roadie", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyFile, []byte("k"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for src, want := range map[string]string{"file": " from " + keyFile + "\n", "env": " from ROADIE_KEY (it wins over " + keyFile + ")\n",
 		"new": "No consistency key is kept: each copy uses a new one (consistency: per-run). --keep-key or consistency: stable keeps one in .roadie/key.\n"} {
 		source = src
