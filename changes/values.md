@@ -114,7 +114,7 @@ Every form below is rewritten from a production URL to the staging one:
 
 - `https://host`, `http://host` and `//host`
 - JSON escapes: `https:\/\/host` and `\/\/host`, with any number of escaping backslashes (double-encoded JSON too)
-- URL-encoded: `https%3A%2F%2Fhost` and `%2F%2Fhost`, hex in any case
+- URL-encoded: `https%3A%2F%2Fhost` and `%2F%2Fhost`, hex in any case; a JSON string URL-encoded whole (`https%3A%5C%2F%5C%2Fhost`) and one decoded once (`https:\%2F\%2Fhost`) too, with any number of escapes before each `%2F`
 - HTML entities: `&#47;`, `&#x2F;`, `&#X2f;` with any leading zeros, `&sol;` and `&colon;`; spellings may mix
 - inside PHP serialized values, JSON and base64-serialized values at any depth, with every serialized length fixed
 
