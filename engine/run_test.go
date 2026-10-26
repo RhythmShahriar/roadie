@@ -1278,3 +1278,32 @@ func TestRunDialectMismatch(t *testing.T) {
 		t.Errorf("a MySQL dump: %v", err)
 	}
 }
+
+// A dump-file target is told the size of the input, so a disk too full
+// for the copy stops before the first byte.
+func TestRunExpectBytes(t *testing.T) {
+	f := useRunFakes(t)
+	f.prod.SourceFunc = func([]string) (core.Source, error) {
+		td := wpUsers()
+		src := testutil.FakeSource(schemaOf("wp_", td), batches(td))
+		src.FP.Bytes = 123456
+		return src, nil
+	}
+	var got []int64
+	old := newFileSink
+	newFileSink = func(_ string, o dump.WriterOptions) (core.Sink, error) {
+		got = append(got, o.ExpectBytes)
+		return f.fileSink, nil
+	}
+	t.Cleanup(func() { newFileSink = old })
+	out := filepath.Join(t.TempDir(), "staging.sql")
+	j := f.job(Copy)
+	j.To = core.Endpoint{Kind: core.DumpFile, Raw: out, Display: "staging.sql", Path: out}
+	j.Opts.ConfirmTarget = ""
+	if _, err := Run(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, []int64{123456}) {
+		t.Errorf("ExpectBytes %v, want [123456]", got)
+	}
+}

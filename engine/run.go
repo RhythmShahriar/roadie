@@ -970,6 +970,9 @@ func (r *runner) sink(ctx context.Context) (core.Sink, error) {
 	wo := dump.WriterOptions{Compression: r.j.To.Compression, FixCollation: r.opts.FixCollation, KeepRoutines: r.opts.KeepRoutines}
 	switch r.j.To.Kind {
 	case core.DumpFile:
+		// The copy is about the size of what pass 1 read, so a disk
+		// without room for it stops before the first byte (disk-full).
+		wo.ExpectBytes = inputBytes(r.res.Input)
 		return newFileSink(r.j.To.Path, wo)
 	case core.Stdio:
 		s := newStreamSink(stdout, wo)
