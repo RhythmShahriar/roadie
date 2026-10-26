@@ -314,8 +314,9 @@ var dateForms = []string{"2006-01-02", "2006/01/02", "02.01.2006", "20060102"}
 
 // fakeDOB shifts a date by 1 to 180 days either way, chosen by the hash,
 // and keeps its year and spelling. A time after an ISO date is kept. A
-// zero date stays; any other value that isn't a date keeps its shape
-// with new digits. One with no digit at all ("fifth of May") is blanked:
+// zero date stays. A value with a date's shape that isn't a real date
+// keeps its year and gets a valid month and day; any other value that
+// isn't a date keeps its shape with new digits. One with no digit at all ("fifth of May") is blanked:
 // there is nothing to shift and it may still say the date.
 func fakeDOB(sum, original []byte, country string) []byte {
 	s := string(bytes.TrimSpace(original))
