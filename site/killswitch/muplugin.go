@@ -56,6 +56,26 @@ func (o Options) version() string {
 	return o.Version
 }
 
+// muParts names what the mu-plugin does for o, for the plan. A side
+// effect the config keeps gets no hook.
+func (o Options) muParts() []string {
+	var out []string
+	if !o.kept("action_scheduler") {
+		out = append(out, "Action Scheduler paused")
+	}
+	if !o.kept("subscriptions") {
+		out = append(out, "Subscriptions staging mode")
+	}
+	out = append(out, "Jetpack offline")
+	if !o.kept("mail") {
+		out = append(out, "wp_mail blocked without Echo")
+	}
+	if o.Noindex {
+		out = append(out, "noindex")
+	}
+	return out
+}
+
 func muPlugin(o Options) []byte {
 	var b strings.Builder
 	b.WriteString(`<?php
@@ -74,7 +94,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 if ( function_exists( 'wp_get_environment_type' ) && 'production' === wp_get_environment_type() ) {
 	return;
 }
-
+`)
+	if !o.kept("action_scheduler") {
+		b.WriteString(`
 // Action Scheduler: no async runner, no queue runner on WP-Cron, no
 // batches. Pending actions stay pending; nothing from production runs.
 add_filter( '` + hookAsyncRunner + `', '__return_false', 999 );
@@ -86,14 +108,21 @@ add_action( 'init', function () {
 		remove_action( '` + hookRunQueue + `', array( ActionScheduler_QueueRunner::instance(), 'run' ) );
 	}
 }, 20 );
-
+`)
+	}
+	if !o.kept("subscriptions") {
+		b.WriteString(`
 // WooCommerce Subscriptions: a duplicate site never charges renewals.
 add_filter( '` + hookDuplicateSite + `', '__return_true', 999 );
-
+`)
+	}
+	b.WriteString(`
 // Jetpack: offline mode, so this copy never talks to WordPress.com as
 // production.
 add_filter( '` + hookJetpack + `', '__return_true', 999 );
-
+`)
+	if !o.kept("mail") {
+		b.WriteString(`
 // Mail: without the Echo connector, wp_mail() sends nothing at all.
 if ( ! file_exists( __DIR__ . '/rhythm-echo.php' ) ) {
 	add_filter( '` + hookPreMail + `', function () {
@@ -101,6 +130,7 @@ if ( ! file_exists( __DIR__ . '/rhythm-echo.php' ) ) {
 	}, 999 );
 }
 `)
+	}
 	if o.Noindex {
 		b.WriteString(`
 // Search engines: noindex in every page and header, no sitemaps and a

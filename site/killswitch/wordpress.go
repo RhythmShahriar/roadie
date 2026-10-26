@@ -446,6 +446,13 @@ func mailStep(o Options) core.Step {
 	id := core.FindingSideEffectMail
 	means := "mail from this copy isn't sealed"
 	st := &step{id: id}
+	defer func() {
+		// With mail: keep nothing is installed or blocked. The
+		// mu-plugin leaves wp_mail alone; Check still reports what it finds.
+		if o.kept("mail") {
+			st.plan, st.apply = keptPlan(id, "mail"), nil
+		}
+	}()
 	st.plan = func(context.Context, core.Site) ([]core.PlannedEdit, error) {
 		out := []core.PlannedEdit{
 			{Step: id, File: EchoPluginPath, What: "Echo connector in seal mode (" + fallback(o.EchoURL, "http://127.0.0.1:8025") + ")"},
@@ -581,11 +588,7 @@ func schedulerStep(o Options) core.Step {
 	means := "Action Scheduler, Subscriptions renewals and Jetpack aren't paused"
 	st := &step{id: id}
 	st.plan = func(context.Context, core.Site) ([]core.PlannedEdit, error) {
-		what := "Roadie mu-plugin: Action Scheduler paused, Subscriptions staging mode, Jetpack offline, wp_mail blocked without Echo"
-		if o.Noindex {
-			what += ", noindex"
-		}
-		out := []core.PlannedEdit{{Step: id, File: MuPluginPath, What: what}}
+		out := []core.PlannedEdit{{Step: id, File: MuPluginPath, What: "Roadie mu-plugin: " + strings.Join(o.muParts(), ", ")}}
 		if o.setting("action_scheduler") == "cancel" {
 			out = append(out, core.PlannedEdit{Step: id, File: "actionscheduler_actions", What: "pending actions marked canceled (side_effects.action_scheduler: cancel)"})
 		}
