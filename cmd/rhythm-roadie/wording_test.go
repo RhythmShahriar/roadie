@@ -25,8 +25,12 @@ import (
 var bannedWords = regexp.MustCompile(`(?i)anonymi[sz]e|gdpr[ -]compliant|compliant|safe to share`)
 
 // allowedSentences may hold a banned word: the honesty line of PRD 16.1
-// says what Roadie isn't.
-var allowedSentences = []string{"Pseudonymised, not anonymised."}
+// says what Roadie isn't and the README's positioning line of PRD 3 names
+// the other tools.
+var allowedSentences = []string{
+	"Pseudonymised, not anonymised.",
+	"Generic anonymisers don't know WordPress.",
+}
 
 // bannedIn returns the banned words in text outside the allowed sentences.
 func bannedIn(text string) []string {
@@ -37,8 +41,8 @@ func bannedIn(text string) []string {
 }
 
 // wordingFiles are every file the rule covers: the goldens of this
-// package and of report, the explanations, the changes notes and the
-// README and ROADMAP once they exist.
+// package and of report, the explanations, the changes notes, the README,
+// the ROADMAP and the Action.
 func wordingFiles(t *testing.T) []string {
 	t.Helper()
 	var files []string
@@ -53,12 +57,7 @@ func wordingFiles(t *testing.T) []string {
 			t.Fatal(err)
 		}
 	}
-	for _, f := range []string{"../../README.md", "../../ROADMAP.md"} {
-		if _, err := os.Stat(f); err == nil {
-			files = append(files, f)
-		}
-	}
-	return files
+	return append(files, "../../README.md", "../../ROADMAP.md", "../../action.yml")
 }
 
 func TestWording(t *testing.T) {
