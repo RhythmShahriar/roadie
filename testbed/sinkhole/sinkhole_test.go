@@ -17,10 +17,10 @@ import (
 	"time"
 )
 
-// The lane's local test ports are 127.0.0.1:33120-33139.
+// The testbed's local test ports are 127.0.0.1:32930-32949.
 const (
-	dnsTestAddr = "127.0.0.1:33120"
-	tcpTestAddr = "127.0.0.1:33121"
+	dnsTestAddr = "127.0.0.1:32930"
+	tcpTestAddr = "127.0.0.1:32931"
 )
 
 type syncBuf struct {

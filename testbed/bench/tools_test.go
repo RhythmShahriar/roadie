@@ -29,9 +29,9 @@ import (
 	"github.com/RhythmShahriar/roadie/testbed/oracle"
 )
 
-// portFetch is this file's test listener (the lane's ports are
-// 127.0.0.1:33120-33139; see drill_test.go for the others).
-const portFetch = "127.0.0.1:33123"
+// portFetch is this file's test listener (the testbed's ports are
+// 127.0.0.1:32930-32949; see drill_test.go for the others).
+const portFetch = "127.0.0.1:32933"
 
 func TestCountHost(t *testing.T) {
 	prod := []string{

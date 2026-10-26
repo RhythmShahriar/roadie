@@ -24,21 +24,21 @@ import (
 	"github.com/RhythmShahriar/roadie/core"
 )
 
-// listen opens a listener on the first free port of this lane's range
-// (127.0.0.1:33060-33079); tests never use a random or public port.
+// listen opens a listener on the first free port of Roadie's verify test range
+// (127.0.0.1:32900-32919); tests never use a random or public port.
 func listen(t *testing.T) net.Listener {
 	t.Helper()
-	for p := 33060; p <= 33079; p++ {
+	for p := 32900; p <= 32919; p++ {
 		l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
 		if err == nil {
 			return l
 		}
 	}
-	t.Fatal("no free port in 33060-33079")
+	t.Fatal("no free port in 32900-32919")
 	return nil
 }
 
-// serve starts h on a lane port; tls serves it with httptest's
+// serve starts h on a test port; tls serves it with httptest's
 // self-signed certificate.
 func serve(t *testing.T, h http.Handler, useTLS bool) *httptest.Server {
 	t.Helper()

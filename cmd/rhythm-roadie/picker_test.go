@@ -181,7 +181,7 @@ func TestPickerSaveDropsPasswords(t *testing.T) {
 	recordRuns(t)
 	srcPw, tgtPw := "Pr0d-"+"s3cret/x@y", "St4g-"+"s3cret"
 	src := "mysql://shop:" + srcPw + "@db.shop.test:3306/shop"
-	tgt := "postgres://app:" + tgtPw + "@127.0.0.1:33101/staging"
+	tgt := "postgres://app:" + tgtPw + "@127.0.0.1:32921/staging"
 	a := &scriptAsker{answers: []string{"copy", src, tgt, "https://staging.shop.test"}}
 	var stderr bytes.Buffer
 	if code := pick(context.Background(), a, newLineReader(strings.NewReader("y\n\n")), io.Discard, &stderr); code != 0 {
@@ -196,7 +196,7 @@ func TestPickerSaveDropsPasswords(t *testing.T) {
 			t.Errorf("the password %q was saved or shown:\n%s\n%s", pw, b, stderr.String())
 		}
 	}
-	want := "# laravel\nsource: \"mysql://shop@db.shop.test:3306/shop\"\ntarget: \"postgres://app@127.0.0.1:33101/staging\"\nurl: \"https://staging.shop.test\"\n"
+	want := "# laravel\nsource: \"mysql://shop@db.shop.test:3306/shop\"\ntarget: \"postgres://app@127.0.0.1:32921/staging\"\nurl: \"https://staging.shop.test\"\n"
 	if string(b) != want {
 		t.Errorf("config:\n%s\nwant\n%s", b, want)
 	}
@@ -416,13 +416,13 @@ func TestUpdatePrompt(t *testing.T) {
 	})}
 	var ln net.Listener
 	var err error
-	for port := 33100; port <= 33119; port++ {
+	for port := 32922; port <= 32929; port++ {
 		if ln, err = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port)); err == nil {
 			break
 		}
 	}
 	if ln == nil {
-		t.Skipf("no free port in 33100-33119: %v", err)
+		t.Skipf("no free port in 32922-32929: %v", err)
 	}
 	go srv.Serve(ln)
 	t.Cleanup(func() { srv.Close() })

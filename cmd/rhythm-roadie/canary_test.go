@@ -296,8 +296,8 @@ func canarySite(t *testing.T, dir string, c map[core.FakeKind][]string, key stri
 		return fmt.Sprintf("define( '%s', '%s' );\n", name, strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(value))
 	}
 	conf := "<?php\n" + php("DB_NAME", "shop") + php("DB_USER", c[core.KUsername][4]) + php("DB_PASSWORD", secrets[0]) +
-		// 33101 is in this lane's test port range and nothing listens on it.
-		php("DB_HOST", "127.0.0.1:33101") + php("DB_CHARSET", "utf8mb4") + php("AUTH_KEY", secrets[1]) +
+		// 32921 is in the cmd tests' port range and nothing listens on it.
+		php("DB_HOST", "127.0.0.1:32921") + php("DB_CHARSET", "utf8mb4") + php("AUTH_KEY", secrets[1]) +
 		php("STRIPE_SECRET_KEY", key) + php("SENDGRID_API_KEY", secrets[2]) + php("WP_ENVIRONMENT_TYPE", "staging") +
 		php("WP_HOME", "https://staging.canary-shop.example") + php("ADMIN_EMAIL_NOTE", c[core.KEmail][4]) +
 		"$table_prefix = 'wp_';\nif ( ! defined( 'ABSPATH' ) ) {\n\tdefine( 'ABSPATH', __DIR__ . '/' );\n}\nrequire_once ABSPATH . 'wp-settings.php';\n"

@@ -86,7 +86,7 @@ func TestSoundcheckHealth(t *testing.T) {
 		{3, "soundcheck: not run (exit 3: 2 issues at error level)"},
 	} {
 		dir := filepath.Join(t.TempDir(), "sc")
-		s := Soundcheck{Bin: fakeSoundcheck(t, c.code), Base: "http://127.0.0.1:33139", Timeout: 10 * time.Second, ProxyAddr: portSeal}
+		s := Soundcheck{Bin: fakeSoundcheck(t, c.code), Base: "http://127.0.0.1:32949", Timeout: 10 * time.Second, ProxyAddr: portSeal}
 		if got := s.Health(ctx, dir, paths); got != c.want {
 			t.Errorf("exit %d: %q, want %q", c.code, got, c.want)
 		}
@@ -94,7 +94,7 @@ func TestSoundcheckHealth(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, want := range []string{"run http://127.0.0.1:33139/ ", "--no-download", "--proxy http://" + portSeal + " ", "--fail-on error", "--page / --page /shop/", "home: " + filepath.Join(dir, "home"), "no-update: 1"} {
+		for _, want := range []string{"run http://127.0.0.1:32949/ ", "--no-download", "--proxy http://" + portSeal + " ", "--fail-on error", "--page / --page /shop/", "home: " + filepath.Join(dir, "home"), "no-update: 1"} {
 			if !strings.Contains(string(b), want) {
 				t.Errorf("exit %d: %q lacks %q", c.code, b, want)
 			}
@@ -106,7 +106,7 @@ func TestSoundcheckHealth(t *testing.T) {
 	if got := (Soundcheck{Bin: "x"}).Health(ctx, t.TempDir(), nil); got != "soundcheck: not run (no pages to check)" {
 		t.Errorf("no pages: %q", got)
 	}
-	if got := (Soundcheck{Bin: "x", Base: "https://127.0.0.1:33139"}).Health(ctx, t.TempDir(), paths); !strings.HasPrefix(got, "soundcheck: not run (no seal proxy: ") {
+	if got := (Soundcheck{Bin: "x", Base: "https://127.0.0.1:32949"}).Health(ctx, t.TempDir(), paths); !strings.HasPrefix(got, "soundcheck: not run (no seal proxy: ") {
 		t.Errorf("an https site: %q", got)
 	}
 	if got := bootPaths([]string{"/", "/wp-admin/", "/wp-cron.php", "/cart/"}); !slices.Equal(got, []string{"/", "/cart/"}) {

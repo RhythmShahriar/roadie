@@ -23,7 +23,7 @@ Nothing prints a secret. Passwords, Echo's token, the SSH keys, the signing and 
 ## Ports
 
 - The gate publishes `127.0.0.1:18920-18929` only: 18920 prod-wp, 18921 staging-wp, 18922 Laravel, 18923 Mailpit, 18924 Echo's API, 18925 sshd, 18926 prod-db, 18927 staging-db, 18928 laravel-db, 18929 PostgreSQL; 18930-18939 are reserved and not published.
-- PRD 22.1 gives Go test listeners `127.0.0.1:23240-23259`. This lane's tests use the ports it was assigned instead, `127.0.0.1:33120-33139`: 33120 and 33121 the sinkhole, 33122 the stubs, 33123 the tools fetch test, 33124 and 33125 the traffic generator and Echo stand-in. Integration can move them into 23240-23259 (one constant per test file).
+- PRD 22.1 gives Go test listeners `127.0.0.1:23240-23259`. Roadie's tests listen on `127.0.0.1:32900-32949` instead: 32900-32919 verify's HTTP checks, 32920-32929 the cmd tests (32921 a port nothing listens on, 32922-32929 the update check's release fixture), 32930 and 32931 the sinkhole, 32932 the stubs, 32933 the tools fetch test, 32934 and 32935 the traffic generator and Echo stand-in, 32936 and 32937 the Soundcheck seal and its site, 32949 a port nothing listens on. The db Docker tests keep 33010-33019.
 
 ## The testbed
 

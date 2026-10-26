@@ -125,7 +125,7 @@ func TestCertificates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ln, err := tls.Listen("tcp", "127.0.0.1:33122", &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
+	ln, err := tls.Listen("tcp", "127.0.0.1:32932", &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestCertificates(t *testing.T) {
 		TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 			var d net.Dialer
-			return d.DialContext(ctx, network, "127.0.0.1:33122")
+			return d.DialContext(ctx, network, "127.0.0.1:32932")
 		},
 	}}
 	for _, host := range []string{"api.stripe.com", "us21.api.mailchimp.com", "hooks.zapier.com"} {

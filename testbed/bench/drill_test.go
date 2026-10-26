@@ -19,15 +19,15 @@ import (
 	"time"
 )
 
-// The lane's test ports (127.0.0.1:33120-33139). The sinkhole's tests
-// hold 33120 and 33121 and the stubs' 33122; packages test in
+// The testbed's test ports (127.0.0.1:32930-32949). The sinkhole's tests
+// hold 32930 and 32931 and the stubs' 32932; packages test in
 // parallel, so these differ.
 const (
-	portTraffic = "127.0.0.1:33124"
-	portEcho    = "127.0.0.1:33125"
+	portTraffic = "127.0.0.1:32934"
+	portEcho    = "127.0.0.1:32935"
 	// portSeal is Soundcheck's seal proxy, portSealSite the site behind it.
-	portSeal     = "127.0.0.1:33126"
-	portSealSite = "127.0.0.1:33127"
+	portSeal     = "127.0.0.1:32936"
+	portSealSite = "127.0.0.1:32937"
 )
 
 func writeLines(t *testing.T, path string, recs ...any) {
@@ -175,7 +175,7 @@ func listen(t *testing.T, addr string, h http.Handler) {
 	t.Helper()
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		t.Skipf("lane port %s busy: %v", addr, err)
+		t.Skipf("test port %s busy: %v", addr, err)
 	}
 	srv := &http.Server{Handler: h, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
@@ -350,7 +350,7 @@ func TestWindow(t *testing.T) {
 	}
 
 	// Echo stopped on purpose (r22) is a note, not an error.
-	down := Echo{Base: "http://127.0.0.1:33139", Token: token}
+	down := Echo{Base: "http://127.0.0.1:32949", Token: token}
 	w = &Window{Logs: l, Echo: down, EchoDown: true}
 	if err := w.Start(context.Background(), Traffic{}, 0); err != nil {
 		t.Fatal(err)
