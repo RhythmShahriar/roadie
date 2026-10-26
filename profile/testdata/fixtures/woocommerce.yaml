@@ -132,6 +132,18 @@ rules:
   "woocommerce.wc_webhooks.delivery_url":
     positive: {table: wp_2_wc_webhooks, row: {delivery_url: "x"}}
     negative: {table: wp_12_wc_webhooks, row: {delivery_url: "x"}}
+  "woocommerce.wc_customer_lookup.country":
+    positive: {table: wp_wc_customer_lookup, row: {country: "GB"}}
+    negative: {table: wp_12_wc_customer_lookup, row: {country: "GB"}}
+  "woocommerce.wc_customer_lookup.state":
+    positive: {table: wp_2_wc_customer_lookup, row: {state: "West Yorkshire"}}
+    negative: {table: wp_12_wc_customer_lookup, row: {state: "West Yorkshire"}}
+  "woocommerce.woocommerce_log.message":
+    positive: {table: wp_woocommerce_log, row: {message: "Payment failed for anna.lee@example.com"}}
+    negative: {table: wp_12_woocommerce_log, row: {message: "Payment failed for anna.lee@example.com"}}
+  "woocommerce.woocommerce_log.context":
+    positive: {table: wp_11_woocommerce_log, row: {context: "a:1:{s:5:\"email\";s:20:\"anna.lee@example.com\";}"}}
+    negative: {table: wp_12_woocommerce_log, row: {context: "a:1:{s:5:\"email\";s:20:\"anna.lee@example.com\";}"}}
 lists:
   "truncate:{prefix}{site}woocommerce_sessions": {positive: wp_woocommerce_sessions, negative: wp_12_woocommerce_sessions}
   "truncate:{prefix}{site}woocommerce_payment_tokens": {positive: wp_woocommerce_payment_tokens, negative: wp_12_woocommerce_payment_tokens}

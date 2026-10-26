@@ -412,8 +412,12 @@ The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrub
 | `{prefix}{site}wc_customer_lookup` | `username` |  |  | username | the customer's login |
 | `{prefix}{site}wc_customer_lookup` | `city` |  |  | city | the customer's city |
 | `{prefix}{site}wc_customer_lookup` | `postcode` |  |  | postcode | the customer's postcode |
+| `{prefix}{site}wc_customer_lookup` | `country` |  |  | blank | the customer's country, kept by default like the order's |
+| `{prefix}{site}wc_customer_lookup` | `state` |  |  | blank | the customer's state, kept by default like the order's |
 | `{prefix}{site}woocommerce_downloadable_product_permissions` | `user_email` |  |  | email | the email a download was granted to |
 | `{prefix}{site}wc_download_log` | `user_ip_address` |  |  | ip | the IP address of a download |
+| `{prefix}{site}woocommerce_log` | `message` |  |  | text | WooCommerce log lines (the database log handler), which can name customers and their emails |
+| `{prefix}{site}woocommerce_log` | `context` |  |  | text | the log line's context, a serialized array that can hold order and customer details |
 | `{prefix}{site}wc_webhooks` | `status` |  |  | fixed:paused | webhooks paused so the copy never calls the live endpoints |
 | `{prefix}{site}wc_webhooks` | `secret` |  |  | blank | the webhook signing secret |
 | `{prefix}{site}wc_webhooks` | `delivery_url` |  |  | keep | kept so the webhook can be checked; it is paused |
@@ -537,6 +541,8 @@ The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrub
 | `{prefix}{site}comments` | `comment_agent` |  |  | user_agent | the commenter's browser |
 | `{prefix}{site}comments` | `comment_content` |  |  | text | comment and order note text; emails, phones and known names in it are replaced |
 | `{prefix}{site}commentmeta` | `meta_value` |  |  | text | comment metadata of any plugin, scrubbed as free text |
+| `{prefix}{site}posts` | `post_title` | `post_type=user_request` |  | email | the email of a personal data export or erasure request |
+| `{prefix}{site}posts` | `post_content` | `post_type=user_request` |  | text | the request's extra data as JSON; free text |
 | `{prefix}{site}options` | `option_value` | `option_name=admin_email` |  | email | the site's admin email; keep_users keeps it when it matches |
 | `{prefix}{site}options` | `option_value` | `option_name=new_admin_email` |  | email | an admin email change waiting for confirmation |
 | `{prefix}{site}options` | `option_value` | `option_name=siteurl` |  | rewrite-url | the site's own URL, rewritten to the staging URL |

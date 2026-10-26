@@ -58,6 +58,10 @@ rules:
   - {table: "{prefix}{site}comments", column: comment_agent, rule: user_agent, explain: "the commenter's browser"}
   - {table: "{prefix}{site}comments", column: comment_content, rule: text, explain: "comment and order note text; emails, phones and known names in it are replaced"}
   - {table: "{prefix}{site}commentmeta", column: meta_value, rule: text, explain: "comment metadata of any plugin, scrubbed as free text"}
+  # privacy requests (Tools > Export or Erase Personal Data): WordPress
+  # keeps the requester's email as the post title of a user_request post
+  - {table: "{prefix}{site}posts", where: {post_type: user_request}, column: post_title, rule: email, explain: "the email of a personal data export or erasure request"}
+  - {table: "{prefix}{site}posts", where: {post_type: user_request}, column: post_content, rule: text, explain: "the request's extra data as JSON; free text"}
   # options
   - {table: "{prefix}{site}options", where: {option_name: admin_email}, column: option_value, rule: email, explain: "the site's admin email; keep_users keeps it when it matches"}
   - {table: "{prefix}{site}options", where: {option_name: new_admin_email}, column: option_value, rule: email, explain: "an admin email change waiting for confirmation"}
