@@ -105,7 +105,7 @@ var (
 )
 
 // gatewayShaped reports a woocommerce_<id>_settings value that looks like
-// a payment gateway: it has an enabled flag and a gateway-shaped key, and
+// a payment gateway: it has an enabled flag and a gateway-shaped key. It
 // is neither an email nor a shipping method (legacy or one instance's
 // woocommerce_<method>_<n>_settings).
 func gatewayShaped(id string, raw []byte) bool {

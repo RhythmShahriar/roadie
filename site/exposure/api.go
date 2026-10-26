@@ -22,16 +22,12 @@ func Steps(o killswitch.Options) []core.Step {
 }
 
 // AllSteps returns every prepare step for the stack in the order they
-// apply: killswitch.Steps, then, for WordPress and Laravel, the exposure
-// Steps. The kill switch can't add them itself, since this package
-// imports it for Options; the engine calls AllSteps so robots.txt is
-// never left out.
+// apply: killswitch.Steps, then the exposure Steps (on a sql target the
+// robots.txt step reports not-present). The kill switch can't add them
+// itself, since this package imports it for Options; the engine calls
+// AllSteps so robots.txt is never left out.
 func AllSteps(stack core.Stack, o killswitch.Options) []core.Step {
-	steps := killswitch.Steps(stack, o)
-	if stack == core.StackWordPress || stack == core.StackLaravel {
-		steps = append(steps, Steps(o)...)
-	}
-	return steps
+	return append(killswitch.Steps(stack, o), Steps(o)...)
 }
 
 // BasicAuth returns the files of a basic auth setup for user and the

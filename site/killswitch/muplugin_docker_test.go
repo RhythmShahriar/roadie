@@ -165,8 +165,8 @@ func TestMuPluginInWordPress(t *testing.T) {
 	wp("core", "install", "--url=http://localhost", "--title=Roadie test", "--admin_user=admin",
 		"--admin_password="+dbPass, "--admin_email=admin@example.invalid", "--skip-email")
 
-	// The zips go into the shared volume, so the WP-CLI container sees
-	// them, and are removed once installed.
+	// The zips go into the shared volume, where the WP-CLI container sees
+	// them. They are removed once installed.
 	docker(t, "exec", wpName, "mkdir", "-p", "/var/www/html/roadie-zips")
 	for _, z := range zips {
 		docker(t, "cp", z, wpName+":/var/www/html/roadie-zips/"+filepath.Base(z))

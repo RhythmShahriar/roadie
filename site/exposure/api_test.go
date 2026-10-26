@@ -451,11 +451,11 @@ func TestWriteBasicAuth(t *testing.T) {
 	}
 }
 
-// TestAllSteps: WordPress and Laravel get the kill switch first and the
-// exposure steps last; a sql target gets the kill switch alone.
+// TestAllSteps: every stack gets the kill switch first and the exposure
+// step last.
 func TestAllSteps(t *testing.T) {
 	o := killswitch.Options{Noindex: true}
-	for _, stack := range []core.Stack{core.StackWordPress, core.StackLaravel} {
+	for _, stack := range []core.Stack{core.StackWordPress, core.StackLaravel, core.StackSQL} {
 		ks := killswitch.Steps(stack, o)
 		all := AllSteps(stack, o)
 		if len(all) != len(ks)+1 {
@@ -468,15 +468,6 @@ func TestAllSteps(t *testing.T) {
 		}
 		if last := all[len(all)-1]; last.ID() != core.FindingSearchIndexable {
 			t.Errorf("%s: last step %s, want %s", stack, last.ID(), core.FindingSearchIndexable)
-		}
-	}
-	sql := AllSteps(core.StackSQL, o)
-	if len(sql) != len(killswitch.Steps(core.StackSQL, o)) {
-		t.Errorf("sql: %d steps", len(sql))
-	}
-	for _, st := range sql {
-		if st.ID() == core.FindingSearchIndexable {
-			t.Error("sql target has the robots.txt step")
 		}
 	}
 }
