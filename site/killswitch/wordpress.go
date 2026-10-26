@@ -728,6 +728,33 @@ func webhooksStep(o Options) core.Step {
 		}}
 }
 
+// wcpayID is WooPayments' gateway ID.
+const wcpayID = "woocommerce_payments"
+
+// wcpayDevMode reports whether wp-config.php puts WooPayments in dev
+// (sandbox) mode, as verify reads it: WCPAY_DEV_MODE on,
+// WP_ENVIRONMENT_TYPE development or staging, or any WP_DEVELOPMENT_MODE.
+// WooPayments then only uses a test account, which can't take live
+// payments, so its test_mode setting doesn't matter.
+func wcpayDevMode(f *wpconfig.File) bool {
+	if d, ok := literal(f, "WCPAY_DEV_MODE"); ok {
+		if v := strings.ToLower(strings.TrimSpace(d.Value)); v == "true" || v == "1" {
+			return true
+		}
+	}
+	if d, ok := literal(f, "WP_ENVIRONMENT_TYPE"); ok {
+		if v := strings.ToLower(strings.TrimSpace(d.Value)); v == "development" || v == "staging" {
+			return true
+		}
+	}
+	if d, ok := literal(f, "WP_DEVELOPMENT_MODE"); ok {
+		if v := strings.ToLower(strings.TrimSpace(d.Value)); v != "" && v != "false" && v != "0" {
+			return true
+		}
+	}
+	return false
+}
+
 // gatewayOption is the settings option of a WooCommerce gateway ID.
 func gatewayOption(id string) string { return "woocommerce_" + id + "_settings" }
 
@@ -767,9 +794,13 @@ func gatewaysStep(o Options) core.Step {
 				se.Status, se.How = "on", "a payment gateway can take real payments"
 				out = append(out, finding(id, core.SeverityCritical, title, "rhythm-roadie prepare <staging> --only side-effects", optionAt(ctx, s, opt, leaf)))
 			}
+			dev := false
+			if f, err := readConfig(ctx, s); err == nil {
+				dev = wcpayDevMode(f)
+			}
 			for _, g := range o.gateways() {
 				raw, ok := opts[g.Option]
-				if !ok {
+				if !ok || g.ID == wcpayID && dev {
 					continue
 				}
 				v, err := settings(raw)

@@ -633,3 +633,29 @@ func TestNetworkDefines(t *testing.T) {
 		t.Errorf("a single site got network defines:\n%s", b)
 	}
 }
+
+// WooPayments in dev mode (WP_ENVIRONMENT_TYPE staging here) uses a test
+// account only, so its live test_mode setting is no finding; outside dev
+// mode it is.
+func TestGatewaysWooPaymentsDevMode(t *testing.T) {
+	ctx := context.Background()
+	o := fixtureOptions()
+	d := db{"wp_options": {
+		{"option_id": "1", "option_name": "woocommerce_woocommerce_payments_settings", "option_value": phpSer(map[string]string{"enabled": "yes", "test_mode": "no"}), "autoload": "yes"},
+	}}
+	for cfg, want := range map[string]bool{
+		"<?php\ndefine( 'WP_ENVIRONMENT_TYPE', 'staging' );\nrequire_once ABSPATH . 'wp-settings.php';\n":    false,
+		"<?php\ndefine( 'WCPAY_DEV_MODE', true );\nrequire_once ABSPATH . 'wp-settings.php';\n":              false,
+		"<?php\ndefine( 'WP_ENVIRONMENT_TYPE', 'production' );\nrequire_once ABSPATH . 'wp-settings.php';\n": true,
+		"<?php\nrequire_once ABSPATH . 'wp-settings.php';\n":                                                 true,
+	} {
+		s := fixtureSite(map[string]string{"wp-config.php": cfg}, d)
+		_, fs, err := gatewaysStep(o).Check(ctx, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := len(fs) > 0; got != want {
+			t.Errorf("%q: findings %v, want some: %v", cfg, fs, want)
+		}
+	}
+}
