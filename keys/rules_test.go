@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -332,7 +333,22 @@ func TestLoopbackHost(t *testing.T) {
 func TestScanLinear(t *testing.T) {
 	for _, unit := range []string{"sk_live_", "live_", "AQE", "a", "access_token$production$", "re_", "0123456789abcdef"} {
 		v := bytes.Repeat([]byte(unit), (1<<20)/len(unit))
-		ScanValue(v, core.Location{Row: "option_name=adyen"}, nil)
+		bound := time.Second
+		if raceEnabled {
+			bound *= 15
+		}
+		// Best of three, so one stall on a busy runner doesn't fail it.
+		best := time.Duration(1 << 62)
+		for range 3 {
+			start := time.Now()
+			ScanValue(v, core.Location{Row: "option_name=adyen"}, nil)
+			if best = min(best, time.Since(start)); best < bound {
+				break
+			}
+		}
+		if best >= bound {
+			t.Errorf("1 MiB of %q took %v, want under %v", unit, best, bound)
+		}
 	}
 }
 

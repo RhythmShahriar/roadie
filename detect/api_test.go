@@ -10,11 +10,11 @@ import (
 	"github.com/RhythmShahriar/roadie/core"
 )
 
-// The uncovered-column scan is still a stub; the detect lane builds it
-// with verify.
-func TestStubsZero(t *testing.T) {
-	if Uncovered(nil, nil, nil) != nil {
-		t.Fatal("stub returned a value")
+// A nil table has no columns, so nothing can be uncovered; callers pass
+// whatever schema they read without a nil check.
+func TestUncoveredNilTable(t *testing.T) {
+	if got := Uncovered(nil, map[string]bool{"email": true}, map[string][][]byte{"email": {[]byte("a@b.co")}}); got != nil {
+		t.Fatalf("Uncovered(nil table) = %v, want nil", got)
 	}
 }
 

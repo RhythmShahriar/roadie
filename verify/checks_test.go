@@ -4,6 +4,7 @@
 package verify
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -399,4 +400,72 @@ func TestRobotsAndMeta(t *testing.T) {
 			t.Errorf("metaNoindex(%s) = %v", b, got)
 		}
 	}
+}
+
+// fuzzBound is the time one fuzz input may take: generous, since the
+// inputs are small and only a blow-up should fail.
+func fuzzBound() time.Duration {
+	if raceEnabled {
+		return 15 * time.Second
+	}
+	return time.Second
+}
+
+// FuzzRobots reads untrusted robots.txt bodies: no panic and a linear
+// bound; a group of User-agent: * with Disallow: / always blocks.
+func FuzzRobots(f *testing.F) {
+	for _, s := range []string{
+		"User-agent: *\nDisallow: /", "User-agent: *\nDisallow: /wp-admin/", "User-agent: Bingbot\nUser-agent: *\nDisallow: / # all",
+		"user-agent:*\r\ndisallow:/\r\n", "Disallow: /", "User-agent: *\n\nUser-agent: GPTBot\nDisallow: /", "", "\xff:\x00", ":::\n#",
+	} {
+		f.Add([]byte(s))
+	}
+	f.Fuzz(func(t *testing.T, b []byte) {
+		start := time.Now()
+		robotsAllowAll(b)
+		if d := time.Since(start); d > fuzzBound() {
+			t.Fatalf("%d bytes took %v", len(b), d)
+		}
+		if robotsAllowAll(append([]byte("User-agent: *\nDisallow: /\n\n"), b...)) {
+			t.Fatalf("a leading * block didn't block with %q after it", b)
+		}
+	})
+}
+
+// FuzzMetaNoindex reads untrusted page bodies for meta robots: no panic
+// and a linear bound; an added noindex tag is always found.
+func FuzzMetaNoindex(f *testing.F) {
+	for _, s := range []string{
+		`<meta name="robots" content="noindex">`, `<meta content="noindex, nofollow" name=robots />`,
+		`<meta name="description" content="noindex">`, `<meta name="robots"`, `<meta name='`, `<meta name=`,
+		`<metaname=robots content=noindex>`, "<meta\tname=\"googlebot\"\ncontent=\"none\">", "<<meta<meta>>",
+	} {
+		f.Add([]byte(s))
+	}
+	f.Fuzz(func(t *testing.T, b []byte) {
+		start := time.Now()
+		metaNoindex(b)
+		if d := time.Since(start); d > fuzzBound() {
+			t.Fatalf("%d bytes took %v", len(b), d)
+		}
+		if bytes.IndexByte(b, '<') < 0 && !metaNoindex(append(b, `<meta name="robots" content="noindex">`...)) {
+			t.Fatalf("noindex missed after %q", b)
+		}
+		_ = attr(string(bytes.ToLower(b)), "content")
+	})
+}
+
+// FuzzPHPArrayValue reads untrusted wp-config array source: no panic,
+// and a value found is always a substring of the source.
+func FuzzPHPArrayValue(f *testing.F) {
+	for _, s := range []string{
+		`array('bucket' => 'shop-media', "access-key-id" => "AKIA")`, `'bucket'=>`, `'bucket' => '`, `"bucket"`, `'bucket' => 5`, "",
+	} {
+		f.Add(s, "bucket")
+	}
+	f.Fuzz(func(t *testing.T, src, key string) {
+		if v := phpArrayValue(src, key); v != "" && !strings.Contains(src, v) {
+			t.Fatalf("phpArrayValue(%q, %q) = %q, not in the source", src, key, v)
+		}
+	})
 }

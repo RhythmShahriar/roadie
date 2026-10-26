@@ -199,3 +199,38 @@ func TestDecoders(t *testing.T) {
 		t.Error("nothing to decode reported a change")
 	}
 }
+
+// FuzzSurvivors feeds untrusted leaves through the base64, entity and
+// percent decoders: no panic, hits inside the leaf and a linear bound.
+func FuzzSurvivors(f *testing.F) {
+	c := testutil.Canaries(14)
+	email := c[core.KEmail][0]
+	for _, s := range []string{
+		email, base64.StdEncoding.EncodeToString([]byte(email)),
+		base64.StdEncoding.EncodeToString([]byte(base64.StdEncoding.EncodeToString([]byte(email)))),
+		strings.ReplaceAll(email, "@", "&#64;"), strings.ReplaceAll(email, "@", "&#x40;"), url.QueryEscape(email),
+		"&#", "&#x;", "&#99999999999;", "&amp;&lt;&", "%", "%zz%4", "====", strings.Repeat("A", 4096), "\xff\xfe&#64;",
+	} {
+		f.Add([]byte(s))
+	}
+	f.Fuzz(func(t *testing.T, v []byte) {
+		k := newKnown(t)
+		for kind, vals := range c {
+			for _, s := range vals {
+				k.Add(kind, []byte(s))
+			}
+		}
+		k.Seal()
+		start := time.Now()
+		var hits []core.Hit
+		Survivors(k).Scan(v, core.ScanContext{}, func(h core.Hit) { hits = append(hits, h) })
+		if d := time.Since(start); d > timeBound(time.Second) {
+			t.Fatalf("%d bytes took %v", len(v), d)
+		}
+		for _, h := range hits {
+			if h.Start < 0 || h.End > len(v) || h.Start >= h.End {
+				t.Fatalf("hit %d..%d outside %d bytes", h.Start, h.End, len(v))
+			}
+		}
+	})
+}

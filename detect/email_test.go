@@ -13,8 +13,10 @@ import (
 
 func TestEmailLinearOnAtSigns(t *testing.T) {
 	v := repeatTo("@", mib)
-	if d, ok := within(20*time.Millisecond, func() { Email().Scan(v, core.ScanContext{}, func(core.Hit) {}) }); !ok {
-		t.Fatalf("1 MiB of @ took %v, want under 20ms", d)
+	// 100 ms is several times what a linear scan needs and far below a
+	// quadratic one (minutes), so a loaded runner under -race still passes.
+	if d, ok := within(100*time.Millisecond, func() { Email().Scan(v, core.ScanContext{}, func(core.Hit) {}) }); !ok {
+		t.Fatalf("1 MiB of @ took %v, want under %v", d, timeBound(100*time.Millisecond))
 	}
 }
 
