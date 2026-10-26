@@ -475,47 +475,8 @@ func fictional(m phoneMatch) bool {
 }
 
 // fictionalE164 reports whether d, E.164 digits without the +, is in a
-// range kept for fiction: core.FictionalPhone or one of Ofcom's UK drama
-// ranges that core doesn't list.
-func fictionalE164(d string) bool {
-	if core.FictionalPhone(d) {
-		return true
-	}
-	if len(d) != 12 {
-		return false
-	}
-	for _, p := range ukDrama {
-		if strings.HasPrefix(d, p) {
-			return true
-		}
-	}
-	return false
-}
-
-// ukDrama are Ofcom's geographic and freephone numbers for TV and radio
-// drama (ofcom.org.uk/phones-and-broadband/phone-numbers/numbers-for-drama),
-// in E.164 without the +. Each prefix covers the 1,000 numbers that follow
-// it by three digits; Ofcom never allocates them to a subscriber, so sample
-// data and theme demos use them. The mobile range 07700 900xxx is in core.
-var ukDrama = []string{
-	"441134960", // Leeds 0113 496 0000 to 0999
-	"441144960", // Sheffield
-	"441154960", // Nottingham
-	"441164960", // Leicester
-	"441174960", // Bristol
-	"441184960", // Reading
-	"441214960", // Birmingham
-	"441314960", // Edinburgh
-	"441414960", // Glasgow
-	"441514960", // Liverpool
-	"441614960", // Manchester
-	"441914980", // Tyneside 0191 498 0000 to 0999
-	"442079460", // London 020 7946 0000 to 0999
-	"442920180", // Cardiff 029 2018 0000 to 0999
-	"442896496", // Northern Ireland 028 9649 6000 to 6999
-	"441632960", // no area: 01632 960000 to 960999
-	"448081570", // freephone 08081 570000 to 570999
-}
+// range kept for fiction (core.FictionalPhone).
+func fictionalE164(d string) bool { return core.FictionalPhone(d) }
 
 // nextToMoney reports whether a currency sign (one space between allowed)
 // or a decimal part touches the match.

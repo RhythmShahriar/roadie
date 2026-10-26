@@ -42,6 +42,31 @@ func digitsOf(s string) string {
 	return b.String()
 }
 
+// ukDrama are Ofcom's geographic and freephone numbers for TV and radio
+// drama (ofcom.org.uk/phones-and-broadband/phone-numbers/numbers-for-drama),
+// in E.164 without the +. Each prefix covers the 1,000 numbers that follow
+// it by three digits; Ofcom never allocates them to a subscriber, so sample
+// data and theme demos use them. The mobile range 07700 900xxx is FictionalPhone's own case.
+var ukDrama = []string{
+	"441134960", // Leeds 0113 496 0000 to 0999
+	"441144960", // Sheffield
+	"441154960", // Nottingham
+	"441164960", // Leicester
+	"441174960", // Bristol
+	"441184960", // Reading
+	"441214960", // Birmingham
+	"441314960", // Edinburgh
+	"441414960", // Glasgow
+	"441514960", // Liverpool
+	"441614960", // Manchester
+	"441914980", // Tyneside 0191 498 0000 to 0999
+	"442079460", // London 020 7946 0000 to 0999
+	"442920180", // Cardiff 029 2018 0000 to 0999
+	"442896496", // Northern Ireland 028 9649 6000 to 6999
+	"441632960", // no area: 01632 960000 to 960999
+	"448081570", // freephone 08081 570000 to 570999
+}
+
 // germanDrama are the Bundesnetzagentur's numbers for media productions
 // ("Drama Numbers", bundesnetzagentur.de/DE/Fachthemen/Telekommunikation/
 // Nummerierung/DramaNumbers), in E.164 without the +. A prefix shorter
@@ -74,7 +99,8 @@ var germanDrama = []struct {
 // separators allowed) is in a range kept for fiction: NANP 555-0100 to
 // 555-0199 in any area code and the 555 01xx numbers Roadie's echo style
 // makes (+1 555 01x xxxx), Ofcom's UK drama mobiles 07700 900000 to
-// 900999 and the German drama numbers above.
+// 900999 and its geographic and freephone drama ranges (ukDrama) and the
+// German drama numbers.
 func FictionalPhone(e164digits string) bool {
 	d := digitsOf(e164digits)
 	switch {
@@ -82,6 +108,12 @@ func FictionalPhone(e164digits string) bool {
 		return d[4:9] == "55501" || d[1:6] == "55501"
 	case len(d) == 12 && strings.HasPrefix(d, "447700900"):
 		return true
+	case len(d) == 12:
+		for _, p := range ukDrama {
+			if strings.HasPrefix(d, p) {
+				return true
+			}
+		}
 	}
 	for _, g := range germanDrama {
 		if strings.HasPrefix(d, g.prefix) && len(d) == len(g.prefix)+g.rest {
