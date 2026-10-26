@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/RhythmShahriar/rhythm/kit/config"
 	"github.com/RhythmShahriar/roadie/codec/urlrw"
@@ -453,6 +454,9 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 		if err := p.beforeWrite(ctx); err != nil {
 			return out, err
 		}
+	}
+	if words := hostWords(plan.Production); len(words) > 0 {
+		known = &hostWordKnown{Known: known, words: words}
 	}
 	t, src, err := p.transform(ctx, idx, final, plan, known, faker, out)
 	if src != nil {
@@ -960,6 +964,53 @@ func (emptyKnown) Contains([]byte) (core.FakeKind, string, bool) {
 	return "", "", false
 }
 func (emptyKnown) Len() int { return 0 }
+
+// hostWordKnown is Known without the shop's own name words: a name
+// that holds a word of a production host ("Shop Owner" on
+// shop.example.com) is the business's account, and the word is in page
+// titles, slugs, post types and addresses all over the site. Looked up
+// as a name it would make the scrubber rewrite "Shop" in every note and
+// verify report shop_order as a survivor.
+type hostWordKnown struct {
+	core.Known
+	words map[string]bool
+}
+
+// Contains is Known.Contains except for a name that holds a host word.
+func (k *hostWordKnown) Contains(token []byte) (core.FakeKind, string, bool) {
+	kind, enc, ok := k.Known.Contains(token)
+	if !ok || enc != "raw" || kind != core.KFirstName && kind != core.KLastName && kind != core.KFullName {
+		return kind, enc, ok
+	}
+	for _, w := range strings.FieldsFunc(strings.ToLower(string(token)), notLetter) {
+		if k.words[w] {
+			return "", "", false
+		}
+	}
+	return kind, enc, ok
+}
+
+// hostWords are the words of the production hosts: the labels of 3 or
+// more letters, lower-cased, without the top-level domain.
+func hostWords(hosts []string) map[string]bool {
+	words := map[string]bool{}
+	for _, h := range hosts {
+		labels := strings.Split(strings.TrimPrefix(bareHost(h), "*."), ".")
+		if len(labels) > 1 {
+			labels = labels[:len(labels)-1]
+		}
+		for _, l := range labels {
+			for _, w := range strings.FieldsFunc(l, notLetter) {
+				if len([]rune(w)) >= 3 && w != "www" {
+					words[w] = true
+				}
+			}
+		}
+	}
+	return words
+}
+
+func notLetter(r rune) bool { return !unicode.IsLetter(r) }
 
 // keptKnown is the run's Known for verify: a kept user's own values are
 // still in the copy on purpose, so they never count as survivors.

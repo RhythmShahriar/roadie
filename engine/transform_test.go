@@ -657,3 +657,77 @@ func TestKillSwitchOptionRuleOnSerialized(t *testing.T) {
 		t.Errorf("stripe settings: %s", v)
 	}
 }
+
+// A known street and postcode inside free text get their fakes; the
+// city, a number on its own and other text stay.
+func TestSweepTextAddresses(t *testing.T) {
+	if _, err := pseudo.NewFaker(pseudo.Key{}, pseudo.Options{}); errors.Is(err, core.ErrNotBuilt) {
+		t.Skip("needs the values lane")
+	}
+	p, sink, _ := fixture(t, Copy, "wp_", func() []tableData {
+		return []tableData{
+			{table("wp_options", "option_id:bigint(20)", "option_name", "option_value"), rows{{1, "siteurl", "https://shop.com"}}},
+			{table("wp_usermeta", "umeta_id:bigint(20)", "user_id:bigint(20)", "meta_key", "meta_value"), rows{
+				{1, 1, "billing_address_1", "111 Kingsmead Road"}, {2, 1, "billing_city", "Dublin"}, {3, 1, "billing_postcode", "D06 F2X3"}}},
+			{table("wp_comments", "comment_ID:bigint(20)", "comment_author", "comment_content"), rows{
+				{1, "WooCommerce", "Ship to 111 Kingsmead Road, Dublin D06 F2X3."},
+				{2, "WooCommerce", "Room 111 on Kingsmead Road is closed; 7 days."}}},
+		}
+	}, nil, Options{URL: "https://staging.shop.test"})
+	run(t, p)
+	c, _ := valueOf(t, sink, "wp_comments", 0, "comment_content")
+	for _, gone := range []string{"111 Kingsmead Road", "D06 F2X3"} {
+		if strings.Contains(c, gone) {
+			t.Errorf("note keeps %q: %q", gone, c)
+		}
+	}
+	if !strings.HasPrefix(c, "Ship to ") || !strings.Contains(c, ", Dublin ") || !strings.HasSuffix(c, ".") {
+		t.Errorf("note lost its other words: %q", c)
+	}
+	if c, _ := valueOf(t, sink, "wp_comments", 1, "comment_content"); c != "Room 111 on Kingsmead Road is closed; 7 days." {
+		t.Errorf("a note without a known value changed: %q", c)
+	}
+}
+
+func TestTextWords(t *testing.T) {
+	text := []byte("Ship to 12/3 St.-Denis Rd., Dublin (D06 F2X3)!")
+	var got []string
+	for _, w := range textWords(text) {
+		got = append(got, string(text[w[0]:w[1]]))
+	}
+	want := []string{"Ship", "to", "12/3", "St.-Denis", "Rd", "Dublin", "D06", "F2X3"}
+	if !slices.Equal(got, want) {
+		t.Errorf("textWords = %q, want %q", got, want)
+	}
+	if len(textWords([]byte(" ,;. "))) != 0 {
+		t.Error("punctuation alone made words")
+	}
+}
+
+// The words of a production host are the business's: a name holding one
+// is not looked up; other names and other kinds are.
+func TestHostWordKnown(t *testing.T) {
+	words := hostWords([]string{"shop.example.com", "*.my-store.co", "www.shop.example.com:8443", "10.0.0.1"})
+	for _, w := range []string{"shop", "example", "store"} {
+		if !words[w] {
+			t.Errorf("hostWords lacks %q: %v", w, words)
+		}
+	}
+	for _, w := range []string{"com", "co", "www", "my"} {
+		if words[w] {
+			t.Errorf("hostWords has %q", w)
+		}
+	}
+	k := testutil.FakeKnown()
+	k.Add(core.KFullName, []byte("Shop Owner"))
+	k.Add(core.KFirstName, []byte("Shop"))
+	k.Add(core.KLastName, []byte("Lindqvist"))
+	k.Add(core.KCompany, []byte("Example Ltd"))
+	k.Seal()
+	hk := &hostWordKnown{Known: k, words: words}
+	for tok, want := range map[string]bool{"Shop Owner": false, "shop": false, "Lindqvist": true, "example ltd": true} {
+		if _, _, ok := hk.Contains([]byte(tok)); ok != want {
+			t.Errorf("Contains(%q) = %v, want %v", tok, ok, want)
+		}
+	}
+}

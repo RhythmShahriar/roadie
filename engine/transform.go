@@ -497,16 +497,108 @@ func (t *transformer) sweep(leaf []byte, kinds []core.FakeKind) ([]byte, bool, e
 }
 
 // scrub replaces the emails, phones, cards, IPs and known names in free
-// text by their fakes.
+// text by their fakes, then the known streets, address lines and
+// postcodes.
 func (t *transformer) scrub(text []byte) ([]byte, bool) {
 	if len(text) == 0 {
 		return text, false
 	}
 	nv, n := scrubText(text, t.sh.spans, t.sh.known, t.faker)
 	if n == 0 || nv == nil {
+		nv = text
+	}
+	nv, swept := t.sweepText(nv)
+	if n == 0 && !swept {
 		return text, false
 	}
 	return nv, true
+}
+
+// textKinds are the kinds sweepText finds inside free text. A street, an
+// address line or a postcode is written word for word as the customer
+// typed it, so a known one is found as a run of words. Names are the
+// scrubber's; a city or a country on its own points at no one and stays.
+var textKinds = []core.FakeKind{core.KStreet, core.KAddress, core.KPostcode}
+
+// maxTextWords is the longest run of words sweepText looks up.
+const maxTextWords = 8
+
+// sweepText replaces each run of words in free text that is a known
+// street, address line or postcode by its fake, the longest run first:
+// "111 Kingsmead Road, Dublin D06 F2X3" gets a fake street and postcode
+// and keeps "Dublin". Every such value holds a digit, so a run without
+// one is never looked up.
+func (t *transformer) sweepText(text []byte) ([]byte, bool) {
+	if t.sh.parts.noData || t.sh.known == nil || t.sh.known.Len() == 0 || !bytes.ContainsAny(text, "0123456789") {
+		return text, false
+	}
+	words := textWords(text)
+	var out []byte
+	last := 0
+	for i := 0; i < len(words); {
+		// The run may only cross white space: "Road, Dublin" is two values.
+		end := i + 1
+		for end < len(words) && end-i < maxTextWords && len(bytes.TrimSpace(text[words[end-1][1]:words[end][0]])) == 0 {
+			end++
+		}
+		n, kind := 0, core.FakeKind("")
+		for k := end - i; k >= 1 && n == 0; k-- {
+			tok := text[words[i][0]:words[i+k-1][1]]
+			if len(tok) < 4 || !bytes.ContainsAny(tok, "0123456789") {
+				continue
+			}
+			if kd, enc, ok := t.sh.known.Contains(tok); ok && enc == "raw" && slices.Contains(textKinds, kd) {
+				n, kind = k, kd
+			}
+		}
+		if n == 0 {
+			i++
+			continue
+		}
+		a, b := words[i][0], words[i+n-1][1]
+		nv, err := t.faker.Fake(kind, text[a:b], core.FakeOpts{Locale: t.sh.cfg.Pseudonymise.Locale})
+		if err == nil && len(nv) > 0 {
+			out = append(append(out, text[last:a]...), nv...)
+			last = b
+		}
+		i += n
+	}
+	if out == nil {
+		return text, false
+	}
+	return append(out, text[last:]...), true
+}
+
+// textWords splits text into words at white space and the punctuation
+// that ends a part of an address; a word keeps inner dots, hyphens,
+// slashes and apostrophes ("12/3", "St.-Denis") and loses a final dot.
+func textWords(text []byte) [][2]int {
+	var out [][2]int
+	start := -1
+	flush := func(end int) {
+		for end > start && text[end-1] == '.' {
+			end--
+		}
+		if end > start {
+			out = append(out, [2]int{start, end})
+		}
+		start = -1
+	}
+	for i, c := range text {
+		if c <= ' ' || strings.IndexByte(",;:()[]{}\"<>!?|", c) >= 0 {
+			if start >= 0 {
+				flush(i)
+			}
+			continue
+		}
+		if start < 0 {
+			start = i
+		}
+	}
+	if start >= 0 {
+		flush(len(text))
+	}
+	return out
 }
 
 // keys finds keys in one leaf and swaps or blanks the live ones as
