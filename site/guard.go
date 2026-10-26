@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/RhythmShahriar/roadie/codec/urlrw"
@@ -204,13 +205,26 @@ func readTarget(ctx context.Context, in GuardInput) (*targetFacts, error) {
 			if p, ok := f.Get("APP_URL"); ok {
 				t.add(urlHost(p.Value), "is", true, false)
 			}
-			if p, ok := f.Get("APP_ENV"); ok && p.Value == "production" {
+			// Laravel reads a missing APP_ENV as production. Roadie
+			// can't resolve ${...}, so both fail closed like WordPress.
+			p, ok := f.Get("APP_ENV")
+			switch {
+			case !ok:
+				t.env = "has APP_ENV unset in .env, which Laravel reads as production"
+			case slices.Contains(f.Unresolved(), "APP_ENV"):
+				t.env = "sets APP_ENV in .env from another variable, which Roadie can't resolve, so it counts as production"
+			case p.Value == "production":
 				t.env = "has APP_ENV=production in .env"
-				t.envFix = "set APP_ENV=staging there"
 			}
+			t.envFix = "set APP_ENV=staging there"
 		case !errors.Is(err, fs.ErrNotExist):
 			t.env = "has a .env Roadie can't read (" + readReason(err) + "), so it counts as production"
 			t.envFix = "make it readable"
+		case s.Stack() == core.StackWordPress:
+			// WordPress also loads wp-config.php from one folder up, which
+			// Roadie can't read, so the environment can't be told.
+			t.env = "has no wp-config.php in the site folder Roadie can read, so it counts as production"
+			t.envFix = "move wp-config.php into the site folder and set WP_ENVIRONMENT_TYPE to staging there"
 		}
 	}
 	t.siteURL = in.SiteURL
@@ -311,20 +325,26 @@ func targetIsProduction(in GuardInput, t *targetFacts) error {
 }
 
 // targetSaysProduction refuses a target whose own config says production,
-// unless --target-is-staging names its host exactly.
+// unless --target-is-staging names its host exactly. A host production:
+// lists is never accepted. On prepare neither is the copy's siteurl:
+// targetIsProduction lets that one through because it is production's.
 func targetSaysProduction(in GuardInput, t *targetFacts) error {
 	if t.env == "" {
 		return nil
 	}
+	override := strings.TrimSpace(in.TargetIsStaging)
+	if override != "" && matchHost(normHost(override), productionHosts(in.Production)) {
+		override = ""
+	}
 	suggest := "<host>"
 	for _, h := range t.hosts {
-		if !h.byName {
+		if !h.byName || h.site && in.Mode == modePrepare {
 			continue
 		}
 		if suggest == "<host>" {
 			suggest = h.host
 		}
-		if in.TargetIsStaging != "" && strings.EqualFold(strings.TrimSpace(in.TargetIsStaging), h.host) {
+		if override != "" && strings.EqualFold(override, h.host) {
 			return nil
 		}
 	}

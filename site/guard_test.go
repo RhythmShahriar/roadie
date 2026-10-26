@@ -165,8 +165,42 @@ func TestGuardPasses(t *testing.T) {
 		t.Fatal(err)
 	}
 	empty := testutil.FakeSite(nil)
+	empty.StackName = ""
 	if err := Guard(ctx, GuardInput{From: dumpEP(), To: empty.EP, ToSite: empty, Mode: "copy"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestGuardFailsClosedWithoutEnv(t *testing.T) {
+	ctx := context.Background()
+	// WordPress with wp-config.php one folder up: Roadie can't read it.
+	wp := testutil.FakeSite(map[string][]byte{"wp-includes/version.php": []byte("<?php\n")})
+	wantCode(t, Guard(ctx, GuardInput{From: dumpEP(), To: wp.EP, ToSite: wp, SiteURL: "https://staging.shop.test", Mode: "copy"}),
+		core.ErrTargetSaysProduction, 3,
+		"target-says-production: /srv/staging has no wp-config.php in the site folder Roadie can read, so it counts as production. If it's staging, move wp-config.php into the site folder and set WP_ENVIRONMENT_TYPE to staging there, or pass --target-is-staging staging.shop.test.")
+	if err := Guard(ctx, GuardInput{From: dumpEP(), To: wp.EP, ToSite: wp, SiteURL: "https://staging.shop.test", TargetIsStaging: "staging.shop.test", Mode: "copy"}); err != nil {
+		t.Fatalf("override: %v", err)
+	}
+	laravel := func(env string) *testutil.Site {
+		s := testutil.FakeSite(map[string][]byte{".env": []byte("APP_URL=https://staging.shop.test\n" + env)})
+		s.StackName = core.StackLaravel
+		return s
+	}
+	tests := []struct{ env, msg string }{
+		{"", "has APP_ENV unset in .env, which Laravel reads as production"},
+		{"APP_ENV=${DEPLOY_ENV}\n", "sets APP_ENV in .env from another variable, which Roadie can't resolve, so it counts as production"},
+		{"APP_ENV=production\n", "has APP_ENV=production in .env"},
+	}
+	for _, tt := range tests {
+		s := laravel(tt.env)
+		wantCode(t, Guard(ctx, GuardInput{From: dumpEP(), To: s.EP, ToSite: s, Mode: "copy"}), core.ErrTargetSaysProduction, 3,
+			"target-says-production: /srv/staging "+tt.msg+". If it's staging, set APP_ENV=staging there, or pass --target-is-staging staging.shop.test.")
+	}
+	for _, env := range []string{"APP_ENV=staging\n", "APP_ENV='${X}'\n", "APP_ENV=local\n"} {
+		s := laravel(env)
+		if err := Guard(ctx, GuardInput{From: dumpEP(), To: s.EP, ToSite: s, Mode: "copy"}); err != nil {
+			t.Fatalf("%q: %v", env, err)
+		}
 	}
 }
 
@@ -186,6 +220,20 @@ func TestGuardOverride(t *testing.T) {
 	in := base("staging.shop.test")
 	in.Production = []string{"staging.shop.test"}
 	wantCode(t, Guard(ctx, in), core.ErrTargetIsProduction, 3, "")
+	// On prepare the copy's siteurl is production's: naming it, or any
+	// host production: lists, is refused.
+	ps := stagingSite("production", "https://shop.com")
+	prep := GuardInput{From: dumpEP(), To: ps.EP, ToSite: ps, Mode: "prepare", Production: []string{"shop.com"}, URL: "https://staging.shop.test"}
+	for _, bad := range []string{"shop.com", "SHOP.com"} {
+		prep.TargetIsStaging = bad
+		wantCode(t, Guard(ctx, prep), core.ErrTargetSaysProduction, 3, "")
+	}
+	prep.TargetIsStaging = "staging.shop.test"
+	if err := Guard(ctx, prep); err != nil {
+		t.Fatalf("prepare with the staging host: %v", err)
+	}
+	prep.Production = []string{"*.shop.test"}
+	wantCode(t, Guard(ctx, prep), core.ErrTargetIsProduction, 3, "")
 	// Never for target-is-source either.
 	s := stagingSite("", "https://staging.shop.test")
 	s.Identity = core.DBIdentity{Engine: core.MySQL, Host: "127.0.0.1", Port: 3306, Name: "staging"}
