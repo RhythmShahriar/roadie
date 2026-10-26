@@ -390,6 +390,25 @@ func (c *compiled) withRules(rs []core.Rule) *compiled {
 	return &out
 }
 
+// Join returns the set with rules from outside the profiles added: the
+// kill switch's option-level rules. Their tables may hold {prefix} and
+// {site}, expanded like a profile's for the prefix and every blog of the
+// set. A columns: rule on the same column still wins; SHA256 covers them.
+func (c *Compiled) Join(rs []core.Rule) *Compiled {
+	if len(rs) == 0 {
+		return c
+	}
+	var out []core.Rule
+	for _, r := range rs {
+		for _, name := range Expand(r.Table, c.c.prefix, c.c.sites) {
+			rr := r
+			rr.Table = name
+			out = append(out, rr)
+		}
+	}
+	return c.WithRules(out)
+}
+
 func sortedKeys[V any](m map[string]V) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

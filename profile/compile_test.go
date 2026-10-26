@@ -480,3 +480,41 @@ func TestMatchWhere(t *testing.T) {
 		t.Error("no where")
 	}
 }
+
+// Join expands {prefix} and {site} for the set and adds the rules; no
+// rules give the same set back.
+func TestJoin(t *testing.T) {
+	s := &core.Schema{Dialect: core.MySQL, Tables: []*core.Table{
+		{Name: "wp_options", Columns: []core.Column{{Name: "option_name"}, {Name: "option_value"}}},
+		{Name: "wp_2_options", Columns: []core.Column{{Name: "option_name"}, {Name: "option_value"}}},
+		{Name: "wp_users", Columns: []core.Column{{Name: "ID"}, {Name: "user_email"}}},
+	}}
+	defs, err := Builtin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := Compile(nil, defs, s, roadiecfg.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Join(nil) != c {
+		t.Error("Join(nil) made a new set")
+	}
+	r := core.Rule{ID: "killswitch.options.option_value.admin_email", Profile: "killswitch", Table: "{prefix}{site}options",
+		Column: "option_value", Where: map[string]string{"option_name": "admin_email"}, Action: core.Fixed, Value: "x@example.invalid"}
+	j := c.Join([]core.Rule{r})
+	for _, tb := range []string{"wp_options", "wp_2_options"} {
+		if !slices.ContainsFunc(j.Rules(tb), func(x core.Rule) bool { return x.ID == r.ID }) {
+			t.Errorf("%s lacks the joined rule", tb)
+		}
+	}
+	if slices.ContainsFunc(j.Rules("wp_users"), func(x core.Rule) bool { return x.ID == r.ID }) {
+		t.Error("joined rule on wp_users")
+	}
+	if j.SHA256() == c.SHA256() {
+		t.Error("the hash doesn't cover joined rules")
+	}
+	if slices.ContainsFunc(c.Rules("wp_options"), func(x core.Rule) bool { return x.ID == r.ID }) {
+		t.Error("Join changed the original set")
+	}
+}
