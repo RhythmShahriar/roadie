@@ -147,3 +147,87 @@ func TestOpenCancelled(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// notes records the plan lines a source sends to Progress.
+type notes struct{ lines []string }
+
+func (n *notes) Phase(string, int64) {}
+func (n *notes) Advance(int64)       {}
+func (n *notes) Table(string, int64) {}
+func (n *notes) Note(msg string)     { n.lines = append(n.lines, msg) }
+
+// Open applies the allowlist: a GRANT is left out with a plan line, USE
+// of the dump's own database is dropped, a trigger stops the run and
+// with KeepRoutines comes out without its DEFINER.
+func TestOpenAllowlist(t *testing.T) {
+	in := strings.Join([]string{
+		"-- MySQL dump 10.13  Distrib 8.0.36, for Linux (x86_64)",
+		"--",
+		"-- Host: localhost    Database: shop",
+		"USE `shop`;",
+		"CREATE TABLE `wp_users` (`ID` int, `user_email` varchar(100));",
+		"INSERT INTO `wp_users` VALUES (1,'a@shop.test');",
+		"/*!50000 GRANT ALL ON *.* TO x */;",
+		"DELIMITER ;;",
+		"/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`localhost`*/ /*!50003 TRIGGER `t1` AFTER UPDATE ON `wp_users` FOR EACH ROW SET @x = 1 */;;",
+		"DELIMITER ;",
+		"-- Dump completed on 2026-10-26 10:00:00",
+		"",
+	}, "\n")
+	_, err := drainAll(t, mustOpen(t, in, Options{Name: "prod.sql"}))
+	var ce *core.Error
+	if !errors.As(err, &ce) || ce.Code != core.ErrDumpRefused || ce.Line != 9 ||
+		ce.Msg != "dump-refused: prod.sql line 9 holds a CREATE TRIGGER statement, which could run code on the staging database. Export with --skip-triggers, or pass --keep-routines to keep it without its DEFINER." {
+		t.Fatalf("err = %v", err)
+	}
+
+	n := &notes{}
+	src := mustOpen(t, in, Options{Name: "prod.sql", KeepRoutines: true, Progress: n})
+	bs, err := drainAll(t, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var text strings.Builder
+	for _, b := range bs {
+		if b.Pass != nil {
+			text.Write(b.Pass.Text)
+		}
+	}
+	if s := text.String(); strings.Contains(s, "GRANT") || strings.Contains(s, "USE `") || strings.Contains(s, "`root`") ||
+		!strings.Contains(s, "/*!50017 DEFINER=CURRENT_USER*/") {
+		t.Errorf("passthrough text:\n%s", s)
+	}
+	want := []string{
+		"line 4: dropped USE: the import goes to the database --to names",
+		"line 7: dropped GRANT: the staging database keeps its own users and privileges",
+		"line 9: kept CREATE TRIGGER t1 with DEFINER=CURRENT_USER (--keep-routines)",
+	}
+	if !reflect.DeepEqual(n.lines, want) || !reflect.DeepEqual(Notes(src), want) {
+		t.Errorf("notes %q / %q", n.lines, Notes(src))
+	}
+	if Notes(nil) != nil {
+		t.Error("notes from a nil source")
+	}
+}
+
+func mustOpen(t testing.TB, in string, o Options) core.Source {
+	t.Helper()
+	src, err := Open(context.Background(), strings.NewReader(in), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return src
+}
+
+func TestDatabaseOf(t *testing.T) {
+	for head, want := range map[string]string{
+		"-- MySQL dump 10.13\n--\n-- Host: 127.0.0.1    Database: shop\n": "shop",
+		"-- phpMyAdmin SQL Dump\n-- Database: `wp_live`\n":                "wp_live",
+		"-- Adminer 4.8.1 MySQL 8.0.31 dump\n":                            "",
+		"INSERT INTO t VALUES ('-- Database: x');\n":                      "",
+	} {
+		if got := databaseOf([]byte(head)); got != want {
+			t.Errorf("%q: %q", head, got)
+		}
+	}
+}

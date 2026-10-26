@@ -24,7 +24,7 @@ type Options struct {
 	Name         string        // the file name, for messages
 	MaxValue     int64         // largest single value in bytes; 0 = the default 256 MiB
 	MaxRatio     int           // decompressed to compressed cap; 0 = the default 20
-	KeepRoutines bool          // keep triggers, procedures and events, without DEFINER
+	KeepRoutines bool          // keep triggers, procedures, functions and views, without DEFINER
 	Schema       *core.Schema  // schema for a data-only dump, from --schema
 	Progress     core.Progress // may be nil
 }
@@ -34,6 +34,18 @@ type Options struct {
 // returned io.EOF. Close releases the decompressor; r stays the caller's.
 func Open(ctx context.Context, r io.Reader, o Options) (core.Source, error) {
 	return open(ctx, r, o)
+}
+
+// Notes returns the plan lines of a dump source from Open: each kind of
+// statement the allowlist dropped (GRANT, ALTER ... OWNER TO, CREATE
+// EVENT) with its count and first line and each routine kept with
+// --keep-routines. They are complete once Next has returned io.EOF, when
+// they also go to Options.Progress.Note. Any other source gives nil.
+func Notes(src core.Source) []string {
+	if s, ok := src.(interface{ notes() []string }); ok {
+		return s.notes()
+	}
+	return nil
 }
 
 // Sniff reads the head of a file and tells its dialect and compression.

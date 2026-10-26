@@ -10,6 +10,7 @@ import (
 	"io"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/dump/allow"
 	"github.com/RhythmShahriar/roadie/dump/compress"
 	"github.com/RhythmShahriar/roadie/dump/internal/size"
 	"github.com/RhythmShahriar/roadie/dump/mysql"
@@ -67,17 +68,25 @@ func open(ctx context.Context, r io.Reader, o Options) (core.Source, error) {
 		Progress: o.Progress,
 		Offset:   cr.RawBytes,
 	})
-	return &source{name: name, cr: cr, my: src}, nil
+	f := allow.NewFilter(allow.Options{
+		Name:         name,
+		Dialect:      dialect,
+		KeepRoutines: o.KeepRoutines,
+		Database:     databaseOf(ph),
+	})
+	return &source{name: name, cr: cr, my: src, allow: f, progress: o.Progress}, nil
 }
 
 // source is a dump as a core.Source: the dialect reader plus the raw
 // input's fingerprint.
 type source struct {
-	name string
-	cr   *compress.Reader
-	my   *mysql.Source
-	fp   core.Fingerprint
-	err  error
+	name     string
+	cr       *compress.Reader
+	my       *mysql.Source
+	allow    *allow.Filter
+	progress core.Progress
+	fp       core.Fingerprint
+	err      error
 }
 
 func (s *source) Schema() *core.Schema { return s.my.Schema() }
@@ -86,26 +95,57 @@ func (s *source) Next(ctx context.Context) (*core.Batch, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
-	b, err := s.my.Next(ctx)
+	for {
+		b, err := s.my.Next(ctx)
+		if err == nil {
+			// Every statement that isn't row data passes the allowlist
+			// before it leaves the source; a dropped one is skipped.
+			out, err := s.allow.Add(b, s.my.Lexer().Mode())
+			if err != nil {
+				s.err = err
+				return nil, err
+			}
+			if out == nil {
+				continue
+			}
+			return out, nil
+		}
+		return nil, s.end(err)
+	}
+}
+
+// end handles the error that ended the dialect reader: io.EOF finishes
+// the dump, anything else is worded and kept.
+func (s *source) end(err error) error {
 	switch {
-	case err == nil:
-		return b, nil
 	case errors.Is(err, io.EOF):
 		// The whole file is hashed, even bytes after the end of the
 		// compressed stream.
 		if err := s.cr.Drain(); err != nil {
 			s.err = err
-			return nil, err
+			return err
+		}
+		if err := s.allow.Finish(); err != nil {
+			s.err = err
+			return err
+		}
+		if s.progress != nil {
+			for _, n := range s.allow.Notes() {
+				s.progress.Note(n)
+			}
 		}
 		s.fp = s.cr.Fingerprint()
 		s.err = io.EOF
-		return nil, io.EOF
+		return io.EOF
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-		return nil, err
+		return err
 	}
 	s.err = streamError(s.name, s.my.Table(), err)
-	return nil, s.err
+	return s.err
 }
+
+// notes are the allowlist's plan lines so far.
+func (s *source) notes() []string { return s.allow.Notes() }
 
 func (s *source) Fingerprint() core.Fingerprint { return s.fp }
 

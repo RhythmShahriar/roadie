@@ -191,6 +191,17 @@ func dialectOf(head []byte) (core.Dialect, string) {
 	return "", server
 }
 
+var reDatabase = regexp.MustCompile("(?m)^-- (?:Host: .*\\s)?Database: `?([^`\\s]+)`?\\s*$")
+
+// databaseOf reads the database name from mysqldump's "-- Host: x
+// Database: shop" line or phpMyAdmin's "-- Database: `shop`", or "".
+func databaseOf(head []byte) string {
+	if m := reDatabase.FindSubmatch(head); m != nil {
+		return string(m[1])
+	}
+	return ""
+}
+
 // mysqlSet matches the SET lines mysqldump and wp db export write first.
 func mysqlSet(line []byte) bool {
 	for _, p := range []string{"/*!40101 SET ", "/*!40103 SET ", "/*!40014 SET ", "/*!40111 SET ", "SET NAMES ", "SET FOREIGN_KEY_CHECKS", "SET SQL_MODE", "SET @OLD_"} {
