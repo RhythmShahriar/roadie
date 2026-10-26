@@ -272,6 +272,24 @@ verify:
 	if err := c.Need("source", "url"); err != nil {
 		t.Errorf("Need of set values: %v", err)
 	}
+	// An unset variable in production: or verify.allow_emails is listed
+	// for config check, not refused by Load; a value written as it is
+	// still is.
+	c, err = Load(writeConfig(t, "production: [\"${ROADIE_PROD}\"]\nverify:\n  allow_emails: [\"${ROADIE_MAIL}\"]\n"), env)
+	if err != nil {
+		t.Fatalf("unset production or allow_emails: %v", err)
+	}
+	if c.Unset["production[0]"] != "ROADIE_PROD" || c.Unset["verify.allow_emails[0]"] != "ROADIE_MAIL" {
+		t.Errorf("unset %v", c.Unset)
+	}
+	if err := c.Need("production"); err == nil {
+		t.Error("Need(production) passed with ROADIE_PROD unset")
+	}
+	for _, bad := range []string{"production: [\"ftp://x\"]\n", "verify:\n  allow_emails: [\"shop.com\"]\n"} {
+		if _, err := Load(writeConfig(t, bad), env); err == nil {
+			t.Errorf("accepted %q", bad)
+		}
+	}
 	// A value that isn't a string is never interpolated: noindex takes a bool.
 	asked = nil
 	_, err = Load(writeConfig(t, "noindex: ${ROADIE_A}\n"), envOf(map[string]string{"ROADIE_A": "true"}, &asked))
@@ -523,4 +541,18 @@ func FuzzLoad(f *testing.F) {
 			t.Fatalf("error %v is not a config error", err)
 		}
 	})
+}
+
+// An Echo URL error never prints a password given as a query parameter.
+func TestEchoURLHidesQueryPassword(t *testing.T) {
+	pw := "hunter2" + "secret"
+	for _, raw := range []string{"http://8.8.8.8/?password=" + pw, "ftp://h/?pwd=" + pw} {
+		err := ValidateEchoURL(raw)
+		if err == nil || strings.Contains(err.Error(), pw) || !strings.Contains(err.Error(), "•••") {
+			t.Errorf("%s: %v", raw, err)
+		}
+	}
+	if err := ValidateEchoURL("https://echo.example/?password=" + pw); err != nil {
+		t.Errorf("https refused: %v", err)
+	}
 }
