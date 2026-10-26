@@ -270,7 +270,7 @@ func (r *runner) run(ctx context.Context) error {
 		if err := r.startMaintenance(ctx, stack); err != nil {
 			return err
 		}
-		s, err := r.sink(ctx)
+		s, err := r.sink(ctx, p.dialect)
 		if err != nil {
 			return err
 		}
@@ -965,9 +965,16 @@ func (t *tablesInput) open(ctx context.Context, _ int) (core.Source, error) {
 func (t *tablesInput) close() error { return nil }
 
 // sink is where pass 2 writes: the dump file, stdout or the target's
-// database.
-func (r *runner) sink(ctx context.Context) (core.Sink, error) {
+// database. A dump goes out in the source's dialect: a pg_dump copy is
+// a pg_dump again, its rows under COPY.
+func (r *runner) sink(ctx context.Context, dialect core.Dialect) (core.Sink, error) {
 	wo := dump.WriterOptions{Compression: r.j.To.Compression, FixCollation: r.opts.FixCollation, KeepRoutines: r.opts.KeepRoutines}
+	if r.j.To.Kind == core.DumpFile || r.j.To.Kind == core.Stdio {
+		if dialect == "" {
+			dialect = r.sourceDialect()
+		}
+		wo.Target, wo.Source = dialect, dialect
+	}
 	switch r.j.To.Kind {
 	case core.DumpFile:
 		// The copy is about the size of what pass 1 read, so a disk
@@ -982,6 +989,27 @@ func (r *runner) sink(ctx context.Context) (core.Sink, error) {
 		return s, nil
 	}
 	return r.to.Sink(ctx)
+}
+
+// sourceDialect is the dialect of a dump file source read from its head,
+// for --one-pass, where the sink comes before the first statement is
+// read; "" when unknown (MySQL is written then).
+func (r *runner) sourceDialect() core.Dialect {
+	if r.j.From.Kind != core.DumpFile {
+		return ""
+	}
+	f, err := os.Open(r.j.From.Path) // #nosec G304 -- the dump the user named
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = f.Close() }()
+	head := make([]byte, dump.HeadSize)
+	n, _ := io.ReadFull(f, head)
+	d, _, err := dump.Sniff(head[:n])
+	if err != nil {
+		return ""
+	}
+	return d
 }
 
 // targetDialect is the SQL dialect of a database target: a DSN's driver,

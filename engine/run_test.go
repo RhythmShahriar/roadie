@@ -1321,3 +1321,34 @@ func TestRunExpectBytes(t *testing.T) {
 		t.Errorf("ExpectBytes %v, want [123456]", got)
 	}
 }
+
+// A dump target is written in the source's dialect: a pg_dump copy is a
+// pg_dump again. With --one-pass the dialect comes from the dump's head.
+func TestSinkTakesSourceDialect(t *testing.T) {
+	var got []dump.WriterOptions
+	old := newFileSink
+	newFileSink = func(_ string, o dump.WriterOptions) (core.Sink, error) {
+		got = append(got, o)
+		return testutil.FakeSink(), nil
+	}
+	t.Cleanup(func() { newFileSink = old })
+	pg := filepath.Join("..", "dump", "pgsql", "testdata", "pg16-prisma.sql")
+	out := filepath.Join(t.TempDir(), "out.sql")
+	r := &runner{j: Job{From: core.Endpoint{Kind: core.DumpFile, Path: pg}, To: core.Endpoint{Kind: core.DumpFile, Path: out}}, res: &core.Result{}}
+	for _, d := range []core.Dialect{core.Postgres, ""} {
+		if _, err := r.sink(context.Background(), d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mysqlDump := filepath.Join(t.TempDir(), "shop.sql")
+	if err := os.WriteFile(mysqlDump, []byte("-- MySQL dump 10.13  Distrib 8.0.36\nCREATE TABLE `t` (`id` int);\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r.j.From.Path = mysqlDump
+	if _, err := r.sink(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 || got[0].Target != core.Postgres || got[1].Target != core.Postgres || got[2].Target == core.Postgres {
+		t.Errorf("writer options %+v", got)
+	}
+}
