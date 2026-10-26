@@ -54,6 +54,13 @@ type Ignore struct {
 }
 
 // Soundcheck runs rhythm-soundcheck against url when it is installed.
+//
+// It runs "rhythm-soundcheck run <url> --json" (with --echo=<echoURL>
+// when given) for at most 10 minutes and records the exit code and the
+// schema and summary counts of its JSON. When Soundcheck is not on PATH
+// the result has Ran false and the note "Soundcheck not run: install it
+// with rhythm install soundcheck", never a finding. SoundcheckFinding
+// turns an exit 1 into soundcheck.failed.
 func Soundcheck(ctx context.Context, url, echoURL string) *core.SoundcheckResult {
-	return nil
+	return soundcheck(ctx, url, echoURL)
 }

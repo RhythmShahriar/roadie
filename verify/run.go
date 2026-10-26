@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/RhythmShahriar/roadie/codec/nested"
 	"github.com/RhythmShahriar/roadie/codec/urlrw"
@@ -66,6 +67,7 @@ type run struct {
 	site core.Site
 	// keySeen dedupes Keys by finding ID and location without the row.
 	keySeen map[string]bool
+	start   time.Time // when the run began, by Options.Clock
 }
 
 // Run scans the copy.
@@ -87,7 +89,10 @@ func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 		return nil, err
 	}
 	defer closeAll()
-	r := &run{j: j, skip: newSkipper(j.Opts.Skip), site: st, keySeen: map[string]bool{}}
+	r := &run{j: j, skip: newSkipper(j.Opts.Skip), site: st, keySeen: map[string]bool{}, start: time.Now()}
+	if j.Opts.Clock != nil {
+		r.start = j.Opts.Clock()
+	}
 	r.res = &core.VerifyResult{Mode: "heuristic"}
 	if j.Known != nil {
 		r.res.Mode = "exact"

@@ -27,6 +27,9 @@ import (
 // return core.ErrNotBuilt, so the orchestration is tested now; the
 // stand-ins step aside once the real code answers.
 func TestMain(m *testing.M) {
+	if os.Getenv("ROADIE_FAKE_SOUNDCHECK") != "" {
+		soundcheckMain()
+	}
 	if err := nested.Leaves([]byte(`a:1:{s:1:"a";s:1:"b";}`), func(string, []byte) {}, nested.Options{}); errors.Is(err, core.ErrNotBuilt) {
 		formatOf = fakeFormat
 		leavesOf = fakeLeaves
