@@ -1,0 +1,27 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Gravity Forms (paid): entries, their field values and notes. Which entry
+# value holds an email or a phone depends on each form, so the
+# gf-field-types row fix reads gf_form_meta.display_meta in pass 1 and
+# gives every typed field its own rule; the rule on meta_value below is
+# the fallback for fields without a known type.
+id: gravity-forms
+name: Gravity Forms
+stack: wordpress
+checked_against: "docs: https://docs.gravityforms.com/database-storage-structure-reference/"
+detect:
+  tables_any: ["{prefix}{site}gf_form", "{prefix}{site}gf_entry"]
+  files: [wp-content/plugins/gravityforms/gravityforms.php]
+rules:
+  - {table: "{prefix}{site}gf_entry", column: ip, rule: ip, explain: "the IP address the entry came from"}
+  - {table: "{prefix}{site}gf_entry", column: user_agent, rule: user_agent, explain: "the browser the entry came from"}
+  - {table: "{prefix}{site}gf_entry", column: source_url, rule: rewrite-url, explain: "the page the form was on, rewritten to the staging URL"}
+  - {table: "{prefix}{site}gf_entry", column: transaction_id, rule: blank, explain: "the gateway's transaction ID of a payment form"}
+  - {table: "{prefix}{site}gf_entry_meta", column: meta_value, rule: text, explain: "field values; gf-field-types gives typed fields their own rule and the rest are scrubbed as free text"}
+  - {table: "{prefix}{site}gf_entry_notes", column: value, rule: text, explain: "notes on an entry, often quoting the person"}
+  - {table: "{prefix}{site}gf_entry_notes", column: user_name, rule: full_name, explain: "the name of the staff member who wrote the note"}
+truncate:
+  - "{prefix}{site}gf_draft_submissions" # saved and continued entries with email, IP and every value
+  - "{prefix}{site}gf_form_view"         # view counts with the visitor's IP address
+row_fixes: [gf-field-types]

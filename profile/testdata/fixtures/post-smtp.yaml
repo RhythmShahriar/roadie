@@ -1,0 +1,11 @@
+# Positive and negative rows for every rule of the post-smtp profile.
+# Blogs 2 and 11 exist (their options tables), so {site} tables have wp_2_ and
+# wp_11_ copies; blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
+tables: [wp_2_options, wp_11_options]
+rules:
+  "post-smtp.posts.post_content.postman_sent_mail":
+    positive: {table: wp_posts, row: {post_content: "x", post_type: "postman_sent_mail"}}
+    negative: {table: wp_posts, row: {post_content: "x", post_type: "xpostman_sent_mail"}}
+lists:
+  "truncate:{prefix}{site}post_smtp_logs": {positive: wp_post_smtp_logs, negative: wp_12_post_smtp_logs}
+  "truncate:{prefix}{site}post_smtp_logmeta": {positive: wp_2_post_smtp_logmeta, negative: wp_12_post_smtp_logmeta}

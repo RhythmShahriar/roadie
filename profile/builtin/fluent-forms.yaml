@@ -1,0 +1,22 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Fluent Forms: submissions as JSON plus one row per field value.
+id: fluent-forms
+name: Fluent Forms
+stack: wordpress
+checked_against: "docs: https://plugins.svn.wordpress.org/fluentform/trunk/database/Migrations/Submissions.php"
+detect:
+  tables_any: ["{prefix}{site}fluentform_forms", "{prefix}{site}fluentform_submissions"]
+  files: [wp-content/plugins/fluentform/fluentform.php]
+rules:
+  - {table: "{prefix}{site}fluentform_submissions", column: response, rule: text, explain: "every field of the submission as JSON"}
+  - {table: "{prefix}{site}fluentform_submissions", column: source_url, rule: rewrite-url, explain: "the page the form was on"}
+  - {table: "{prefix}{site}fluentform_submissions", column: ip, rule: ip, explain: "the IP address the submission came from"}
+  - {table: "{prefix}{site}fluentform_submissions", column: city, rule: city, part: city, explain: "the city looked up from the IP address"}
+  - {table: "{prefix}{site}fluentform_entry_details", column: field_value, rule: text, explain: "one field's value"}
+  - {table: "{prefix}{site}fluentform_submission_meta", column: value, rule: text, explain: "notes and data attached to a submission"}
+  - {table: "{prefix}{site}fluentform_logs", column: description, rule: text, explain: "log lines that quote submissions"}
+truncate:
+  - "{prefix}{site}fluentform_form_analytics"   # visits with IP address and city
+  - "{prefix}{site}fluentform_draft_submissions" # unfinished submissions with every value

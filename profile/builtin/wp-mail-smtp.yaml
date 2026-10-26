@@ -1,0 +1,15 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# WP Mail SMTP keeps a copy of every mail sent: recipients, subjects and
+# bodies. A staging copy needs none of it, so the log is truncated.
+id: wp-mail-smtp
+name: WP Mail SMTP
+stack: wordpress
+checked_against: "docs: https://wpmailsmtp.com/docs/how-to-set-up-email-logging/"
+detect:
+  tables_any: ["{prefix}{site}wpmailsmtp_emails_log", "{prefix}{site}wpmailsmtp_debug_events"]
+  files: [wp-content/plugins/wp-mail-smtp/wp_mail_smtp.php, wp-content/plugins/wp-mail-smtp-pro/wp_mail_smtp.php]
+truncate:
+  - "{prefix}{site}wpmailsmtp_emails_log"
+  - "{prefix}{site}wpmailsmtp_debug_events"

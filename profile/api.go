@@ -122,6 +122,12 @@ func (c *Compiled) RowFixes() []string { return slices.Clone(c.c.rowFixes) }
 // KeepUsers returns the keep_users globs.
 func (c *Compiled) KeepUsers() []string { return slices.Clone(c.c.keepUsers) }
 
+// WithRules returns the set with rules added after the compile: the
+// per-form rules the gf-field-types, wpforms-field-types and
+// ninja-field-types row fixes build from pass 1 (see FieldTypes). A
+// columns: rule on the same column still wins; SHA256 covers them.
+func (c *Compiled) WithRules(rs []core.Rule) *Compiled { return &Compiled{c: c.c.withRules(rs)} }
+
 // All returns every rule of the set, for verify's column kinds and the
 // plan: exact tables in name order, then the glob rules.
 func (c *Compiled) All() []core.Rule { return c.c.all() }

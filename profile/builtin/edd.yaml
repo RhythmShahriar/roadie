@@ -1,0 +1,41 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Easy Digital Downloads 3: customers, their addresses and emails,
+# orders, logs and notes in EDD's own tables.
+id: edd
+name: Easy Digital Downloads
+stack: wordpress
+checked_against: "docs: https://github.com/awesomemotive/easy-digital-downloads/tree/main/includes/database/schemas"
+detect:
+  tables_any: ["{prefix}{site}edd_customers", "{prefix}{site}edd_orders"]
+  files: [wp-content/plugins/easy-digital-downloads/easy-digital-downloads.php]
+rules:
+  - {table: "{prefix}{site}edd_customers", column: email, rule: email, explain: "the customer's email"}
+  - {table: "{prefix}{site}edd_customers", column: name, rule: full_name, explain: "the customer's name"}
+  - {table: "{prefix}{site}edd_customermeta", where: {meta_key: additional_email}, column: meta_value, rule: email, explain: "a further email of the customer"}
+  - {table: "{prefix}{site}edd_customer_email_addresses", column: email, rule: email, explain: "every email the customer used"}
+  - {table: "{prefix}{site}edd_customer_addresses", column: name, rule: full_name, explain: "the address's name"}
+  - {table: "{prefix}{site}edd_customer_addresses", column: address, rule: street, explain: "the street"}
+  - {table: "{prefix}{site}edd_customer_addresses", column: address2, rule: street, explain: "the second address line"}
+  - {table: "{prefix}{site}edd_customer_addresses", column: city, rule: city, part: city, explain: "the city"}
+  - {table: "{prefix}{site}edd_customer_addresses", column: region, rule: blank, part: state, explain: "the region, kept by default for tax"}
+  - {table: "{prefix}{site}edd_customer_addresses", column: postal_code, rule: postcode, part: postcode, explain: "the postcode"}
+  - {table: "{prefix}{site}edd_customer_addresses", column: country, rule: blank, part: country, explain: "the country, kept by default for tax"}
+  - {table: "{prefix}{site}edd_orders", column: email, rule: email, explain: "the order's email"}
+  - {table: "{prefix}{site}edd_orders", column: ip, rule: ip, explain: "the IP address the order came from"}
+  - {table: "{prefix}{site}edd_order_addresses", column: name, rule: full_name, explain: "the order address's name"}
+  - {table: "{prefix}{site}edd_order_addresses", column: address, rule: street, explain: "the order's street"}
+  - {table: "{prefix}{site}edd_order_addresses", column: address2, rule: street, explain: "the order's second address line"}
+  - {table: "{prefix}{site}edd_order_addresses", column: city, rule: city, part: city, explain: "the order's city"}
+  - {table: "{prefix}{site}edd_order_addresses", column: region, rule: blank, part: state, explain: "the order's region"}
+  - {table: "{prefix}{site}edd_order_addresses", column: postal_code, rule: postcode, part: postcode, explain: "the order's postcode"}
+  - {table: "{prefix}{site}edd_order_addresses", column: country, rule: blank, part: country, explain: "the order's country"}
+  - {table: "{prefix}{site}edd_order_transactions", column: transaction_id, rule: blank, explain: "the gateway's transaction ID"}
+  - {table: "{prefix}{site}edd_logs", column: title, rule: text, explain: "log titles that can name customers"}
+  - {table: "{prefix}{site}edd_logs", column: content, rule: text, explain: "log text that can quote customers"}
+  - {table: "{prefix}{site}edd_logs_file_downloads", column: ip, rule: ip, explain: "the IP address of a file download"}
+  - {table: "{prefix}{site}edd_logs_file_downloads", column: user_agent, rule: user_agent, explain: "the browser of a file download"}
+  - {table: "{prefix}{site}edd_notes", column: content, rule: text, explain: "notes on orders and customers"}
+truncate:
+  - "{prefix}{site}edd_logs_api_requests" # API keys, tokens and IP addresses of REST calls

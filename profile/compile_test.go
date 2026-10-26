@@ -303,7 +303,9 @@ func TestStackResolution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Stack() != core.StackLaravel || c.TableAction("pulse_entries") != core.Truncate || len(c.Rules("users")) != 1 {
+	users := ruleIDs(c.Rules("users"))
+	if c.Stack() != core.StackLaravel || c.TableAction("pulse_entries") != core.Truncate ||
+		!slices.Contains(users, "mini-laravel.users.email") || !slices.Contains(users, "laravel.users.password") {
 		t.Errorf("laravel: %s %v", c.Stack(), ruleIDs(c.All()))
 	}
 	// laravel.tables rules join for a Laravel run.
@@ -313,7 +315,16 @@ func TestStackResolution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := ruleIDs(c.Rules("users")); !slices.Equal(got, []string{"laravel.users.email", "laravel.users.phone"}) {
+	// The config's users.email replaces both profiles' rules on it.
+	var email []core.Rule
+	for _, r := range c.Rules("users") {
+		if r.Column == "email" {
+			email = append(email, r)
+		}
+	}
+	got := ruleIDs(c.Rules("users"))
+	if len(email) != 1 || email[0].Action != core.Keep || email[0].Explain != "laravel.tables in .roadie/config.yaml" ||
+		!slices.Contains(got, "laravel.users.phone") {
 		t.Errorf("laravel.tables: %v", got)
 	}
 	for _, bad := range []string{"drupal"} {

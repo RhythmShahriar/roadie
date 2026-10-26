@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -31,6 +32,22 @@ var schemaFiles = map[string][]string{
 	"woocommerce-subscriptions": {"wordpress-6.8.sql", "woocommerce-9.8.0.sql"},
 	"action-scheduler":          {"action-scheduler-3.9.2.sql"},
 	"automatewoo":               {"automatewoo-docs.sql"},
+	"gravity-forms":             {"gravity-forms-docs.sql"},
+	"wpforms":                   {"wpforms-docs.sql"},
+	"contact-form-7-flamingo":   {"wordpress-6.8.sql"},
+	"ninja-forms":               {"wordpress-6.8.sql", "ninja-forms-docs.sql"},
+	"fluent-forms":              {"fluent-forms-docs.sql"},
+	"mailpoet":                  {"mailpoet-docs.sql"},
+	"edd":                       {"edd-docs.sql"},
+	"memberpress":               {"wordpress-6.8.sql", "memberpress-docs.sql"},
+	"learndash":                 {"learndash-docs.sql"},
+	"wp-mail-smtp":              {"mail-logs-docs.sql"},
+	"post-smtp":                 {"wordpress-6.8.sql", "mail-logs-docs.sql"},
+	"fluent-smtp":               {"mail-logs-docs.sql"},
+	"wp-mail-logging":           {"mail-logs-docs.sql"},
+	"email-log":                 {"mail-logs-docs.sql"},
+	"laravel":                   {"laravel-docs.sql"},
+	"laravel-cashier":           {"laravel-docs.sql"},
 }
 
 var (
@@ -107,8 +124,8 @@ func TestProfilesMatchCapturedSchemas(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, d := range defs {
-		if d.Stack != core.StackWordPress {
-			continue // Laravel and SQL profiles name config-driven tables
+		if d.Stack == core.StackSQL {
+			continue // the sql profile has only config-driven tables
 		}
 		files, ok := schemaFiles[d.ID]
 		if !ok {
@@ -148,13 +165,22 @@ func TestProfilesMatchCapturedSchemas(t *testing.T) {
 		for _, list := range [][]string{d.Truncate, d.Drop, d.Keep, d.Detect.TablesAny} {
 			for _, e := range list {
 				for _, name := range Expand(e, "wp_", nil) {
-					if merged.Table(name) == nil {
+					if !hasTable(merged, name) {
 						t.Errorf("%s: table %s isn't in %v", d.ID, name, files)
 					}
 				}
 			}
 		}
 	}
+}
+
+// hasTable reports whether the schema has the table or, for a glob such
+// as pulse_*, a table it matches.
+func hasTable(s *core.Schema, name string) bool {
+	if !hasGlob(name) {
+		return s.Table(name) != nil
+	}
+	return slices.ContainsFunc(s.Tables, func(t *core.Table) bool { ok, _ := path.Match(name, t.Name); return ok })
 }
 
 // The schema parser reads what it should and the check catches a

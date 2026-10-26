@@ -1,0 +1,30 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# MemberPress (paid): transactions and subscriptions in its own tables,
+# the member address in user meta. mepr_members is a cache of counts
+# built from users and transactions.
+id: memberpress
+name: MemberPress
+stack: wordpress
+checked_against: "docs: https://memberpress.com/docs/where-is-data-stored/"
+detect:
+  tables_any: ["{prefix}mepr_transactions", "{prefix}mepr_members"]
+  files: [wp-content/plugins/memberpress/memberpress.php]
+rules:
+  - {table: "{prefix}mepr_transactions", column: ip_addr, rule: ip, explain: "the IP address of the payment"}
+  - {table: "{prefix}mepr_transactions", column: trans_num, rule: blank, explain: "the gateway's transaction ID"}
+  - {table: "{prefix}mepr_transactions", column: response, rule: blank, explain: "the gateway's raw answer, with card and customer details"}
+  - {table: "{prefix}mepr_subscriptions", column: subscr_id, rule: blank, explain: "the gateway's subscription ID, which a renewal would charge"}
+  - {table: "{prefix}mepr_subscriptions", column: ip_addr, rule: ip, explain: "the IP address of the sign-up"}
+  - {table: "{prefix}mepr_subscriptions", column: token, rule: blank, explain: "the saved payment token"}
+  - {table: "{prefix}mepr_subscriptions", column: cc_last4, rule: blank, explain: "the last four card digits"}
+  - {table: "{prefix}mepr_subscriptions", column: response, rule: blank, explain: "the gateway's raw answer"}
+  - {table: "{prefix}usermeta", where: {meta_key: mepr-address-one}, column: meta_value, rule: street, explain: "the member's street"}
+  - {table: "{prefix}usermeta", where: {meta_key: mepr-address-two}, column: meta_value, rule: street, explain: "the member's second address line"}
+  - {table: "{prefix}usermeta", where: {meta_key: mepr-address-city}, column: meta_value, rule: city, part: city, explain: "the member's city"}
+  - {table: "{prefix}usermeta", where: {meta_key: mepr-address-zip}, column: meta_value, rule: postcode, part: postcode, explain: "the member's postcode"}
+  - {table: "{prefix}usermeta", where: {meta_key: mepr-address-state}, column: meta_value, rule: blank, part: state, explain: "the member's state, kept by default for tax"}
+  - {table: "{prefix}usermeta", where: {meta_key: mepr-address-country}, column: meta_value, rule: blank, part: country, explain: "the member's country, kept by default for tax"}
+keep:
+  - "{prefix}mepr_members" # counts and IDs only, rebuilt from users and transactions

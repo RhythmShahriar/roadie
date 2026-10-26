@@ -42,6 +42,12 @@ type compiled struct {
 	keep      []string
 	rowFixes  []string
 	keepUsers []string
+	// user holds the columns: and laravel.tables rules, so rules added
+	// after the compile (WithRules) lose to them as profile rules do.
+	user []core.Rule
+	// cfg is the settings the policies (keep, free_text, passwords) come
+	// from, for rules added after the compile.
+	cfg *roadiecfg.Config
 }
 
 // hasGlob reports whether a table name is a pattern.
@@ -64,7 +70,7 @@ func matchAny(table string, patterns []string) bool {
 
 // pick resolves the profile IDs of a run: "auto" (or none) adds what
 // Detect finds for the stack; a named profile must exist and suit it.
-func pick(ids []string, defs []Def, s *core.Schema, stack core.Stack) ([]Def, error) {
+func pick(ids []string, defs []Def, s *core.Schema, stack core.Stack, h Hints) ([]Def, error) {
 	if len(ids) == 0 {
 		ids = []string{"auto"}
 	}
@@ -75,7 +81,7 @@ func pick(ids []string, defs []Def, s *core.Schema, stack core.Stack) ([]Def, er
 	var want []string
 	for _, id := range ids {
 		if id == "auto" {
-			for _, d := range Detect(s, nil, defs) {
+			for _, d := range DetectWithOptions(h.context(), s, h.Site, defs, h.Options) {
 				if def, _ := ByID(defs, d); def.Stack == stack {
 					want = append(want, d)
 				}
@@ -109,24 +115,51 @@ func pick(ids []string, defs []Def, s *core.Schema, stack core.Stack) ([]Def, er
 	return out, nil
 }
 
-// compile builds the rule set of one run.
+// Hints are what a run knows beyond the schema: the option names pass 1
+// saw (for profiles an option gives away) and the site, for site.DetectStack
+// and the files: detectors. The zero value means a dump and nothing more.
+type Hints struct {
+	Options map[string]bool
+	Site    core.Site
+	Ctx     context.Context
+}
+
+func (h Hints) context() context.Context {
+	if h.Ctx != nil {
+		return h.Ctx
+	}
+	return context.Background()
+}
+
+// CompileWith is Compile with what pass 1 learned: auto then also picks
+// the profiles an option name or a site file gives away.
+func CompileWith(ids []string, defs []Def, s *core.Schema, cfg *roadiecfg.Config, h Hints) (*Compiled, error) {
+	return compileHints(ids, defs, s, cfg, h)
+}
+
+// compile builds the rule set of one run from the schema alone.
 func compile(ids []string, defs []Def, s *core.Schema, cfg *roadiecfg.Config) (*Compiled, error) {
+	return compileHints(ids, defs, s, cfg, Hints{})
+}
+
+// compileHints builds the rule set of one run.
+func compileHints(ids []string, defs []Def, s *core.Schema, cfg *roadiecfg.Config, h Hints) (*Compiled, error) {
 	if cfg == nil {
 		cfg = roadiecfg.Default()
 	}
-	stack, err := ResolveStack(context.Background(), cfg.Stack, s, nil, len(cfg.Columns) > 0)
+	stack, err := ResolveStack(h.context(), cfg.Stack, s, h.Site, len(cfg.Columns) > 0)
 	if err != nil {
 		return nil, err
 	}
 	if len(ids) == 0 {
 		ids = cfg.Profiles
 	}
-	picked, err := pick(ids, defs, s, stack)
+	picked, err := pick(ids, defs, s, stack, h)
 	if err != nil {
 		return nil, err
 	}
 	c := &compiled{stack: stack, exact: map[string][]core.Rule{}, userRules: map[string]bool{},
-		cfgDrop: cfg.Drop, cfgTrunc: cfg.Truncate, keepUsers: cfg.Pseudonymise.KeepUsers}
+		cfgDrop: cfg.Drop, cfgTrunc: cfg.Truncate, keepUsers: cfg.Pseudonymise.KeepUsers, cfg: cfg}
 	if stack == core.StackWordPress {
 		c.prefix, _ = WordPressPrefix(s)
 		c.sites = Sites(s, c.prefix)
@@ -176,6 +209,7 @@ func compile(ids []string, defs []Def, s *core.Schema, cfg *roadiecfg.Config) (*
 		}
 	}
 	rules = append(rules, user...)
+	c.user = user
 	for _, r := range rules {
 		if hasGlob(r.Table) {
 			c.globs = append(c.globs, r)
@@ -285,12 +319,16 @@ func equalWhere(a, b map[string]string) bool {
 }
 
 // sortRules orders rules by specificity: more where columns first, then
-// a path rule before a whole-value one, then by ID so the order never
+// fewer glob where values (meta_key _field_3 before _field_*), then a
+// path rule before a whole-value one, then by ID so the order never
 // depends on map iteration.
 func sortRules(rs []core.Rule) {
 	slices.SortStableFunc(rs, func(a, b core.Rule) int {
 		if len(a.Where) != len(b.Where) {
 			return len(b.Where) - len(a.Where)
+		}
+		if ga, gb := globWheres(a), globWheres(b); ga != gb {
+			return ga - gb
 		}
 		if (a.Path == "") != (b.Path == "") {
 			if a.Path != "" {
@@ -303,6 +341,53 @@ func sortRules(rs []core.Rule) {
 		}
 		return strings.Compare(a.Table, b.Table)
 	})
+}
+
+// globWheres counts the where values of a rule that are patterns.
+func globWheres(r core.Rule) int {
+	n := 0
+	for _, v := range r.Where {
+		if hasGlob(v) {
+			n++
+		}
+	}
+	return n
+}
+
+// withRules returns a copy of c with rules added after the compile, such
+// as the per-form rules of the field-type row fixes. A columns: rule
+// still wins over them and rule IDs already in the
+// set are skipped, so adding the same rules twice changes nothing. The
+// caller has applied the policies (FieldTypes does).
+func (c *compiled) withRules(rs []core.Rule) *compiled {
+	out := *c
+	out.exact = make(map[string][]core.Rule, len(c.exact))
+	ids := map[string]bool{}
+	for t, list := range c.exact {
+		out.exact[t] = slices.Clone(list)
+		for _, r := range list {
+			ids[r.Table+"\x00"+r.ID] = true
+		}
+	}
+	out.globs = slices.Clone(c.globs)
+	touched := map[string]bool{}
+	for _, r := range rs {
+		if ids[r.Table+"\x00"+r.ID] || slices.ContainsFunc(c.user, func(u core.Rule) bool { return overrides(u, r) }) {
+			continue
+		}
+		ids[r.Table+"\x00"+r.ID] = true
+		if hasGlob(r.Table) {
+			out.globs = append(out.globs, r)
+			sortRules(out.globs)
+			continue
+		}
+		out.exact[r.Table] = append(out.exact[r.Table], r)
+		touched[r.Table] = true
+	}
+	for t := range touched {
+		sortRules(out.exact[t])
+	}
+	return &out
 }
 
 func sortedKeys[V any](m map[string]V) []string {

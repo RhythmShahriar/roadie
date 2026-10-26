@@ -1,0 +1,38 @@
+# Positive and negative rows for every rule of the laravel profile.
+# Laravel tables have no prefix; an old_ copy is a lookalike.
+rules:
+  "laravel.users.name":
+    positive: {table: users, row: {name: "Anna Lee"}}
+    negative: {table: old_users, row: {name: "Anna Lee"}}
+  "laravel.users.email":
+    positive: {table: users, row: {email: "anna.lee@example.com"}}
+    negative: {table: old_users, row: {email: "anna.lee@example.com"}}
+  "laravel.users.password":
+    positive: {table: users, row: {password: "x"}}
+    negative: {table: old_users, row: {password: "x"}}
+  "laravel.users.remember_token":
+    positive: {table: users, row: {remember_token: "x"}}
+    negative: {table: old_users, row: {remember_token: "x"}}
+  "laravel.users.two_factor_secret":
+    positive: {table: users, row: {two_factor_secret: "x"}}
+    negative: {table: old_users, row: {two_factor_secret: "x"}}
+  "laravel.users.two_factor_recovery_codes":
+    positive: {table: users, row: {two_factor_recovery_codes: "x"}}
+    negative: {table: old_users, row: {two_factor_recovery_codes: "x"}}
+  "laravel.notifications.data":
+    positive: {table: notifications, row: {data: "Call Anna on +44 7700 900123"}}
+    negative: {table: old_notifications, row: {data: "Call Anna on +44 7700 900123"}}
+lists:
+  "truncate:password_reset_tokens": {positive: password_reset_tokens, negative: old_password_reset_tokens}
+  "truncate:password_resets": {positive: password_resets, negative: old_password_resets}
+  "truncate:sessions": {positive: sessions, negative: old_sessions}
+  "truncate:personal_access_tokens": {positive: personal_access_tokens, negative: old_personal_access_tokens}
+  "truncate:cache": {positive: cache, negative: old_cache}
+  "truncate:cache_locks": {positive: cache_locks, negative: old_cache_locks}
+  "truncate:jobs": {positive: jobs, negative: old_jobs}
+  "truncate:job_batches": {positive: job_batches, negative: old_job_batches}
+  "truncate:failed_jobs": {positive: failed_jobs, negative: old_failed_jobs}
+  "truncate:telescope_entries": {positive: telescope_entries, negative: old_telescope_entries}
+  "truncate:telescope_entries_tags": {positive: telescope_entries_tags, negative: old_telescope_entries_tags}
+  "truncate:telescope_monitoring": {positive: telescope_monitoring, negative: old_telescope_monitoring}
+  "truncate:pulse_*": {positive: pulse_values, negative: pulse}

@@ -1,0 +1,14 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# WP Mail Logging keeps a copy of every mail sent: recipients, subjects and
+# bodies. A staging copy needs none of it, so the log is truncated.
+id: wp-mail-logging
+name: WP Mail Logging
+stack: wordpress
+checked_against: "docs: https://plugins.svn.wordpress.org/wp-mail-logging/trunk/src/Model/WPML_Mail.php"
+detect:
+  tables_any: ["{prefix}{site}wpml_mails"]
+  files: [wp-content/plugins/wp-mail-logging/wp-mail-logging.php]
+truncate:
+  - "{prefix}{site}wpml_mails"

@@ -1,0 +1,25 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# MailPoet: the subscriber list, queued sends and statistics.
+id: mailpoet
+name: MailPoet
+stack: wordpress
+checked_against: "docs: https://github.com/mailpoet/mailpoet/blob/trunk/mailpoet/lib/Entities/SubscriberEntity.php"
+detect:
+  tables_any: ["{prefix}{site}mailpoet_subscribers"]
+  files: [wp-content/plugins/mailpoet/mailpoet.php]
+rules:
+  - {table: "{prefix}{site}mailpoet_subscribers", column: email, rule: email, explain: "the subscriber's email"}
+  - {table: "{prefix}{site}mailpoet_subscribers", column: first_name, rule: first_name, explain: "the subscriber's first name"}
+  - {table: "{prefix}{site}mailpoet_subscribers", column: last_name, rule: last_name, explain: "the subscriber's last name"}
+  - {table: "{prefix}{site}mailpoet_subscribers", column: subscribed_ip, rule: ip, explain: "the IP address of the sign-up"}
+  - {table: "{prefix}{site}mailpoet_subscribers", column: confirmed_ip, rule: ip, explain: "the IP address of the confirmation click"}
+  - {table: "{prefix}{site}mailpoet_subscribers", column: unconfirmed_data, rule: text, explain: "a change waiting for confirmation, as JSON"}
+  - {table: "{prefix}{site}mailpoet_subscriber_custom_field", column: value, rule: text, explain: "custom sign-up fields such as a phone or a birthday"}
+  - {table: "{prefix}{site}mailpoet_subscriber_ips", column: ip, rule: ip, explain: "sign-up IP addresses kept for rate limits"}
+truncate:
+  - "{prefix}{site}mailpoet_sending_queues" # rendered mails and the subscriber IDs of sends in progress
+  - "{prefix}{site}mailpoet_log"            # sending logs
+keep:
+  - "{prefix}{site}mailpoet_statistics_*" # counts of opens and clicks by subscriber ID

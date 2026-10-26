@@ -1,0 +1,85 @@
+# Positive and negative rows for every rule of the edd profile.
+# Blogs 2 and 11 exist (their options tables), so {site} tables have wp_2_ and
+# wp_11_ copies; blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
+tables: [wp_2_options, wp_11_options]
+rules:
+  "edd.edd_customers.email":
+    positive: {table: wp_edd_customers, row: {email: "anna.lee@example.com"}}
+    negative: {table: wp_12_edd_customers, row: {email: "anna.lee@example.com"}}
+  "edd.edd_customers.name":
+    positive: {table: wp_2_edd_customers, row: {name: "Anna Lee"}}
+    negative: {table: wp_12_edd_customers, row: {name: "Anna Lee"}}
+  "edd.edd_customermeta.meta_value.additional_email":
+    positive: {table: wp_11_edd_customermeta, row: {meta_value: "anna.lee@example.com", meta_key: "additional_email"}}
+    negative: {table: wp_11_edd_customermeta, row: {meta_value: "anna.lee@example.com", meta_key: "xadditional_email"}}
+  "edd.edd_customer_email_addresses.email":
+    positive: {table: wp_edd_customer_email_addresses, row: {email: "anna.lee@example.com"}}
+    negative: {table: wp_12_edd_customer_email_addresses, row: {email: "anna.lee@example.com"}}
+  "edd.edd_customer_addresses.name":
+    positive: {table: wp_2_edd_customer_addresses, row: {name: "Anna Lee"}}
+    negative: {table: wp_12_edd_customer_addresses, row: {name: "Anna Lee"}}
+  "edd.edd_customer_addresses.address":
+    positive: {table: wp_11_edd_customer_addresses, row: {address: "1 High Street"}}
+    negative: {table: wp_12_edd_customer_addresses, row: {address: "1 High Street"}}
+  "edd.edd_customer_addresses.address2":
+    positive: {table: wp_edd_customer_addresses, row: {address2: "1 High Street"}}
+    negative: {table: wp_12_edd_customer_addresses, row: {address2: "1 High Street"}}
+  "edd.edd_customer_addresses.city":
+    positive: {table: wp_2_edd_customer_addresses, row: {city: "Leeds"}}
+    negative: {table: wp_12_edd_customer_addresses, row: {city: "Leeds"}}
+  "edd.edd_customer_addresses.region":
+    positive: {table: wp_11_edd_customer_addresses, row: {region: "x"}}
+    negative: {table: wp_12_edd_customer_addresses, row: {region: "x"}}
+  "edd.edd_customer_addresses.postal_code":
+    positive: {table: wp_edd_customer_addresses, row: {postal_code: "LS1 4AP"}}
+    negative: {table: wp_12_edd_customer_addresses, row: {postal_code: "LS1 4AP"}}
+  "edd.edd_customer_addresses.country":
+    positive: {table: wp_2_edd_customer_addresses, row: {country: "x"}}
+    negative: {table: wp_12_edd_customer_addresses, row: {country: "x"}}
+  "edd.edd_orders.email":
+    positive: {table: wp_11_edd_orders, row: {email: "anna.lee@example.com"}}
+    negative: {table: wp_12_edd_orders, row: {email: "anna.lee@example.com"}}
+  "edd.edd_orders.ip":
+    positive: {table: wp_edd_orders, row: {ip: "203.0.113.9"}}
+    negative: {table: wp_12_edd_orders, row: {ip: "203.0.113.9"}}
+  "edd.edd_order_addresses.name":
+    positive: {table: wp_2_edd_order_addresses, row: {name: "Anna Lee"}}
+    negative: {table: wp_12_edd_order_addresses, row: {name: "Anna Lee"}}
+  "edd.edd_order_addresses.address":
+    positive: {table: wp_11_edd_order_addresses, row: {address: "1 High Street"}}
+    negative: {table: wp_12_edd_order_addresses, row: {address: "1 High Street"}}
+  "edd.edd_order_addresses.address2":
+    positive: {table: wp_edd_order_addresses, row: {address2: "1 High Street"}}
+    negative: {table: wp_12_edd_order_addresses, row: {address2: "1 High Street"}}
+  "edd.edd_order_addresses.city":
+    positive: {table: wp_2_edd_order_addresses, row: {city: "Leeds"}}
+    negative: {table: wp_12_edd_order_addresses, row: {city: "Leeds"}}
+  "edd.edd_order_addresses.region":
+    positive: {table: wp_11_edd_order_addresses, row: {region: "x"}}
+    negative: {table: wp_12_edd_order_addresses, row: {region: "x"}}
+  "edd.edd_order_addresses.postal_code":
+    positive: {table: wp_edd_order_addresses, row: {postal_code: "LS1 4AP"}}
+    negative: {table: wp_12_edd_order_addresses, row: {postal_code: "LS1 4AP"}}
+  "edd.edd_order_addresses.country":
+    positive: {table: wp_2_edd_order_addresses, row: {country: "x"}}
+    negative: {table: wp_12_edd_order_addresses, row: {country: "x"}}
+  "edd.edd_order_transactions.transaction_id":
+    positive: {table: wp_11_edd_order_transactions, row: {transaction_id: "x"}}
+    negative: {table: wp_12_edd_order_transactions, row: {transaction_id: "x"}}
+  "edd.edd_logs.title":
+    positive: {table: wp_edd_logs, row: {title: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_edd_logs, row: {title: "Call Anna on +44 7700 900123"}}
+  "edd.edd_logs.content":
+    positive: {table: wp_2_edd_logs, row: {content: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_edd_logs, row: {content: "Call Anna on +44 7700 900123"}}
+  "edd.edd_logs_file_downloads.ip":
+    positive: {table: wp_11_edd_logs_file_downloads, row: {ip: "203.0.113.9"}}
+    negative: {table: wp_12_edd_logs_file_downloads, row: {ip: "203.0.113.9"}}
+  "edd.edd_logs_file_downloads.user_agent":
+    positive: {table: wp_edd_logs_file_downloads, row: {user_agent: "Mozilla/5.0"}}
+    negative: {table: wp_12_edd_logs_file_downloads, row: {user_agent: "Mozilla/5.0"}}
+  "edd.edd_notes.content":
+    positive: {table: wp_2_edd_notes, row: {content: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_edd_notes, row: {content: "Call Anna on +44 7700 900123"}}
+lists:
+  "truncate:{prefix}{site}edd_logs_api_requests": {positive: wp_edd_logs_api_requests, negative: wp_12_edd_logs_api_requests}

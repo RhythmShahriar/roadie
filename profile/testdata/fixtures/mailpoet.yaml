@@ -1,0 +1,33 @@
+# Positive and negative rows for every rule of the mailpoet profile.
+# Blogs 2 and 11 exist (their options tables), so {site} tables have wp_2_ and
+# wp_11_ copies; blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
+tables: [wp_2_options, wp_11_options]
+rules:
+  "mailpoet.mailpoet_subscribers.email":
+    positive: {table: wp_mailpoet_subscribers, row: {email: "anna.lee@example.com"}}
+    negative: {table: wp_12_mailpoet_subscribers, row: {email: "anna.lee@example.com"}}
+  "mailpoet.mailpoet_subscribers.first_name":
+    positive: {table: wp_2_mailpoet_subscribers, row: {first_name: "Anna"}}
+    negative: {table: wp_12_mailpoet_subscribers, row: {first_name: "Anna"}}
+  "mailpoet.mailpoet_subscribers.last_name":
+    positive: {table: wp_11_mailpoet_subscribers, row: {last_name: "Lee"}}
+    negative: {table: wp_12_mailpoet_subscribers, row: {last_name: "Lee"}}
+  "mailpoet.mailpoet_subscribers.subscribed_ip":
+    positive: {table: wp_mailpoet_subscribers, row: {subscribed_ip: "203.0.113.9"}}
+    negative: {table: wp_12_mailpoet_subscribers, row: {subscribed_ip: "203.0.113.9"}}
+  "mailpoet.mailpoet_subscribers.confirmed_ip":
+    positive: {table: wp_2_mailpoet_subscribers, row: {confirmed_ip: "203.0.113.9"}}
+    negative: {table: wp_12_mailpoet_subscribers, row: {confirmed_ip: "203.0.113.9"}}
+  "mailpoet.mailpoet_subscribers.unconfirmed_data":
+    positive: {table: wp_11_mailpoet_subscribers, row: {unconfirmed_data: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_mailpoet_subscribers, row: {unconfirmed_data: "Call Anna on +44 7700 900123"}}
+  "mailpoet.mailpoet_subscriber_custom_field.value":
+    positive: {table: wp_mailpoet_subscriber_custom_field, row: {value: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_mailpoet_subscriber_custom_field, row: {value: "Call Anna on +44 7700 900123"}}
+  "mailpoet.mailpoet_subscriber_ips.ip":
+    positive: {table: wp_2_mailpoet_subscriber_ips, row: {ip: "203.0.113.9"}}
+    negative: {table: wp_12_mailpoet_subscriber_ips, row: {ip: "203.0.113.9"}}
+lists:
+  "truncate:{prefix}{site}mailpoet_sending_queues": {positive: wp_mailpoet_sending_queues, negative: wp_12_mailpoet_sending_queues}
+  "truncate:{prefix}{site}mailpoet_log": {positive: wp_2_mailpoet_log, negative: wp_12_mailpoet_log}
+  "keep:{prefix}{site}mailpoet_statistics_*": {positive: wp_11_mailpoet_statistics_opens, negative: wp_12_mailpoet_statistics}

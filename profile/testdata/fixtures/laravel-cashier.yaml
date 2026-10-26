@@ -1,0 +1,23 @@
+# Positive and negative rows for every rule of the laravel-cashier profile.
+# Laravel tables have no prefix; an old_ copy is a lookalike.
+rules:
+  "laravel-cashier.users.stripe_id":
+    positive: {table: users, row: {stripe_id: "x"}}
+    negative: {table: old_users, row: {stripe_id: "x"}}
+  "laravel-cashier.users.pm_type":
+    positive: {table: users, row: {pm_type: "x"}}
+    negative: {table: old_users, row: {pm_type: "x"}}
+  "laravel-cashier.users.pm_last_four":
+    positive: {table: users, row: {pm_last_four: "x"}}
+    negative: {table: old_users, row: {pm_last_four: "x"}}
+  "laravel-cashier.users.trial_ends_at":
+    positive: {table: users, row: {trial_ends_at: "x"}}
+    negative: {table: old_users, row: {trial_ends_at: "x"}}
+  "laravel-cashier.subscriptions.stripe_id":
+    positive: {table: subscriptions, row: {stripe_id: "x"}}
+    negative: {table: old_subscriptions, row: {stripe_id: "x"}}
+  "laravel-cashier.subscriptions.stripe_price":
+    positive: {table: subscriptions, row: {stripe_price: "x"}}
+    negative: {table: old_subscriptions, row: {stripe_price: "x"}}
+lists:
+  "keep:subscription_items": {positive: subscription_items, negative: old_subscription_items}

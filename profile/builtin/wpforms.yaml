@@ -1,0 +1,30 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# WPForms: payments and logs (Lite) and entries (Pro). The field types of
+# each form live in its wpforms post's JSON; the wpforms-field-types row
+# fix reads them in pass 1 and gives every typed field its own rule, so
+# the rules on fields and value below are the fallback.
+id: wpforms
+name: WPForms
+stack: wordpress
+checked_against: "docs: https://plugins.svn.wordpress.org/wpforms-lite/trunk/src/Db/Payments/Payment.php"
+detect:
+  tables_any: ["{prefix}{site}wpforms_entries", "{prefix}{site}wpforms_payments", "{prefix}{site}wpforms_tasks_meta"]
+  files: [wp-content/plugins/wpforms-lite/wpforms.php, wp-content/plugins/wpforms/wpforms.php]
+rules:
+  - {table: "{prefix}{site}wpforms_entries", column: fields, rule: text, explain: "every field of the entry as JSON; wpforms-field-types fakes typed fields and the rest are scrubbed"}
+  - {table: "{prefix}{site}wpforms_entries", column: meta, rule: text, explain: "entry metadata as JSON"}
+  - {table: "{prefix}{site}wpforms_entries", column: ip_address, rule: ip, explain: "the IP address the entry came from"}
+  - {table: "{prefix}{site}wpforms_entries", column: user_agent, rule: user_agent, explain: "the browser the entry came from"}
+  - {table: "{prefix}{site}wpforms_entries", column: user_uuid, rule: blank, explain: "a cookie ID that follows the visitor across entries"}
+  - {table: "{prefix}{site}wpforms_entry_fields", column: value, rule: text, explain: "one field's value; wpforms-field-types fakes typed fields and the rest are scrubbed"}
+  - {table: "{prefix}{site}wpforms_entry_meta", column: data, rule: text, explain: "entry notes and logs"}
+  - {table: "{prefix}{site}wpforms_payments", column: title, rule: full_name, explain: "the payer's name shown in the payments list"}
+  - {table: "{prefix}{site}wpforms_payments", column: customer_id, rule: blank, explain: "the gateway's customer ID, which reaches the live account"}
+  - {table: "{prefix}{site}wpforms_payments", column: transaction_id, rule: blank, explain: "the gateway's transaction ID"}
+  - {table: "{prefix}{site}wpforms_payments", column: subscription_id, rule: blank, explain: "the gateway's subscription ID, which a renewal would charge"}
+  - {table: "{prefix}{site}wpforms_payment_meta", column: meta_value, rule: text, explain: "payment details such as the payer's email and IP"}
+truncate:
+  - "{prefix}{site}wpforms_logs" # debug logs that quote entries
+row_fixes: [wpforms-field-types]

@@ -1,0 +1,29 @@
+# Positive and negative rows for every rule of the fluent-forms profile.
+# Blogs 2 and 11 exist (their options tables), so {site} tables have wp_2_ and
+# wp_11_ copies; blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
+tables: [wp_2_options, wp_11_options]
+rules:
+  "fluent-forms.fluentform_submissions.response":
+    positive: {table: wp_fluentform_submissions, row: {response: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_fluentform_submissions, row: {response: "Call Anna on +44 7700 900123"}}
+  "fluent-forms.fluentform_submissions.source_url":
+    positive: {table: wp_2_fluentform_submissions, row: {source_url: "x"}}
+    negative: {table: wp_12_fluentform_submissions, row: {source_url: "x"}}
+  "fluent-forms.fluentform_submissions.ip":
+    positive: {table: wp_11_fluentform_submissions, row: {ip: "203.0.113.9"}}
+    negative: {table: wp_12_fluentform_submissions, row: {ip: "203.0.113.9"}}
+  "fluent-forms.fluentform_submissions.city":
+    positive: {table: wp_fluentform_submissions, row: {city: "Leeds"}}
+    negative: {table: wp_12_fluentform_submissions, row: {city: "Leeds"}}
+  "fluent-forms.fluentform_entry_details.field_value":
+    positive: {table: wp_2_fluentform_entry_details, row: {field_value: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_fluentform_entry_details, row: {field_value: "Call Anna on +44 7700 900123"}}
+  "fluent-forms.fluentform_submission_meta.value":
+    positive: {table: wp_11_fluentform_submission_meta, row: {value: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_fluentform_submission_meta, row: {value: "Call Anna on +44 7700 900123"}}
+  "fluent-forms.fluentform_logs.description":
+    positive: {table: wp_fluentform_logs, row: {description: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_fluentform_logs, row: {description: "Call Anna on +44 7700 900123"}}
+lists:
+  "truncate:{prefix}{site}fluentform_form_analytics": {positive: wp_fluentform_form_analytics, negative: wp_12_fluentform_form_analytics}
+  "truncate:{prefix}{site}fluentform_draft_submissions": {positive: wp_2_fluentform_draft_submissions, negative: wp_12_fluentform_draft_submissions}
