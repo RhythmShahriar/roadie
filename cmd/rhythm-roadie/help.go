@@ -126,7 +126,7 @@ const safetyHelp = `Target safety:
   -y, --yes                  don't ask before replacing the target's database
       --fix-collation        rewrite MySQL 8 collations (utf8mb4_0900_*) for older MariaDB
       --jobs <n>             transform workers (default the number of CPUs, at most 8)
-      --max-memory <size>    soft memory limit (default 1GiB)
+      --max-memory <size>    soft memory limit (default 300MiB, or GOMEMLIMIT)
       --max-value <size>     largest single value accepted (default 256MiB)
       --max-output-ratio <n> stop when the dump grows past n times its compressed size
                              (default 20)

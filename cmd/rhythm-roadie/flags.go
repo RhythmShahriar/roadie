@@ -27,9 +27,11 @@ import (
 
 // Defaults of PRD 6.4 that aren't zero values.
 const (
-	defaultEchoURL        = "http://127.0.0.1:8025"
-	defaultEmailDomain    = "example.invalid"
-	defaultMaxMemory      = 1 << 30
+	defaultEchoURL     = "http://127.0.0.1:8025"
+	defaultEmailDomain = "example.invalid"
+	// defaultMaxMemory is no --max-memory: the engine then sets a 300 MiB
+	// soft limit (PRD 22.3's peak), unless GOMEMLIMIT set one.
+	defaultMaxMemory      = 0
 	defaultMaxValue       = 256 << 20
 	defaultMaxOutputRatio = 20
 	maxJobs               = 8

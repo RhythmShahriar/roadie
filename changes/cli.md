@@ -39,7 +39,7 @@ Additions to the PRD's help blocks, in their style:
 - `Keys and side effects:`: `--noindex=off          don't add noindex, robots and the crawler block (default on)`
 - plan: `--schema-only` and `--fail-on` with `none (default)`
 
-Defaults: `--email-domain example.invalid`, `--keys swap`, `--echo-url` from `RHYTHM_ECHO_URL` else `http://127.0.0.1:8025`, `--jobs` the number of CPUs at most 8, `--max-memory 1GiB`, `--max-value 256MiB`, `--max-output-ratio 20`, `--fail-on high` for copy, prepare and verify (`verify.fail_on` in the config fills it), `--fail-on none` for plan (only its own flag changes it), signing on, noindex on.
+Defaults: `--email-domain example.invalid`, `--keys swap`, `--echo-url` from `RHYTHM_ECHO_URL` else `http://127.0.0.1:8025`, `--jobs` the number of CPUs at most 8, `--max-memory` none (the engine sets 300MiB unless `GOMEMLIMIT` is set), `--max-value 256MiB`, `--max-output-ratio 20`, `--fail-on high` for copy, prepare and verify (`verify.fail_on` in the config fills it), `--fail-on none` for plan (only its own flag changes it), signing on, noindex on.
 
 A flag wins over the config, the config over the default. The config fills `source`, `target`, `url`, `url_map` (merged pair by pair), `stack` (`auto` detects), `production` (`--production` adds to it on every command), `pseudonymise.keep_users`, `email_domain`, `consistency: stable` (as `--keep-key`), `drop`, `truncate`, `keys.mode`, `side_effects.echo.url` and `proxy`, `noindex: false`, `basic_auth: true`, `verify.allow_emails`, `allow_phones`, `skip`, `sign: false`, `keys.ignore` and `verify.ignore`.
 

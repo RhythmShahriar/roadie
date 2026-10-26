@@ -244,7 +244,7 @@ func TestDefaults(t *testing.T) {
 	testDeps(t, nil)
 	o := buildFor(t, nil, "copy").job.Opts
 	if o.EmailDomain != "example.invalid" || o.Keys != "swap" || o.EchoURL != "http://127.0.0.1:8025" ||
-		o.Jobs < 1 || o.Jobs > 8 || o.MaxMemory != 1<<30 || o.MaxValue != 256<<20 || o.MaxOutputRatio != 20 ||
+		o.Jobs < 1 || o.Jobs > 8 || o.MaxMemory != 0 || o.MaxValue != 256<<20 || o.MaxOutputRatio != 20 ||
 		o.FailOn != core.SeverityHigh || o.NoIndex || o.Offline {
 		t.Errorf("copy defaults: %+v", o)
 	}
