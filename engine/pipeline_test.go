@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"runtime/debug"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -744,6 +746,46 @@ func TestPipelinePhasesAndMemoryLimit(t *testing.T) {
 	if after := debug.SetMemoryLimit(-1); after != before {
 		t.Errorf("memory limit left at %d, was %d", after, before)
 	}
+}
+
+// Without --max-memory a run sets the default soft limit, unless one
+// (GOMEMLIMIT) is already set; it puts the limit back after.
+func TestPipelineDefaultMemoryLimit(t *testing.T) {
+	useFakes(t)
+	before := debug.SetMemoryLimit(math.MaxInt64)
+	defer debug.SetMemoryLimit(before)
+	var seen []int64
+	var mu sync.Mutex
+	for _, preset := range []int64{math.MaxInt64, 700 << 20} {
+		debug.SetMemoryLimit(preset)
+		p, _ := genPipeline(t, 3, 0, sqlConfig("email"))
+		p.newWorker = func(*shared, core.Faker) batchWorker { return seenWorker{&mu, &seen} }
+		if _, err := p.run(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if after := debug.SetMemoryLimit(-1); after != preset {
+			t.Errorf("memory limit left at %d, was %d", after, preset)
+		}
+	}
+	if len(seen) == 0 || seen[0] != defaultMemory || seen[len(seen)-1] != 700<<20 {
+		t.Errorf("limits during the runs %v", seen)
+	}
+	if windowFor(0) != windowBytes || windowFor(200<<20) != 50<<20 || windowFor(1<<20) != core.MaxBatchBytes || windowFor(4<<30) != windowBytes {
+		t.Error("windowFor")
+	}
+}
+
+// seenWorker records the memory limit while the run transforms.
+type seenWorker struct {
+	mu   *sync.Mutex
+	seen *[]int64
+}
+
+func (w seenWorker) transform(context.Context, *core.Batch, *profile.Compiled) (*batchOut, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	*w.seen = append(*w.seen, debug.SetMemoryLimit(-1))
+	return &batchOut{}, nil
 }
 
 // limitWorker checks the memory limit is set while the run transforms.

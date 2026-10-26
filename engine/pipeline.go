@@ -268,6 +268,7 @@ func (t *tally) merge(b *core.Batch, o *batchOut) {
 // job is one batch on its way through the workers to the writer.
 type job struct {
 	b    *core.Batch
+	cost int64 // batchCost, held in the window until written
 	comp *profile.Compiled
 	out  *batchOut
 	err  error
@@ -346,8 +347,8 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 			err = cerr
 		}
 	}()
-	if p.opts.MaxMemory > 0 {
-		prev := debug.SetMemoryLimit(p.opts.MaxMemory)
+	if limit := memoryLimit(p.opts.MaxMemory); limit > 0 {
+		prev := debug.SetMemoryLimit(limit)
 		defer debug.SetMemoryLimit(prev)
 	}
 	if p.opts.OnePass && len(p.cfg.Pseudonymise.KeepUsers) > 0 {
@@ -630,7 +631,10 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 	jobs := p.jobs()
 	ctx2, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
-	order := make(chan *job, 2*jobs) // the window: the reader waits when it is full
+	// The window: the reader waits when 2 x jobs batches or the window's
+	// bytes are in flight, whichever comes first.
+	order := make(chan *job, 2*jobs)
+	win := newWindow(windowFor(p.opts.MaxMemory))
 	work := make(chan *job, jobs)
 	var wg sync.WaitGroup
 	for range jobs {
@@ -683,9 +687,12 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 			if comp != nil && skipBatch(b, comp) {
 				continue
 			}
-			j := &job{b: b, comp: comp, done: make(chan struct{})}
+			j := &job{b: b, comp: comp, done: make(chan struct{}), cost: batchCost(b)}
 			if b.Table == nil {
 				close(j.done)
+			}
+			if err := win.take(ctx2, j.cost); err != nil {
+				return
 			}
 			select {
 			case order <- j:
@@ -719,6 +726,7 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 			}
 			p.advance(&last, j.b.Offset)
 		}
+		win.give(j.cost)
 		if werr != nil {
 			cancel(werr)
 			break
