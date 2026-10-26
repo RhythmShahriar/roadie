@@ -576,7 +576,7 @@ func TestSQLiteSourceCancel(t *testing.T) {
 	}
 }
 
-// A mysql client DELIMITER line is never sent to the database, and the
+// A mysql client DELIMITER line is never sent to the database. The
 // statements it covers reach it without the custom delimiter.
 func TestSinkDelimiterNeverRuns(t *testing.T) {
 	ctx := context.Background()
