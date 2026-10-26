@@ -110,7 +110,7 @@ Target, additionally:
 - `ls -lnLd -- <path>` (reads an existing file's mode, owner and group before a write)
 - write over an existing file, keeping its mode and, where the ssh user may set them, its owner and group: `umask 077 && cat > <tmp> && { chown <uid>:<gid> -- <tmp> 2>/dev/null || chgrp <gid> -- <tmp> 2>/dev/null || :; } && chmod <0nnn> -- <tmp> && mv -f -- <tmp> <path>`
 - `mkdir -p -- <path>`, `rm -f -- <path>`
-- `wp --path=<path> eval-file -` (the Echo connector script on stdin)
+- `wp --path=<path> eval-file - --skip-plugins --skip-themes` (the Echo connector script on stdin; plugins and themes stay unloaded, so a copied plugin can't send mail before the connector is in place)
 - `cat -- <path>`, `test -f -- <path>` for any path (the kill-switch checks read the mu-plugins)
 
 A template outside the list panics under `go test` and is an error otherwise (`remote command not in the allowlist`). Arguments with NUL or line breaks are refused.

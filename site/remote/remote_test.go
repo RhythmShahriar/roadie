@@ -107,7 +107,7 @@ func TestExactCommands(t *testing.T) {
 		{Find, []string{"/srv/up", "2"}, `find '/srv/up' -maxdepth 2 -printf '%y %s %P\n'`},
 		{MySQLDump, []string{"shop"}, "mysqldump --defaults-extra-file=/dev/stdin --single-transaction --skip-triggers --no-tablespaces --hex-blob 'shop'"},
 		{Backup, []string{"2026-10-26T14-02-03"}, "set -C && umask 077 && mkdir -p ~/.roadie-backups && { ~/bin/wp --path='/var/www/shop' db export - --skip-plugins --skip-themes --single-transaction || echo 'roadie: wp db export failed' >&2; } | gzip > ~/.roadie-backups/2026-10-26T14-02-03.sql.gz"},
-		{EvalFile, nil, "~/bin/wp --path='/var/www/shop' eval-file -"},
+		{EvalFile, nil, "~/bin/wp --path='/var/www/shop' eval-file - --skip-plugins --skip-themes"},
 		{Stat, []string{"/srv/shop/wp-config.php"}, "ls -lnLd -- '/srv/shop/wp-config.php'"},
 		{WriteKeep, []string{"/s/.x.t", "1001", "33", "/s/.x.t", "33", "/s/.x.t", "0644", "/s/.x.t", "/s/.x.t", "/s/x"},
 			"umask 077 && cat > '/s/.x.t' && { chown 1001:33 -- '/s/.x.t' 2>/dev/null || chgrp 33 -- '/s/.x.t' 2>/dev/null || :; } && chmod 0644 -- '/s/.x.t' && mv -f -- '/s/.x.t' '/s/x'"},

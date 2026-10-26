@@ -282,7 +282,7 @@ func TestSSHFiles(t *testing.T) {
 	if err := s.(*sshSite).EvalFile(ctx, []byte("<?php echo 1;")); err != nil {
 		t.Fatal(err)
 	}
-	if got := remoteCmd(sh.Calls()[len(sh.Calls())-1]); got != "wp --path='/srv/shop' eval-file -" {
+	if got := remoteCmd(sh.Calls()[len(sh.Calls())-1]); got != "wp --path='/srv/shop' eval-file - --skip-plugins --skip-themes" {
 		t.Fatalf("eval-file %s", got)
 	}
 	if _, err := s.WP(ctx, "plugin", "list"); !errors.Is(err, remote.ErrNotAllowed) {

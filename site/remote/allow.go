@@ -91,7 +91,10 @@ var templates = map[Template]template{
 	Stat:      {format: "ls -lnLd -- %q", target: true},
 	Mkdir:     {format: "mkdir -p -- %q", target: true},
 	Remove:    {format: "rm -f -- %q", target: true},
-	EvalFile:  {format: "%w eval-file -", target: true},
+	// EvalFile skips plugins and themes like every other wp command: a
+	// copied plugin that mails on init would otherwise send through the
+	// host's sendmail before the connector it installs is there.
+	EvalFile: {format: "%w eval-file - --skip-plugins --skip-themes", target: true},
 }
 
 // backupFailed is what the backup command prints when wp db export
