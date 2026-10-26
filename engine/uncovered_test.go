@@ -234,3 +234,33 @@ func TestTextColumn(t *testing.T) {
 		t.Error("thousands")
 	}
 }
+
+// plan --schema-only lists the rules each table's columns match, with no
+// counts; a rule on a column the table lacks is left out.
+func TestSchemaChanges(t *testing.T) {
+	s := &core.Schema{Prefix: "wp_", Tables: []*core.Table{
+		table("wp_options", "option_id:bigint", "option_name", "option_value", "autoload"),
+		table("wp_users", "ID:bigint", "user_login", "user_email", "user_pass"),
+		table("wp_usermeta", "umeta_id:bigint", "user_id:bigint", "meta_key", "meta_value"),
+		table("wp_custom", "id:bigint", "note"),
+	}}
+	got := schemaChanges(s, mustCompile(t, s, nil))
+	cols := map[string]int{}
+	for _, c := range got {
+		if c.Values != 0 || c.Rows != 0 || c.Kept != 0 || c.Rule == "" {
+			t.Errorf("change with counts or no rule: %+v", c)
+		}
+		cols[c.Table+"."+c.Column]++
+	}
+	if cols["wp_users.user_email"] != 1 || cols["wp_usermeta.meta_value"] < 5 {
+		t.Errorf("columns %v", cols)
+	}
+	for k := range cols {
+		if strings.HasPrefix(k, "wp_custom.") || k == "wp_users.display_name" {
+			t.Errorf("%s has no rule or no column, yet is listed", k)
+		}
+	}
+	if schemaChanges(nil, nil) != nil {
+		t.Error("no schema gave changes")
+	}
+}

@@ -928,8 +928,38 @@ func (p *pipeline) fill(out *output, idx *indexer, c *profile.Compiled, schema *
 			rows = t.rows
 		}
 	}
+	if t == nil && p.indexOnly {
+		// plan --schema-only reads no rows: each table lists the rules
+		// that apply to its columns, with nothing counted.
+		r.Changes = schemaChanges(schema, c)
+	}
 	r.Findings = agg.Findings()
 	r.Tables = tableReports(schema, c, rows, r.Changes)
+}
+
+// schemaChanges are the rules a schema's columns match, as changes with
+// no counts: what plan --schema-only shows for each table.
+func schemaChanges(s *core.Schema, c *profile.Compiled) []core.Change {
+	if s == nil || c == nil {
+		return nil
+	}
+	m := map[changeKey]*core.Change{}
+	for _, t := range s.Tables {
+		has := map[string]bool{}
+		for _, col := range t.Columns {
+			has[col.Name] = true
+		}
+		for _, rl := range c.Rules(t.Name) {
+			if !has[rl.Column] {
+				continue
+			}
+			k := changeKey{table: t.Name, column: rl.Column, rule: rl.ID}
+			if _, ok := m[k]; !ok {
+				m[k] = &core.Change{Rule: rl.ID, Table: t.Name, Column: rl.Column, Action: rl.Action}
+			}
+		}
+	}
+	return sortedChanges(m)
 }
 
 // sortedChanges lists the changes by table, column and rule.
