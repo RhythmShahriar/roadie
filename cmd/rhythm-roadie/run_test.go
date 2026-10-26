@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -565,5 +566,38 @@ func TestColorSwitches(t *testing.T) {
 		if strings.Contains(out, "╭") != c.box || strings.Contains(out, "\x1b[") != c.ansi || strings.Contains(out, "✓") != c.box {
 			t.Errorf("%s: box %v ansi %v glyphs %v", c.name, strings.Contains(out, "╭"), strings.Contains(out, "\x1b["), strings.Contains(out, "✓"))
 		}
+	}
+}
+
+// Advance once a row keeps a bounded window and the right speed.
+func TestProgressSamplesBounded(t *testing.T) {
+	now := testNow
+	p := newProgress(io.Discard, true, false, func() time.Time { return now })
+	p.Phase("transform", 1<<40)
+	for i := 0; i < 200_000; i++ { // 20 s at 1 MB/s in 100 µs steps
+		now = now.Add(100 * time.Microsecond)
+		p.Advance(100)
+	}
+	if n := len(p.samples); n > 60 {
+		t.Errorf("%d samples kept, want about 50", n)
+	}
+	if r := p.rate(); r < 0.99e6 || r > 1.01e6 {
+		t.Errorf("rate %.0f B/s, want 1 MB/s", r)
+	}
+	// A stall shows in the average within the window.
+	now = now.Add(4 * time.Second)
+	p.Advance(0)
+	if r := p.rate(); r > 0.3e6 {
+		t.Errorf("rate after a 4 s stall %.0f B/s", r)
+	}
+}
+
+// Sizes near int64's limit draw a full bar, not an overflowed one.
+func TestProgressHugeSizes(t *testing.T) {
+	p := newProgress(io.Discard, true, false, func() time.Time { return testNow })
+	p.Phase("transform", 1<<62)
+	p.Advance(1 << 62)
+	if l := p.line(); !strings.Contains(l, strings.Repeat("█", barWidth)) || strings.Contains(l, "░") {
+		t.Errorf("line %q", l)
 	}
 }
