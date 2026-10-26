@@ -176,7 +176,7 @@ func addSuggestions(tmpl []byte, us []core.Uncovered) []byte {
 	block.WriteString("# Suggested by config init --from: these columns look personal and no profile covers them.\n")
 	block.WriteString("# Check each rule, then uncomment it (and set columns: to the list).\n")
 	for _, u := range us {
-		fmt.Fprintf(&block, "#  - table: %s\n#    column: %s\n#    rule: %s\n", safe(u.Table), safe(u.Column), ruleGuess(u.Column))
+		fmt.Fprintf(&block, "#  - table: %s\n#    column: %s\n#    rule: %s\n", commentText(u.Table), commentText(u.Column), ruleGuess(u.Column))
 	}
 	lines := strings.SplitAfter(string(tmpl), "\n")
 	for i, l := range lines {
@@ -187,6 +187,15 @@ func addSuggestions(tmpl []byte, us []core.Uncovered) []byte {
 	}
 	return append(append(append([]byte{}, tmpl...), '\n'), block.Bytes()...)
 }
+
+// yamlBreaks are what yaml.v3 reads as a line break: CR, LF, NEL, LINE
+// SEPARATOR and PARAGRAPH SEPARATOR (term.SafeText keeps the last two).
+var yamlBreaks = strings.NewReplacer("\r", " ", "\n", " ", "\u0085", " ", "\u2028", " ", "\u2029", " ")
+
+// commentText makes a name read from the source safe inside a YAML
+// comment. The source is untrusted: a table or column name with a line
+// break YAML reads as one would end the comment and add real config keys.
+func commentText(s string) string { return yamlBreaks.Replace(safe(s)) }
 
 // roadieVar is a ${ROADIE_*} reference in the config.
 var roadieVar = regexp.MustCompile(`\$\{(ROADIE_[A-Z0-9_]+)\}`)

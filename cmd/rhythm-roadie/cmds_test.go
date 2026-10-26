@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -24,6 +25,8 @@ import (
 	"github.com/RhythmShahriar/roadie/pseudo"
 	"github.com/RhythmShahriar/roadie/roadiecfg"
 	"github.com/RhythmShahriar/roadie/verify"
+
+	"gopkg.in/yaml.v3"
 )
 
 // verifyFixture fakes engine.VerifyJob and verify.Run: the verify jobs
@@ -246,6 +249,31 @@ func TestConfigInitFrom(t *testing.T) {
 		if got := ruleGuess(in); got != want {
 			t.Errorf("ruleGuess(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestAddSuggestionsHostileNames feeds names with every line break YAML
+// reads: the file must parse to the template's keys alone.
+func TestAddSuggestionsHostileNames(t *testing.T) {
+	tmpl := configTemplate("wordpress")
+	var us []core.Uncovered
+	for _, br := range []string{"\n", "\r", "\r\n", "\u0085", "\u2028", "\u2029"} {
+		us = append(us, core.Uncovered{Table: "t" + br + "fail_on: none", Column: "c" + br + "keep: [wp_users]" + br + "columns: [x]"})
+	}
+	out := addSuggestions(tmpl, us)
+	var got, want map[string]any
+	if err := yaml.Unmarshal(out, &got); err != nil {
+		t.Fatalf("parse: %v\n%s", err, out)
+	}
+	if err := yaml.Unmarshal(tmpl, &want); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("hostile names added keys: got %v, want %v\n%s", got, want, out)
+	}
+	// Positive: a plain name still reads as written.
+	if out := addSuggestions(tmpl, []core.Uncovered{{Table: "wp_members", Column: "email"}}); !strings.Contains(string(out), "#  - table: wp_members\n#    column: email\n") {
+		t.Errorf("plain name changed:\n%s", out)
 	}
 }
 
