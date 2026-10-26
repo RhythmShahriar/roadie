@@ -43,8 +43,9 @@ jobs:
           docker run --rm --network none -v "$PWD:/repo:ro" -w /repo \
             koalaman/shellcheck@sha256:2097951f02e735b613f4a34de20c40f937a6c8f18ecb170612c88c34517221fb "${files[@]}"
 
-  # The PHP serialized codec and the wp-config editor are checked against
-  # real PHP (unserialize and php -l) on every OS. ROADIE_REQUIRE_PHP makes
+  # The PHP serialized codec, the wp-config editor and the password hashes
+  # are checked against real PHP (unserialize, php -l and
+  # password_verify) on every OS. ROADIE_REQUIRE_PHP makes
   # testutil.RequirePHP fail instead of skip, so a missing PHP can't pass.
   php-oracle:
     strategy:
@@ -63,7 +64,31 @@ jobs:
         with:
           php-version: "8.3"
           coverage: none
-      - run: go test ./codec/... ./site/...
+      - run: go test ./codec/... ./site/... ./pseudo
+
+  # The release config builds every archive, the profile pack included,
+  # as a snapshot: no tag, no signature, nothing published. The shared go
+  # job runs goreleaser check only.
+  goreleaser-snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: v2.18.3
+          args: release --snapshot --clean --skip=sign,publish
+      - name: archive names
+        run: |
+          for a in linux_amd64.tar.gz linux_arm64.tar.gz darwin_amd64.tar.gz darwin_arm64.tar.gz windows_amd64.zip windows_arm64.zip profiles.tar.gz; do
+            test -f "dist/rhythm-roadie_$a" || { echo "missing dist/rhythm-roadie_$a"; exit 1; }
+          done
+          test -f dist/checksums.txt
 
   # Every fuzz target for 5 s (the list is FUZZ_TARGETS in the Makefile).
   fuzz-smoke:
