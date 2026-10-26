@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -149,8 +150,12 @@ var changeWords = map[core.Action]string{
 }
 
 // tableWhat says what happens to one table: its columns grouped by action,
-// "user_email, user_login → fake; user_pass → reset".
-func tableWhat(t core.TableReport, changes []core.Change) string {
+// "user_email, user_login → fake; user_pass → reset". A column several
+// rules touch (meta_value, option_value) is listed once, under the action
+// that changed most of its values: a column is changed when any of its
+// rules changes values. counted is false for plan --schema-only, which
+// reads no rows: the action most of the column's rules take wins.
+func tableWhat(t core.TableReport, changes []core.Change, counted bool) string {
 	switch core.Action(t.Action) {
 	case core.Truncate:
 		return "truncated" + profileNote(t.Profile)
@@ -159,26 +164,65 @@ func tableWhat(t core.TableReport, changes []core.Change) string {
 	case core.Keep:
 		return "kept as it is"
 	}
-	byCol := map[string]core.Action{}
+	type colAction struct {
+		action core.Action
+		values int64
+	}
+	// What each action does to each column: the values it changed, or
+	// without counts the rules that apply.
+	sums := map[string]map[core.Action]int64{}
+	var colOrder []string
+	var actOrder []core.Action
 	for _, c := range changes {
-		if c.Table == t.Name {
-			byCol[c.Column] = c.Action
+		if c.Table != t.Name {
+			continue
+		}
+		if _, seen := sums[c.Column]; !seen {
+			colOrder = append(colOrder, c.Column)
+			sums[c.Column] = map[core.Action]int64{}
+		}
+		a := cmp.Or(c.Action, core.Fake)
+		if a == core.Keep || counted && c.Values == 0 {
+			continue
+		}
+		if !slices.Contains(actOrder, a) {
+			actOrder = append(actOrder, a)
+		}
+		if counted {
+			sums[c.Column][a] += c.Values
+		} else {
+			sums[c.Column][a]++
+		}
+	}
+	best := map[string]colAction{}
+	for col, by := range sums {
+		var b colAction
+		for _, a := range actOrder {
+			if n := by[a]; n > b.values {
+				b = colAction{action: a, values: n}
+			}
+		}
+		best[col] = b
+	}
+	// A column report without a change of its own (a canned result) is
+	// faked.
+	for _, c := range t.Columns {
+		if _, ok := best[c.Name]; !ok {
+			colOrder = append(colOrder, c.Name)
+			best[c.Name] = colAction{action: core.Fake, values: c.Changed}
 		}
 	}
 	var order []core.Action
 	cols := map[core.Action][]string{}
-	for _, c := range t.Columns {
-		a := byCol[c.Name]
+	for _, name := range colOrder {
+		a := best[name].action
 		if a == "" {
-			a = core.Fake
-		}
-		if a == core.Keep {
 			continue
 		}
 		if _, ok := cols[a]; !ok {
 			order = append(order, a)
 		}
-		cols[a] = append(cols[a], c.Name)
+		cols[a] = append(cols[a], name)
 	}
 	var parts []string
 	for _, a := range order {
@@ -186,7 +230,7 @@ func tableWhat(t core.TableReport, changes []core.Change) string {
 	}
 	var kept int64
 	for _, c := range t.Columns {
-		if byCol[c.Name] != core.Keep {
+		if best[c.Name].action != "" {
 			kept = max(kept, c.Kept)
 		}
 	}
@@ -219,26 +263,42 @@ func changedTables(r *core.Result) []core.TableReport {
 }
 
 // dataSection prints DATA: each changed table (every table with -v), with
-// the rule of each column under it with -v.
-func (v *view) dataSection(r *core.Result) {
+// the rule of each column under it with -v. counted is false for plan
+// --schema-only, which reads no rows and so has no counts.
+func (v *view) dataSection(r *core.Result, counted bool) {
 	tables := changedTables(r)
 	if v.o.verbose {
 		tables = r.Tables
 	}
-	v.section("DATA", len(changedTables(r)), "tables", ui.Signal)
+	if len(tables) == 0 {
+		return
+	}
+	n := len(changedTables(r))
+	v.section("DATA", n, unitWord(int64(n), "table", "tables"), ui.Signal)
 	for i, t := range tables {
 		if i == shownTables && !v.o.verbose {
 			v.item(fmt.Sprintf("... %d more (rhythm-roadie plan -v lists them)", len(tables)-shownTables))
 			break
 		}
-		v.row(t.Name, num(t.Rows)+" rows", tableWhat(t, r.Changes))
+		v.row(t.Name, plural(t.Rows, "row", "rows"), tableWhat(t, r.Changes, counted))
 		if v.o.verbose {
 			for _, c := range t.Columns {
 				line := fmt.Sprintf("%s.%s: rule %s, %s changed, %s kept", t.Name, c.Name, c.Rule, num(c.Changed), num(c.Kept))
+				if !counted {
+					line = fmt.Sprintf("%s.%s: rule %s", t.Name, c.Name, c.Rule)
+				}
 				v.under("      " + line)
 			}
 		}
 	}
+}
+
+// unitWord is one or many by n.
+func unitWord(n int64, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // liveKeys are the keys that are live, the ones the KEYS block counts.
@@ -454,9 +514,9 @@ func (v *view) planView(r *core.Result, j engine.Job, tm *timings) {
 		v.setting("Rows", "not read (--schema-only): counts are estimates")
 	}
 
-	v.dataSection(r)
+	v.dataSection(r, !j.Opts.SchemaOnly || j.Opts.OnePass)
 	if keys := liveKeys(r.Keys); len(keys) > 0 {
-		v.section("KEYS", len(keys), "live keys", sevColor(core.SeverityCritical))
+		v.section("KEYS", len(keys), unitWord(int64(len(keys)), "live key", "live keys"), sevColor(core.SeverityCritical))
 		v.keyCards(keys)
 	}
 	v.effectsBlock(r, j)
@@ -565,7 +625,7 @@ func (v *view) resultView(r *core.Result, j engine.Job, reportPath string, tm *t
 		plural(int64(s.TablesPseudonymised), "table", "tables"), plural(int64(len(liveKeys(r.Keys))), "live key", "live keys"),
 		plural(int64(len(r.SideEffects)), "side effect", "side effects")))
 	if v.o.verbose {
-		v.dataSection(r)
+		v.dataSection(r, true)
 		v.editsBlock(r)
 	}
 	v.blank()

@@ -676,3 +676,35 @@ func TestCopySoundcheckNote(t *testing.T) {
 		t.Errorf("a Soundcheck line without --soundcheck:\n%s", out)
 	}
 }
+
+// A column several rules touch is listed once, under the action that
+// changed most values; a keep rule or a rule that changed nothing never
+// makes it look kept or changed.
+func TestTableWhatGroupsColumns(t *testing.T) {
+	tr := core.TableReport{Name: "wp_usermeta", Action: string(core.Fake)}
+	changes := []core.Change{
+		{Rule: "a", Table: "wp_usermeta", Column: "meta_value", Action: core.Fake, Values: 400},
+		{Rule: "b", Table: "wp_usermeta", Column: "meta_value", Action: core.Fake, Values: 400},
+		{Rule: "c", Table: "wp_usermeta", Column: "meta_value", Action: core.Blank, Values: 40},
+		{Rule: "d", Table: "wp_usermeta", Column: "meta_value", Action: core.Keep, Values: 0},
+		{Rule: "e", Table: "wp_usermeta", Column: "meta_key", Action: core.Blank, Values: 0},
+		{Rule: "f", Table: "wp_options", Column: "option_value", Action: core.Blank, Values: 9},
+	}
+	for _, c := range changes {
+		if c.Table == tr.Name {
+			tr.Columns = append(tr.Columns, core.ColumnReport{Name: c.Column, Rule: c.Rule, Changed: c.Values})
+		}
+	}
+	if got := tableWhat(tr, changes, true); got != "meta_value → fake" {
+		t.Errorf("counted: %q", got)
+	}
+	// --schema-only: the action most rules take, every rule column listed.
+	if got := tableWhat(tr, changes, false); got != "meta_value → fake; meta_key → blank" {
+		t.Errorf("schema-only: %q", got)
+	}
+	// Only keep rules: nothing changes.
+	keep := []core.Change{{Rule: "k", Table: "t", Column: "c", Action: core.Keep}}
+	if got := tableWhat(core.TableReport{Name: "t", Action: string(core.Fake), Columns: []core.ColumnReport{{Name: "c"}}}, keep, true); got != "no column changes" {
+		t.Errorf("keep only: %q", got)
+	}
+}
