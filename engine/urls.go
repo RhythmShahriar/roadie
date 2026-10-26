@@ -129,7 +129,17 @@ func buildURLPlan(src urlSources, staging string, urlMap map[string]string) (url
 	for h := range prod {
 		plan.Production = append(plan.Production, h)
 	}
-	slices.Sort(plan.Production)
+	// Sorted, with the main site's host (siteurl or APP_URL) first: the
+	// plan's URL line names it as the copy's "from".
+	slices.SortFunc(plan.Production, func(a, b string) int {
+		switch {
+		case a == mainHost:
+			return -1
+		case b == mainHost:
+			return 1
+		}
+		return strings.Compare(a, b)
+	})
 	if strings.TrimSpace(staging) == "" {
 		return plan, nil
 	}

@@ -625,3 +625,14 @@ func TestPlainErrorsGetCodes(t *testing.T) {
 		t.Errorf("other: %+v", ce)
 	}
 }
+
+// The plan's URL line runs from production's main URL to the copy's.
+func TestPlanURLLine(t *testing.T) {
+	var b bytes.Buffer
+	v := &view{w: &b, o: viewOpts{plain: true}}
+	r := &core.Result{URL: "https://staging.shop.test", Production: []string{"shop.com", "*.shop.com", "fr.shop.com"}}
+	v.planView(r, engine.Job{Opts: engine.Options{URL: "https://staging.shop.test"}}, nil)
+	if !strings.Contains(b.String(), "URLs: shop.com (and 1 more) → https://staging.shop.test") {
+		t.Errorf("plan:\n%s", b.String())
+	}
+}

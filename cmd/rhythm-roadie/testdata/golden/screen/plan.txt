@@ -5,7 +5,7 @@ Source: ssh://deploy@shop.com/var/www/shop (MySQL 8.0, 2.4 GB, 5 tables)
 Target: /var/www/staging (MariaDB 10.11)
 Target check: not in production: [shop.com, *.shop.com]
 Stack: WordPress + WooCommerce (HPOS) + Subscriptions + Gravity Forms
-URLs: https://shop.com → https://staging.shop.test (serialized and JSON safe)
+URLs: shop.com → https://staging.shop.test (serialized and JSON safe)
 Consistency: per-run key: each real person gets one fake, across every table
 
 DATA  4 tables

@@ -1006,3 +1006,16 @@ func TestPipelinePartialWordPressDump(t *testing.T) {
 		t.Error("the comment's email wasn't faked")
 	}
 }
+
+// The main site's host leads the production list, the rest sorted: the
+// plan's URL line names it as the copy's from.
+func TestURLPlanMainHostFirst(t *testing.T) {
+	src := urlSources{SiteURLs: []string{"https://zshop.com"}, Blogs: []blogDomain{{Domain: "a.zshop.com"}, {Domain: "zshop.com"}, {Domain: "b.zshop.com"}}}
+	plan, err := buildURLPlan(src, "https://staging.shop.test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(plan.Production, []string{"zshop.com", "a.zshop.com", "b.zshop.com"}) {
+		t.Errorf("production %v", plan.Production)
+	}
+}

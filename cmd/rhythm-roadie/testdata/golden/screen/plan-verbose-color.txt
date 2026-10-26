@@ -9,8 +9,8 @@ $ rhythm-roadie plan --from ssh://deploy@shop.com/var/www/shop --to /var/www/sta
   [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mTarget check[0m  not in production: [shop.com, *.shop.com]
   [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mStack[0m         WordPress + WooCommerce (HPOS) + Subscriptions + Gravity
                   Forms
-  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mURLs[0m          https://shop.com → https://staging.shop.test (serialized
-                  and JSON safe)
+  [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mURLs[0m          shop.com → https://staging.shop.test (serialized and JSON
+                  safe)
   [1;38;2;255;124;81m▸[0m [1;38;2;107;113;128mConsistency[0m   per-run key: each real person gets one fake, across every
                   table
 

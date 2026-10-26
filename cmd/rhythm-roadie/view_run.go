@@ -4,6 +4,7 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -423,11 +424,22 @@ func (v *view) planView(r *core.Result, j engine.Job, tm *timings) {
 	}
 	v.setting("Stack", stackLine(r.Stack))
 	if r.URL != "" || j.Opts.URL != "" {
-		from := r.URL
-		if from == "" {
-			from = "production's URL"
+		// From production's own URL (the source's siteurl or APP_URL
+		// comes first) to the copy's.
+		from := "production's URL"
+		var hosts []string
+		for _, h := range r.Production {
+			if !strings.Contains(h, "*") {
+				hosts = append(hosts, h)
+			}
 		}
-		to := j.Opts.URL
+		if len(hosts) > 0 {
+			from = hosts[0]
+			if len(hosts) > 1 {
+				from += fmt.Sprintf(" (and %d more)", len(hosts)-1)
+			}
+		}
+		to := cmp.Or(j.Opts.URL, r.URL)
 		if to == "" {
 			to = "(no --url)"
 		}
