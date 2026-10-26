@@ -1,0 +1,8 @@
+Via
+Viale
+Corso
+Piazza
+Vicolo
+Largo
+Strada
+Lungomare

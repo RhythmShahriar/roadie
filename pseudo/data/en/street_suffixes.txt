@@ -1,0 +1,12 @@
+Street
+Road
+Lane
+Avenue
+Close
+Way
+Drive
+Place
+Gardens
+Crescent
+Terrace
+Grove

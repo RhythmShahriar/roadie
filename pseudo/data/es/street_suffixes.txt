@@ -1,0 +1,8 @@
+Calle
+Avenida
+Paseo
+Plaza
+Camino
+Ronda
+Travesia
+Callejon

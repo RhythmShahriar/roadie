@@ -75,8 +75,15 @@ func PasswordHash(stack core.Stack, password []byte) ([]byte, error) {
 }
 
 // IsFake reports whether v is a value Roadie's lists or formats produce.
+//
+// Emails, usernames, nicenames and URLs are checked by their format and
+// reserved domain; names, streets, addresses, cities and companies by
+// membership of any locale's lists, ignoring case; phones by
+// core.FictionalPhone; IPs by core.DocumentationIP; the user agent by
+// equality. Postcodes, dates of birth and text can't be told apart from
+// real ones and always report false.
 func IsFake(kind core.FakeKind, v []byte) bool {
-	return false
+	return isFake(kind, v)
 }
 
 // Salt returns 64 printable characters from crypto/rand.
