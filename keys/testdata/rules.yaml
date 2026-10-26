@@ -1,0 +1,135 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Fixtures for the live key rule table (PRD 12.2). No key is written out:
+# at test time each {x:N} becomes N random characters joined to the rest
+# with testutil.J, where x is a (letters and digits), A (upper case and
+# digits), l (lower case and digits), h (lower-case hex), d (digits) or t
+# (letters, digits, _ and -); {uuid} is a random UUID.
+#
+# env is what ScanValue must report: live, test or unknown for one hit of
+# provider, none for no hit at all. A case with pairs runs ScanPairs and
+# checks the hit on the pair named target.
+cases:
+  # Stripe secret and restricted keys.
+  - {provider: stripe, env: live, value: "sk_live_{a:24}"}
+  - {provider: stripe, env: live, value: "rk_live_{a:24}"}
+  - {provider: stripe, env: live, value: "{\"key\":\"sk_live_{a:99}\"}", note: inside JSON text}
+  - {provider: stripe, env: test, value: "sk_test_{a:24}"}
+  - {provider: stripe, env: test, value: "rk_test_{a:24}"}
+  - {provider: stripe, env: none, value: "sk_live_xxxxxxxxxxxxxxxxxxxxxxxx", note: placeholder}
+  - {provider: stripe, env: none, value: "sk_live_{a:10}", note: too short}
+  - {provider: stripe, env: none, value: "ask_live_{a:24}", note: not at a token start}
+  # Stripe publishable keys.
+  - {provider: stripe-publishable, env: live, value: "pk_live_{a:24}"}
+  - {provider: stripe-publishable, env: test, value: "pk_test_{a:24}"}
+  - {provider: stripe-publishable, env: none, value: "pk_live_•••••", note: already masked}
+  # Stripe webhook secrets: no marker, so the settings next to them decide.
+  - {provider: stripe-webhook, env: live, value: "whsec_{a:32}", siblings: {testmode: "no"}}
+  - {provider: stripe-webhook, env: test, value: "whsec_{a:32}", siblings: {testmode: "yes"}}
+  - {provider: stripe-webhook, env: live, value: "whsec_{a:32}", siblings: {secret_key: "sk_live_{a:24}"}}
+  - {provider: stripe-webhook, env: unknown, value: "whsec_{a:32}"}
+  - {provider: stripe-webhook, env: none, value: "whsec_changeme"}
+  # Braintree.
+  - {provider: braintree, env: live, value: "access_token$production${l:16}${h:32}"}
+  - {provider: braintree, env: test, value: "access_token$sandbox${l:16}${h:32}"}
+  - {provider: braintree, env: none, value: "access_token$production$xxxxxxxxxxxxxxxx"}
+  - {provider: braintree, env: live, value: "{a:32}", row: "option_name=woocommerce_braintree_credit_card_settings", path: "serialized:private_key"}
+  - {provider: braintree, env: test, value: "{a:32}", row: "option_name=woocommerce_braintree_credit_card_settings", path: "serialized:sandbox_private_key"}
+  # Square.
+  - {provider: square, env: live, value: "EAAA{t:60}", siblings: {environment: production}}
+  - {provider: square, env: test, value: "EAAA{t:60}", siblings: {enable_sandbox: "yes"}}
+  - {provider: square, env: unknown, value: "sq0idp-{t:22}"}
+  - {provider: square, env: test, value: "sandbox-sq0idb-{t:22}"}
+  - {provider: square, env: live, value: "{t:64}", row: "option_name=wc_square_settings", path: "serialized:production_token", note: by name}
+  - {provider: square, env: none, value: "sandbox-sq0idb-xxxx"}
+  # Mollie.
+  - {provider: mollie, env: live, value: "live_{a:30}"}
+  - {provider: mollie, env: test, value: "test_{a:30}"}
+  - {provider: mollie, env: none, value: "live_{a:29}", note: one short}
+  - {provider: mollie, env: none, value: "live_{a:31}", note: one long}
+  # Razorpay.
+  - {provider: razorpay, env: live, value: "rzp_live_{a:14}"}
+  - {provider: razorpay, env: test, value: "rzp_test_{a:14}"}
+  - {provider: razorpay, env: live, value: "{a:24}", row: "option_name=woocommerce_razorpay_settings", path: "serialized:key_secret", siblings: {key_id: "rzp_live_{a:14}"}}
+  - {provider: razorpay, env: test, value: "{a:24}", row: "option_name=woocommerce_razorpay_settings", path: "serialized:key_secret", siblings: {key_id: "rzp_test_{a:14}"}}
+  - {provider: razorpay, env: unknown, value: "{a:24}", row: "option_name=woocommerce_razorpay_settings", path: "serialized:key_secret"}
+  - {provider: razorpay, env: none, value: "rzp_live_XXXXXXXXXXXXXX"}
+  # Flutterwave.
+  - {provider: flutterwave, env: live, value: "FLWSECK-{h:32}-X"}
+  - {provider: flutterwave, env: test, value: "FLWSECK_TEST-{h:32}-X"}
+  - {provider: flutterwave, env: none, value: "FLWSECK-xxxxxxxxxxxxxxxxxxxxxxxx"}
+  # Adyen: AQE keys only count in an Adyen setting.
+  - {provider: adyen, env: live, value: "AQE{a:120}", row: "option_name=woocommerce_adyen_settings", path: "serialized:api_key", siblings: {environment: live}}
+  - {provider: adyen, env: test, value: "AQE{a:120}", row: "option_name=woocommerce_adyen_settings", path: "serialized:api_key", siblings: {environment: test}}
+  - {provider: adyen, env: none, value: "AQE{a:120}", note: no Adyen context}
+  # WooCommerce REST API keys (no test form).
+  - {provider: woocommerce-rest, env: live, value: "ck_{h:40}"}
+  - {provider: woocommerce-rest, env: live, value: "cs_{h:40}"}
+  - {provider: woocommerce-rest, env: none, value: "ck_{h:39}"}
+  - {provider: woocommerce-rest, env: none, value: "ck_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+  # PayPal Payments: field names and sandbox_on decide.
+  - {provider: paypal, env: live, value: "{t:80}", row: "option_name=woocommerce-ppcp-settings", path: "serialized:client_secret_production"}
+  - {provider: paypal, env: test, value: "{t:80}", row: "option_name=woocommerce-ppcp-settings", path: "serialized:client_secret_sandbox"}
+  - {provider: paypal, env: live, value: "{t:80}", row: "option_name=woocommerce-ppcp-settings", path: "serialized:client_secret", siblings: {sandbox_on: "0"}}
+  - {provider: paypal, env: test, value: "{t:80}", row: "option_name=woocommerce-ppcp-settings", path: "serialized:client_secret", siblings: {sandbox_on: "1"}}
+  - {provider: paypal, env: none, value: "changeme", row: "option_name=woocommerce-ppcp-settings", path: "serialized:client_secret_production"}
+  # Klarna and Authorize.net keep live and test credentials in separate fields.
+  - {provider: klarna, env: live, value: "{a:24}", row: "option_name=woocommerce_klarna_payments_settings", path: "serialized:shared_secret_eu"}
+  - {provider: klarna, env: test, value: "{a:24}", row: "option_name=woocommerce_klarna_payments_settings", path: "serialized:test_shared_secret_eu"}
+  - {provider: klarna, env: none, value: "", row: "option_name=woocommerce_klarna_payments_settings", path: "serialized:shared_secret_eu"}
+  - {provider: authorize-net, env: live, value: "{a:16}", row: "option_name=woocommerce_authorize_net_cim_credit_card_settings", path: "serialized:api_transaction_key"}
+  - {provider: authorize-net, env: test, value: "{a:16}", row: "option_name=woocommerce_authorize_net_cim_credit_card_settings", path: "serialized:test_api_transaction_key"}
+  - {provider: authorize-net, env: none, value: "xxxxxxxxxxxxxxxx", row: "option_name=woocommerce_authorize_net_cim_credit_card_settings", path: "serialized:api_transaction_key"}
+  # Twilio: no marker; test credentials have TEST in their name.
+  - {provider: twilio, env: live, pairs: {TWILIO_SID: "AC{h:32}", TWILIO_AUTH_TOKEN: "{h:32}"}, target: TWILIO_AUTH_TOKEN}
+  - {provider: twilio, env: test, pairs: {TWILIO_TEST_AUTH_TOKEN: "{h:32}"}, target: TWILIO_TEST_AUTH_TOKEN}
+  - {provider: twilio, env: none, pairs: {TWILIO_AUTH_TOKEN: "${TWILIO_TOKEN}"}, target: TWILIO_AUTH_TOKEN}
+  # Jetpack tokens.
+  - {provider: jetpack, env: live, value: "{a:32}.{a:32}", row: "option_name=jetpack_private_options", path: "serialized:blog_token"}
+  - {provider: jetpack, env: live, value: "{a:32}.{a:32}.1", row: "option_name=jetpack_private_options", path: "serialized:user_tokens[1]"}
+  - {provider: jetpack, env: none, value: "", row: "option_name=jetpack_private_options", path: "serialized:blog_token"}
+  # AWS.
+  - {provider: aws, env: live, value: "AKIA{A:16}"}
+  - {provider: aws, env: live, pairs: {AWS_ACCESS_KEY_ID: "", AWS_SECRET_ACCESS_KEY: "{a:40}"}, target: AWS_SECRET_ACCESS_KEY}
+  - {provider: aws, env: none, value: "AKIA{A:15}"}
+  # SMTP passwords: the host next to them decides.
+  - {provider: smtp, env: live, value: "{a:16}", row: "option_name=wp_mail_smtp", path: "serialized:smtp.pass", siblings: {host: smtp.mailprovider.net}}
+  - {provider: smtp, env: test, value: "{a:16}", row: "option_name=wp_mail_smtp", path: "serialized:smtp.pass", siblings: {host: "127.0.0.1"}}
+  - {provider: smtp, env: unknown, value: "{a:16}", row: "option_name=wp_mail_smtp", path: "serialized:smtp.pass"}
+  - {provider: smtp, env: live, value: "{a:16}", row: "option_name=postman_options", path: "serialized:basic_auth_password", siblings: {hostname: smtp.mailprovider.net}}
+  - {provider: smtp, env: live, value: "{a:16}", row: "option_name=fluentmail-settings", path: "serialized:connections[0].provider_settings.password", siblings: {host: smtp.mailprovider.net}}
+  - {provider: smtp, env: live, pairs: {MAIL_HOST: smtp.mailprovider.net, MAIL_PASSWORD: "{a:16}"}, target: MAIL_PASSWORD}
+  - {provider: smtp, env: test, pairs: {MAIL_HOST: "localhost", MAIL_PASSWORD: "{a:16}"}, target: MAIL_PASSWORD}
+  - {provider: smtp, env: none, pairs: {MAIL_HOST: smtp.mailprovider.net, MAIL_PASSWORD: "null"}, target: MAIL_PASSWORD}
+  # Mail APIs (no test forms).
+  - {provider: sendgrid, env: live, value: "SG.{t:22}.{t:43}"}
+  - {provider: sendgrid, env: none, value: "SG.{t:10}.{t:10}"}
+  - {provider: mailgun, env: live, value: "key-{h:32}"}
+  - {provider: mailgun, env: live, value: "{h:32}-{h:8}-{h:8}", row: "option_name=wp_mail_smtp", path: "serialized:mailgun.api_key", note: newer key format by name}
+  - {provider: mailgun, env: none, value: "key-xxxxxxxx"}
+  - {provider: brevo, env: live, value: "xkeysib-{h:64}-{a:16}"}
+  - {provider: brevo, env: none, value: "xkeysib-xxxxxxxx"}
+  - {provider: mailersend, env: live, value: "mlsn.{a:64}"}
+  - {provider: mailersend, env: none, value: "mlsn.xxxxxxxx"}
+  - {provider: resend, env: live, value: "re_Q{d:3}{a:20}"}
+  - {provider: resend, env: none, value: "re_send_the_message_to_the_customer_again", note: a word, not a key}
+  - {provider: mailchimp, env: live, value: "{h:32}-us12"}
+  - {provider: mailchimp, env: none, value: "{h:32}-uk12"}
+  - {provider: postmark, env: live, pairs: {POSTMARK_TOKEN: "{uuid}"}, target: POSTMARK_TOKEN}
+  - {provider: postmark, env: live, value: "{uuid}", row: "option_name=wp_mail_smtp", path: "serialized:postmark.api_token"}
+  - {provider: postmark, env: none, pairs: {POSTMARK_TOKEN: ""}, target: POSTMARK_TOKEN}
+  - {provider: sparkpost, env: live, pairs: {SPARKPOST_SECRET: "{h:40}"}, target: SPARKPOST_SECRET}
+  - {provider: sparkpost, env: none, pairs: {SPARKPOST_SECRET: "your-sparkpost-key"}, target: SPARKPOST_SECRET}
+  - {provider: mandrill, env: live, pairs: {MANDRILL_SECRET: "{a:22}"}, target: MANDRILL_SECRET}
+  - {provider: mandrill, env: none, pairs: {MANDRILL_SECRET: "xxx"}, target: MANDRILL_SECRET}
+  - {provider: ses, env: live, value: "{a:40}", row: "option_name=wp_mail_smtp", path: "serialized:amazonses.client_secret"}
+  - {provider: ses, env: none, value: "", row: "option_name=wp_mail_smtp", path: "serialized:amazonses.client_secret"}
+  # Generic: kit's name rules, for secrets no Roadie rule claims.
+  - {provider: generic, env: live, pairs: {SHIPPING_API_SECRET: "{a:32}"}, target: SHIPPING_API_SECRET}
+  - {provider: generic, env: live, value: "{a:32}", row: "option_name=myplugin_api_secret"}
+  - {provider: generic, env: live, value: "ghp_{a:36}", note: a kit token format}
+  - {provider: generic, env: none, pairs: {DB_PASSWORD: "{a:16}"}, target: DB_PASSWORD, note: the staging site's own}
+  - {provider: generic, env: none, pairs: {AUTH_KEY: "{a:64}"}, target: AUTH_KEY, note: salts are config.salts}
+  - {provider: generic, env: none, pairs: {SHIPPING_API_SECRET: "changeme"}, target: SHIPPING_API_SECRET}
+  - {provider: generic, env: none, value: "Your password: see the email we sent", note: prose}
