@@ -236,6 +236,40 @@ func TestEcho(t *testing.T) {
 	}
 }
 
+// A failed message count fails closed: the check can't pass on a count
+// it never got.
+func TestEchoListFails(t *testing.T) {
+	broken := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/health" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"tool":"rhythm-echo","version":"1.1.2","mode":"seal","wire":1,"providers":[]}`)
+			return
+		}
+		http.Error(w, "store locked", http.StatusInternalServerError)
+	}), false)
+	res := siteRun(t, Options{Echo: true, EchoURL: broken.URL})
+	want := "verify --echo: couldn't count what Echo let through: Echo answered 500 Internal Server Error"
+	if f := find(res, core.FindingSideEffectMail); f == nil || f.Severity != core.SeverityCritical || f.Title != want {
+		t.Errorf("list fails: %+v", res.Findings)
+	}
+	if c := checkByID(res, core.FindingSideEffectMail); c.Status != "fail" {
+		t.Errorf("side-effect.mail check %+v", c)
+	}
+}
+
+// Echo beyond loopback asks for a token on every route; the finding
+// says so in place of calling Echo unreachable.
+func TestEchoWantsToken(t *testing.T) {
+	locked := serve(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "token required", http.StatusUnauthorized)
+	}), false)
+	res := siteRun(t, Options{Echo: true, EchoURL: locked.URL})
+	f := find(res, core.FindingSideEffectMail)
+	if f == nil || !strings.Contains(f.Title, "wants a token") || strings.Contains(f.Title, "isn't reachable") {
+		t.Errorf("401: %+v", res.Findings)
+	}
+}
+
 func TestEchoURLMustBeLocal(t *testing.T) {
 	for u, ok := range map[string]bool{
 		"": true, "http://127.0.0.1:8025": true, "http://localhost:8025": true, "http://10.1.2.3:8025": true,

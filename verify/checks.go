@@ -86,7 +86,7 @@ func echoURL(s string) (*url.URL, error) {
 		return u, nil
 	}
 	return nil, core.Errorf(core.ErrConfig, cli.ExitUsage,
-		"verify --echo: %s is plain http beyond this machine and its network, which would send Echo's token in the clear. Use https:// for an Echo elsewhere.", u.Redacted())
+		"verify --echo: %s is plain http beyond this machine and its network, where anyone on the way could read or fake its answers. Use https:// for an Echo elsewhere.", u.Redacted())
 }
 
 // localHost reports whether host is localhost or a loopback, private or
@@ -387,6 +387,13 @@ func (r *run) echo(ctx context.Context) {
 			Locations: []core.LocationCount{{Location: at}}})
 	}
 	h, err := c.Health(ctx)
+	if needsToken(err) {
+		// Echo asks for its token on every route once it listens beyond
+		// loopback; verify has no token to send yet.
+		mail(fmt.Sprintf("verify --echo: Echo at %s wants a token, which verify doesn't send", u.Redacted()),
+			"Run verify where Echo listens on loopback (http://127.0.0.1:8025), which needs no token.")
+		return
+	}
 	if err != nil {
 		mail(fmt.Sprintf("verify --echo: Echo isn't reachable at %s; start it with rhythm echo up.", u.Redacted()),
 			"Start Echo (rhythm echo up), then run verify again.")
@@ -401,7 +408,11 @@ func (r *run) echo(ctx context.Context) {
 	for range maxEchoPages {
 		p, err := c.List(ctx, f)
 		if err != nil {
-			break
+			// Without the count the check can't say nothing went out, so
+			// it fails closed.
+			mail("verify --echo: couldn't count what Echo let through: "+echoReason(err),
+				"Check Echo's inbox for sent messages, then run verify again.")
+			return
 		}
 		for _, m := range p.Messages {
 			if m.Status == model.Sent {
@@ -417,6 +428,26 @@ func (r *run) echo(ctx context.Context) {
 		mail(fmt.Sprintf("Echo let %d messages through since the copy", sent),
 			"Check who they reached in Echo's inbox, then keep Echo in seal mode.")
 	}
+}
+
+// needsToken reports whether Echo refused a request for want of a token.
+func needsToken(err error) bool {
+	var ae *client.APIError
+	return errors.As(err, &ae) && (ae.StatusCode == http.StatusUnauthorized || ae.StatusCode == http.StatusForbidden)
+}
+
+// echoReason says why an Echo call failed. For an HTTP answer it keeps
+// the status alone, since Echo's message body is not ours to print.
+func echoReason(err error) string {
+	var ae *client.APIError
+	if errors.As(err, &ae) {
+		return "Echo answered " + ae.Status
+	}
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		err = ue.Err
+	}
+	return err.Error()
 }
 
 // started is when the run began, from Options.Clock.
