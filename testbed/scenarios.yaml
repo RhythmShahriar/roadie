@@ -747,7 +747,7 @@ scenarios:
   - id: g03
     kind: verify
     stack: woocommerce
-    title: CJK and RTL fake names, Arabic-Indic digits, fiction phones, IBAN-shaped references
+    title: fake names, CJK and RTL gift messages, Arabic-Indic digits, fiction phones, IBAN-shaped references
     input: g03
     good: true
     command: [verify, "${in}/db.sql", --production, shop.example.com, --fail-on, low, --json]
