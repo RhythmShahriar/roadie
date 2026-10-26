@@ -16,6 +16,9 @@ import (
 
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/engine"
+	"github.com/RhythmShahriar/roadie/internal/demo"
+	"github.com/RhythmShahriar/roadie/profile"
+	"github.com/RhythmShahriar/roadie/pseudo"
 	"github.com/RhythmShahriar/roadie/report"
 	"github.com/RhythmShahriar/roadie/roadiecfg"
 	"github.com/RhythmShahriar/roadie/site"
@@ -42,9 +45,19 @@ type deps struct {
 	junit         func(*core.Envelope) ([]byte, error)
 	save          func(dir string, e *core.Envelope, html []byte) (string, error)
 	open          func(path string) error
-	now           func() time.Time
-	env           envFunc
-	stdin         io.Reader
+
+	initTemplate   func(stack string) []byte
+	excludeFromGit func(dir string, paths []string) (bool, error)
+	loadKey        func(dir string, env func(string) (string, bool)) (pseudo.Key, string, error)
+	saveKey        func(dir string, k pseudo.Key) error
+	forgetKey      func(dir string) error
+	newKey         func() (pseudo.Key, error)
+	loadProfiles   func(ctx context.Context, offline bool) ([]profile.Def, string, error)
+	demoShop       func(w io.Writer, o demo.Options) error
+	demoProduction func() []string
+	now            func() time.Time
+	env            envFunc
+	stdin          io.Reader
 	// terminal reports whether stdin and stdout are both terminals: the
 	// picker, the questions and Confirm need one.
 	terminal func() bool
@@ -73,6 +86,15 @@ func realDeps() deps {
 		junit:          report.JUnit,
 		save:           report.Save,
 		open:           openFile,
+		initTemplate:   roadiecfg.InitTemplate,
+		excludeFromGit: roadiecfg.ExcludeFromGit,
+		loadKey:        roadiecfg.LoadKey,
+		saveKey:        roadiecfg.SaveKey,
+		forgetKey:      roadiecfg.ForgetKey,
+		newKey:         pseudo.NewKey,
+		loadProfiles:   profile.Load,
+		demoShop:       demo.Shop,
+		demoProduction: demo.Production,
 		now:            time.Now,
 		env:            osEnv,
 		stdin:          os.Stdin,

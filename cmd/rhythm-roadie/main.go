@@ -117,11 +117,6 @@ func notBuilt(name string) runFunc {
 	}
 }
 
-var (
-	runVerify   = notBuilt("verify")
-	runConfig   = notBuilt("config")
-	runReport   = notBuilt("report")
-	runProfiles = notBuilt("profiles")
-	runExplain  = notBuilt("explain")
-	runDemo     = notBuilt("demo")
-)
+// runReport renders saved reports and checks signatures; its renderers
+// and Check come with the report package (lane items 5 to 7).
+var runReport = notBuilt("report")

@@ -19,8 +19,6 @@ import (
 	"github.com/charmbracelet/huh"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
-
-	"github.com/RhythmShahriar/roadie/roadiecfg"
 )
 
 // choice is one line of the picker.
@@ -132,7 +130,7 @@ func pickCopy(ctx context.Context, a asker, lr *lineReader, stdout, stderr io.Wr
 		return code // never overwrite a config the user already has
 	}
 	if lr.yesNo(ctx, stderr, "Save these answers to .roadie/config.yaml? [Y/n]", true) {
-		if err := saveAnswers(configPath, roadiecfg.InitTemplate("wordpress"), src, tgt, url); err != nil {
+		if err := saveAnswers(configPath, dep.initTemplate("wordpress"), src, tgt, url); err != nil {
 			fmt.Fprintf(stderr, "%s: couldn't save the answers: %v\n", prog(), err)
 			return max(code, cli.ExitUnavailable)
 		}

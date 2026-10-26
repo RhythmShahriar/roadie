@@ -1,0 +1,56 @@
+$ rhythm-roadie explain uncovered-column
+# uncovered-column: a column that looks personal has no rule (medium)
+
+What: A text column no profile or columns: rule covers, whose name looks
+personal (email, phone, name, address, ip, dob and similar) or whose sampled
+values are 20% or more emails or phones.
+
+Why it matters: Roadie only rewrites what a rule covers. An unknown table with
+customer data would reach the copy as it is.
+
+What Roadie does: copy and prepare stop before writing anything (exit 1)
+unless --allow-uncovered; plan lists each column.
+
+By hand: Add the column under columns: in .roadie/config.yaml with its rule,
+e.g. table: wp_loyalty_members, column: email, rule: email. rhythm-roadie
+config init --from <source> suggests the entries.
+
+
+$ rhythm-roadie explain key.stripe-live
+# key.stripe-live: a live Stripe secret or restricted key (critical)
+
+What: A live Stripe secret or restricted key in the database, wp-config.php,
+.env or, for a site target, in code.
+
+Why it matters: A live key lets the copy act as production at the provider:
+charge cards, send mail or messages, change accounts.
+
+What Roadie does: swap (the default) replaces it with the test key set under
+keys.test_keys when that key is a test key, else blanks it; blank blanks every
+live key. A key in code is reported with action manual: Roadie only edits the
+database, wp-config.php and .env.
+
+By hand: Give a test key in keys.test_keys (for example ${ROADIE_STRIPE_TEST})
+or blank the value, then run verify.
+
+
+$ rhythm-roadie explain target-is-production
+# target-is-production: the target is production (exit 3)
+
+What: The target's URL host, siteurl, home, SSH host or database host matches
+production:.
+
+Why it matters: Roadie never writes to production; there is no override.
+
+By hand: Point --to at the staging copy.
+
+
+$ rhythm-roadie explain pseudonymised
+# pseudonymised: what Roadie's copies are
+
+Pseudonymised data is still personal data under the GDPR (Article 4(5), Recital 26).
+This report shows what Roadie's checks found in this copy; it is not a statement that
+the copy holds no personal data. Signed by roadie:7Q3kXc2… (rhythm-roadie report check report.json):
+the signature shows who ran Roadie, which version and rules, on which input and that
+the report is unchanged since. It doesn't prove the data holds no personal data.
+

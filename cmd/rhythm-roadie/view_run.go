@@ -741,3 +741,14 @@ func (v *view) stopView(r *core.Result, j engine.Job) {
 		v.next("rhythm-roadie explain " + e.Code)
 	}
 }
+
+// verdictColor is the box color of a verdict word.
+func verdictColor(word string) lipgloss.TerminalColor {
+	switch {
+	case strings.HasPrefix(word, "PASS"), word == "PLAN":
+		return lipgloss.Color(ui.Ok)
+	case word == "FAIL", word == "STOPPED":
+		return lipgloss.Color(ui.Danger)
+	}
+	return lipgloss.Color(ui.Warn)
+}

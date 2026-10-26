@@ -187,7 +187,9 @@ func locationsLine(f core.Finding) string {
 	var parts []string
 	for _, l := range f.Locations {
 		loc := l.Location
-		loc.Row = "" // -v shows row keys; this line names columns and files
+		if !namedRow(loc.Row) {
+			loc.Row = "" // primary keys are for -v; option and meta names say where
+		}
 		s := loc.String()
 		if l.Count > 0 {
 			s += " " + num(l.Count)
@@ -257,4 +259,10 @@ func (v *view) checkLines(checks []core.Check) {
 			fmt.Fprintf(v.w, "%s%s\n", strings.Repeat(" ", col+7), muted.Render(l))
 		}
 	}
+}
+
+// namedRow reports whether a row key is an option or meta name, which
+// says where a finding is better than a primary key does.
+func namedRow(row string) bool {
+	return strings.HasPrefix(row, "option_name=") || strings.HasPrefix(row, "meta_key=")
 }
