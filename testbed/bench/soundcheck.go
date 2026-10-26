@@ -27,8 +27,8 @@ import (
 // can't load the site's assets and would report errors the copy didn't
 // cause. The boot check stays the scored gate.
 //
-// Chrome runs on this machine, outside the sealed network, and a copied
-// page can name real hosts (an avatar, an emoji script). So every request
+// Chrome runs on this machine outside the sealed network. A copied page
+// can name real hosts (an avatar, an emoji script), so every request
 // goes through a seal proxy that passes the staging site only and refuses
 // the rest: nothing reaches a real site or this machine's DNS.
 type Soundcheck struct {
