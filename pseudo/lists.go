@@ -149,9 +149,8 @@ func in(s set, v string) bool {
 const (
 	hexLen          = 16 // email and login: 64 bits of the hash
 	minUniqueHex    = 12 // the shortest a fake for a unique column gets
-	urlHexLen       = 12
-	minURLHex       = 4
-	uniqueSuffixHex = 8 // the suffix a list kind gets in a unique column
+	urlHexLen       = 12 // a URL: never shorter, as URLs are unique
+	uniqueSuffixHex = 8  // the suffix a list kind gets in a unique column
 	maxNicename     = 50
 )
 
@@ -219,7 +218,7 @@ func isFakeLogin(s string) bool {
 	return ok && isHex(rest, minUniqueHex, hexLen)
 }
 
-// isFakeURL reports whether s is https://u<4 to 12 hex>.example.invalid
+// isFakeURL reports whether s is https://u<12 hex>.example.invalid
 // with or without the closing slash.
 func isFakeURL(s string) bool {
 	rest, ok := strings.CutPrefix(s, "https://u")
@@ -228,7 +227,7 @@ func isFakeURL(s string) bool {
 	}
 	rest = strings.TrimSuffix(rest, "/")
 	h, ok := strings.CutSuffix(rest, ".example.invalid")
-	return ok && isHex(h, minURLHex, urlHexLen)
+	return ok && isHex(h, urlHexLen, urlHexLen)
 }
 
 // stripUniqueSuffix drops the " <8 hex>" a fake for a unique column of a

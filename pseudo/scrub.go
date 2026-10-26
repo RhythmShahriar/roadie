@@ -22,6 +22,7 @@ type scrubber struct {
 	f     core.Faker
 	out   []byte // nil until the first replacement
 	pair  []byte // reused for each word pair looked up
+	lower []byte // reused to look a word up in the name lists
 	last  int    // end of the text already copied to out
 	n     int
 }
@@ -90,6 +91,14 @@ func (s *scrubber) fake(kind core.FakeKind, v []byte) []byte {
 // one name word and gets a one-word fake of the kind Known reports. The
 // fake is keyed on the text as written, so a name in a note gets the
 // same fake as the same name in its column.
+//
+// A pair joined by white space that Known lacks but that reads as a
+// Roadie fake full name (Kylie Kim) is left whole, words and all: it is
+// most likely a fake from an earlier pass and rewriting a word of it
+// because another customer is named Kim would make Scrub change its own
+// output. A real customer named Kylie Kim is still found, as Known then
+// holds the pair. A single list word on its own (Kylie) can't be told
+// apart from a real name Known holds and is rewritten again.
 func (s *scrubber) names(start, end int) {
 	if s.known == nil || start >= end {
 		return
@@ -101,13 +110,18 @@ func (s *scrubber) names(start, end int) {
 			b := [2]int{start + words[i+1][0], start + words[i+1][1]}
 			if gap := s.text[a[1]:b[0]]; pairGap(gap) {
 				s.pair = append(append(append(s.pair[:0], s.text[a[0]:a[1]]...), ' '), s.text[b[0]:b[1]]...)
-				if kind, _, ok := s.known.Contains(s.pair); ok && isNameKind(kind) {
+				kind, _, ok := s.known.Contains(s.pair)
+				if ok && isNameKind(kind) {
 					kind = core.KFullName
 					if !bytes.ContainsFunc(gap, unicode.IsSpace) {
 						kind = oneWordKind(s.known, s.text[a[0]:b[1]])
 					}
 					s.replace(a[0], b[1], s.fake(kind, s.text[a[0]:b[1]]))
 					i++
+					continue
+				}
+				if bytes.ContainsFunc(gap, unicode.IsSpace) && s.fakeFullName(s.text[a[0]:a[1]], s.text[b[0]:b[1]]) {
+					i++ // a fake full name: keeps Scrub idempotent
 					continue
 				}
 			}
@@ -123,6 +137,35 @@ func (s *scrubber) names(start, end int) {
 			s.replace(a[0], a[1], s.fake(kind, word))
 		}
 	}
+}
+
+// fakeFullName reports whether first and last, both capitalised, are
+// each a word of the name lists, as in a Roadie fake full name. It runs
+// for every word pair Known lacks, so it must not allocate: each word is
+// lower-cased into a reused buffer and looked up with string(b), which
+// the compiler does without a copy.
+func (s *scrubber) fakeFullName(first, last []byte) bool {
+	if !capitalised(first) || !capitalised(last) {
+		return false
+	}
+	loadLists()
+	return s.inNames(first) && s.inNames(last)
+}
+
+// inNames reports whether word, lower-cased, is a first or last name of
+// the lists.
+func (s *scrubber) inNames(word []byte) bool {
+	s.lower = s.lower[:0]
+	for i := 0; i < len(word); {
+		r, size := utf8.DecodeRune(word[i:])
+		s.lower = utf8.AppendRune(s.lower, unicode.ToLower(r))
+		i += size
+	}
+	if _, ok := lists.first[string(s.lower)]; ok {
+		return true
+	}
+	_, ok := lists.last[string(s.lower)]
+	return ok
 }
 
 // capitalised reports whether word starts with an upper or title case

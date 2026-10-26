@@ -42,6 +42,8 @@ func TestRewriteForms(t *testing.T) {
 		{"https:&sol;&sol;shop.com", "https:&sol;&sol;staging.shop.test", 1},
 		{"https://www.shop.com/", "https://staging.shop.test/", 1},
 		{"https://shop.com:8443/x", "https://staging.shop.test:8443/x", 1},
+		{"next=https%3A%2F%2Fshop.com%3A8443%2Fa", "next=https%3A%2F%2Fstaging.shop.test%3A8443%2Fa", 1},
+		{"https://shop.com&#58;8443/x", "https://staging.shop.test&#58;8443/x", 1},
 		{"https://shop.com.", "https://staging.shop.test.", 1},
 		{"a https://shop.com b http://shop.com", "a https://staging.shop.test b https://staging.shop.test", 2},
 		{"ftp://shop.com", "ftp://staging.shop.test", 1},
@@ -57,9 +59,17 @@ func TestRewriteForms(t *testing.T) {
 		{"https://shop.com@other.example/x", "https://shop.com@other.example/x", 0},
 		{"https://shop.com:pw@other.example", "https://shop.com:pw@other.example", 0},
 		{"https://shop.com:8443@other.example", "https://shop.com:8443@other.example", 0},
+		{"https%3A%2F%2Fshop.com%3A8443%40other.example", "https%3A%2F%2Fshop.com%3A8443%40other.example", 0},
 		{"https%3A%2F%2Fshop.com%40other.example", "https%3A%2F%2Fshop.com%40other.example", 0},
 		{"https://myshop.com", "https://myshop.com", 0},
 		{"https://shop.com.au", "https://shop.com.au", 0},
+		{"https://shop.com&#46;au", "https://shop.com&#46;au", 0},
+		{"https://shop.com&#x2E;au/x", "https://shop.com&#x2E;au/x", 0},
+		{"https://shop.com&period;au", "https://shop.com&period;au", 0},
+		{"https%3A%2F%2Fshop.com%2Eau/x", "https%3A%2F%2Fshop.com%2Eau/x", 0},
+		{"https://shop.com%2ecommunity", "https://shop.com%2ecommunity", 0},
+		{"https://shop.com%2E", "https://staging.shop.test%2E", 1},
+		{"https://shop.com&#46; next", "https://staging.shop.test&#46; next", 1},
 		{"https://shop.community", "https://shop.community", 0},
 		{"https://shop.com-x.net", "https://shop.com-x.net", 0},
 		{"https://fr.shop.com", "https://fr.shop.com", 0},
@@ -85,6 +95,10 @@ func TestRewritePairs(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"https://shop.com/x", "http://localhost:8080/x"},
 		{"https://shop.com:8443/x", "http://localhost:8080/x"},
+		{"https%3A%2F%2Fshop.com%3A8443%2Fx", "http%3A%2F%2Flocalhost:8080%2Fx"},
+		{"https&#58;//shop.com&#x3a;8443/x", "http&#58;//localhost:8080/x"},
+		{"https://shop.com&colon;8443/x", "http://localhost:8080/x"},
+		{"https://shop.com%3Ax/y", "http://localhost:8080%3Ax/y"},
 		{"https://shop.com/blog/post", "http://localhost:8080/b/post"},
 		{"https://shop.com/blog", "http://localhost:8080/b"},
 		{"https://shop.com/blogger", "http://localhost:8080/blogger"},
@@ -96,6 +110,26 @@ func TestRewritePairs(t *testing.T) {
 		{"https://bücher.de/x", "https://buecher.test/x"},
 		{"https://xn--bcher-kva.de/x", "https://buecher.test/x"},
 		{"https://XN--BCHER-KVA.DE", "https://buecher.test"},
+	}
+	for _, c := range cases {
+		if got, _ := m.Rewrite([]byte(c.in)); string(got) != c.want {
+			t.Errorf("Rewrite(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestFromPort checks a From with a port matches that port in any colon
+// spelling and nothing else.
+func TestFromPort(t *testing.T) {
+	m := mustMap(t, Pair{"https://shop.com:8443", "https://staging.test"})
+	cases := []struct{ in, want string }{
+		{"https://shop.com:8443/x", "https://staging.test/x"},
+		{"https%3A%2F%2Fshop.com%3a8443%2Fx", "https%3A%2F%2Fstaging.test%2Fx"},
+		{"https://shop.com&colon;8443/x", "https://staging.test/x"},
+		// left alone
+		{"https://shop.com/x", "https://shop.com/x"},
+		{"https://shop.com:84430/x", "https://shop.com:84430/x"},
+		{"https%3A%2F%2Fshop.com%3A9000%2Fx", "https%3A%2F%2Fshop.com%3A9000%2Fx"},
 	}
 	for _, c := range cases {
 		if got, _ := m.Rewrite([]byte(c.in)); string(got) != c.want {
@@ -169,6 +203,36 @@ func TestNewMapErrors(t *testing.T) {
 	}
 	if _, ok := m.RewriteHost([]byte("x")); ok {
 		t.Error("nil map rewrote a host")
+	}
+}
+
+// TestErrorsMaskUserinfo checks that a password in a refused entry never
+// reaches the error text.
+func TestErrorsMaskUserinfo(t *testing.T) {
+	pass := "hun" + "ter2"
+	entries := []string{
+		"https://stage:" + pass + "@staging.shop.com",
+		"stage:" + pass + "@staging.shop.com",
+		"https://ops:" + pass + "@shop.com/path",
+		"https://ops:a/" + pass + "@shop.com",
+		"https://ops:" + pass + "#x@shop.com",
+		"https://" + pass + "@shop.com",
+	}
+	for _, e := range entries {
+		_, err := NewMap([]Pair{{From: "https://shop.com", To: e}})
+		_, err2 := NewMap([]Pair{{From: e, To: "staging.shop.com"}})
+		_, err3 := Hosts([]string{e})
+		for _, err := range []error{err, err2, err3} {
+			if err == nil {
+				t.Fatalf("%q accepted", e)
+			}
+			if strings.Contains(err.Error(), pass) || !strings.Contains(err.Error(), "user info") || !strings.Contains(err.Error(), "***") {
+				t.Errorf("error for %q: %v", e, err)
+			}
+		}
+	}
+	if _, err := Hosts([]string{"ftp://shop.com"}); err == nil || strings.Contains(err.Error(), "***") {
+		t.Errorf("entry without user info: %v", err)
 	}
 }
 
@@ -345,6 +409,7 @@ func FuzzURLRewrite(f *testing.F) {
 		"https://shop.com/x", `https:\/\/shop.com`, "https%3A%2F%2Fshop.com", "https:&#x2F;&#x2F;shop.com",
 		"//www.shop.com", "jane@shop.com", "https://shop.com@other.example", "https%3A%2F%2Fshop.com%40x", "https://myshop.com", "https://shop.com.au", "https://shop.community",
 		`/\/shop.com`, "&#0047;/shop.com", "%2f/SHOP.com:80", "https://staging.shop.test",
+		"https://shop.com%2Eau", "https://shop.com&#46;au", "https://shop.com&#x2e;au", "https://shop.com&period;au",
 	} {
 		f.Add([]byte(s))
 	}
@@ -366,7 +431,7 @@ func FuzzURLRewrite(f *testing.F) {
 		if n2 != 0 || !bytes.Equal(again, out) {
 			t.Fatalf("not idempotent: %q then %q", out, again)
 		}
-		for _, l := range []string{"myshop.com", "shop.com.au", "shop.community", "@shop.com"} {
+		for _, l := range []string{"myshop.com", "shop.com.au", "shop.community", "@shop.com", "shop.com%2eau", "shop.com&#46;au", "shop.com&#x2e;au", "shop.com&period;au"} {
 			if bytes.Count(asciiLower(out), []byte(l)) < bytes.Count(asciiLower(b), []byte(l)) {
 				t.Fatalf("lookalike %s changed: %q to %q", l, b, out)
 			}

@@ -4,7 +4,7 @@
 
 // The differential oracle for codec/phpser. It first writes a line with
 // PHP_VERSION_ID, then reads frames from stdin, each a 4-byte big-endian
-// length and that many bytes, and answers one byte per frame: '1' when
+// length and that many bytes and answers one byte per frame: '1' when
 // PHP's unserialize accepts the bytes and '0' when it doesn't. Classes are never loaded (allowed_classes false), so
 // no object code runs. Run as: php -n oracle.php
 

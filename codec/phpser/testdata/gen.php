@@ -36,7 +36,7 @@ $fixtures = [
     'floats' => serialize([INF, -INF, NAN, 1.0E+25, -0.0, 0.1]),
 ];
 
-// Hand-made inputs: PHP accepts these, but serialize() never writes them.
+// Hand-made inputs: PHP accepts these but serialize() never writes them.
 $fixtures['leading-zero'] = 'a:01:{i:0;s:3:"abc";}';
 $fixtures['plus-int'] = 'i:+5;';
 // PHP refuses a boolean key.

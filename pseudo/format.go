@@ -92,6 +92,14 @@ func (f *faker) format(kind, hk core.FakeKind, sum, original []byte, o core.Fake
 // tooShort is the error for a column too narrow for any fake of kind.
 func tooShort(kind core.FakeKind, need, have int) error {
 	return core.Errorf(core.ErrConfig, 2,
+		"a fake %s needs at least %d bytes but the column holds %d; blank the column",
+		strings.ReplaceAll(string(kind), "_", " "), need, have)
+}
+
+// tooShortEmail is tooShort for an email-shaped fake, where the email
+// domain takes part of the room and so a shorter one can help.
+func tooShortEmail(kind core.FakeKind, need, have int) error {
+	return core.Errorf(core.ErrConfig, 2,
 		"a fake %s needs at least %d bytes but the column holds %d; blank the column or use a shorter pseudonymise.email_domain",
 		strings.ReplaceAll(string(kind), "_", " "), need, have)
 }
@@ -125,7 +133,7 @@ func (f *faker) email(kind core.FakeKind, sum []byte, limit int) ([]byte, error)
 	if fixed := 2 + len(f.opt.EmailDomain); limit > 0 && fixed+n > limit {
 		n = limit - fixed
 		if n < minUniqueHex {
-			return nil, tooShort(kind, fixed+minUniqueHex, limit)
+			return nil, tooShortEmail(kind, fixed+minUniqueHex, limit)
 		}
 	}
 	out := make([]byte, 0, 2+n+len(f.opt.EmailDomain))
@@ -149,20 +157,18 @@ func login(kind core.FakeKind, sum []byte, limit int) ([]byte, error) {
 }
 
 // fakeURL is https://u<12 hex>.example.invalid/; a narrow column loses
-// the closing slash, then hex digits down to 4.
+// the closing slash. The hex never gets shorter: URLs are a unique kind
+// and fewer digits would collide within a few hundred rows.
 func fakeURL(sum []byte, limit int) ([]byte, error) {
 	const head, tail = "https://u", ".example.invalid"
-	n, slash := urlHexLen, true
-	if limit > 0 && len(head)+n+len(tail)+1 > limit {
+	slash := true
+	if limit > 0 && len(head)+urlHexLen+len(tail)+1 > limit {
 		slash = false
-		if len(head)+n+len(tail) > limit {
-			n = limit - len(head) - len(tail)
-			if n < minURLHex {
-				return nil, tooShort(core.KURL, len(head)+minURLHex+len(tail), limit)
-			}
+		if len(head)+urlHexLen+len(tail) > limit {
+			return nil, tooShort(core.KURL, len(head)+urlHexLen+len(tail), limit)
 		}
 	}
-	out := hex.AppendEncode([]byte(head), sum[:6])[:len(head)+n]
+	out := hex.AppendEncode([]byte(head), sum[:urlHexLen/2])
 	out = append(out, tail...)
 	if slash {
 		out = append(out, '/')
@@ -308,8 +314,9 @@ var dateForms = []string{"2006-01-02", "2006/01/02", "02.01.2006", "20060102"}
 
 // fakeDOB shifts a date by 1 to 180 days either way, chosen by the hash,
 // and keeps its year and spelling. A time after an ISO date is kept. A
-// zero date stays; any other value that isn't a date keeps its shape
-// with new digits. One with no digit at all ("fifth of May") is blanked:
+// zero date stays. A value with a date's shape that isn't a real date
+// keeps its year and gets a valid month and day; any other value that
+// isn't a date keeps its shape with new digits. One with no digit at all ("fifth of May") is blanked:
 // there is nothing to shift and it may still say the date.
 func fakeDOB(sum, original []byte, country string) []byte {
 	s := string(bytes.TrimSpace(original))
@@ -348,6 +355,27 @@ func fakeDOB(sum, original []byte, country string) []byte {
 			return []byte(move(t).Format(form))
 		}
 	}
+	// A value with a date's shape that is not a real date (1990-02-29,
+	// 31/13/1990) keeps its year and gets a valid month and day, so it
+	// still reads as a date in the same year.
+	forms := dateForms
+	if len(s) == 10 && s[2] == '/' && s[5] == '/' {
+		forms = []string{"02/01/2006"}
+		if strings.EqualFold(strings.TrimSpace(country), "US") {
+			forms = []string{"01/02/2006"}
+		}
+	}
+	for _, form := range forms {
+		// The all-digit form needs the whole value, or any long number
+		// would pass for a date.
+		if len(s) < len(form) || form == "20060102" && len(s) != len(form) || !sameShape(form, s[:len(form)]) {
+			continue
+		}
+		i := strings.Index(form, "2006")
+		year, _ := strconv.Atoi(s[i : i+4])
+		t := time.Date(year, time.Month(sum[3]%12+1), int(sum[4]%28)+1, 0, 0, 0, 0, time.UTC)
+		return []byte(t.Format(form) + s[len(form):])
+	}
 	out := shaped(sum, []byte(s), false)
 	if bytes.Equal(out, []byte(s)) {
 		for i, c := range out {
@@ -357,6 +385,19 @@ func fakeDOB(sum, original []byte, country string) []byte {
 		}
 	}
 	return out
+}
+
+// sameShape reports whether s has a digit wherever the Go layout form
+// has one and the same byte everywhere else.
+func sameShape(form, s string) bool {
+	for i := 0; i < len(form); i++ {
+		fd := form[i] >= '0' && form[i] <= '9'
+		sd := s[i] >= '0' && s[i] <= '9'
+		if fd != sd || !fd && form[i] != s[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // street writes a fake street in the locale's shape.

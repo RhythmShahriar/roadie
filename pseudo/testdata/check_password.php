@@ -8,7 +8,7 @@
 // "<mode> <base64 password> <base64 hash>"; each answer is one line of
 // "1" (the password matches) or "0". Modes:
 //   phpass   phpass CheckPassword, as WordPress's class-phpass.php has it
-//   bcrypt   password_verify, and password_get_info must name bcrypt (Laravel's check)
+//   bcrypt   password_verify and password_get_info must name bcrypt (Laravel's check)
 //   make     prints crypt_private(password, hash as setting) instead of 1 or 0
 
 $itoa64 = './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';

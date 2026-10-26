@@ -125,7 +125,7 @@ func TestIsFakeOfRealValues(t *testing.T) {
 		core.KEmail: {"jane@gmail.com", "u0123@example.invalid", "u0123456789abcdef@gmail.com",
 			"U0123456789ABCDEF@example.invalid", "x0123456789abcdef@example.invalid", "u0123456789abcdef0@example.invalid"},
 		core.KUsername:  {"janedoe", "user_123", "user_0123456789abcdefg"},
-		core.KURL:       {"https://jane.blog/", "https://u123.example.invalid/", "http://u0123456789ab.example.invalid/", "https://u0123456789ab.example.com/"},
+		core.KURL:       {"https://jane.blog/", "https://u123.example.invalid/", "https://u0123.example.invalid", "http://u0123456789ab.example.invalid/", "https://u0123456789ab.example.com/"},
 		core.KPhone:     {"+44 7911 123456", "+1 212 555 0000", "+49 30 1234567"},
 		core.KIP:        {"81.2.69.142", "8.8.8.8", "2a00:1450:4009:81f::200e", "not an ip"},
 		core.KUserAgent: {"Mozilla/5.0 (X11; Linux x86_64)"},

@@ -170,6 +170,30 @@ func slashAt(text []byte, i int) int {
 	return 0
 }
 
+// colonAt is the forward form of colonBefore, for the colon before a
+// port: ":", "%3A" in either case or an HTML entity such as "&#58;" or
+// "&colon;". JSON never escapes a colon, so backslashes don't count.
+func colonAt(text []byte, i int) int {
+	if i >= len(text) {
+		return 0
+	}
+	switch text[i] {
+	case ':':
+		return 1
+	case '%':
+		if i+3 <= len(text) && equalFold(text[i:i+3], []byte("%3a")) {
+			return 3
+		}
+	case '&':
+		if end := bytes.IndexByte(text[i:min(len(text), i+12)], ';'); end > 0 {
+			if n := colonBefore(text, i+end+1); n == end+1 {
+				return n
+			}
+		}
+	}
+	return 0
+}
+
 func isHex(c byte) bool {
 	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F'
 }
@@ -186,16 +210,37 @@ func hexVal(c byte) int {
 
 // hostEnds reports whether a host may end before text[i]: the next byte
 // isn't a host byte, nor a dot that starts another label, so shop.com
-// doesn't match in shop.com.au or shop.community.
+// doesn't match in shop.com.au or shop.community. A dot spelled %2E or
+// as an HTML entity counts too, so shop.com%2Eau and shop.com&#46;au
+// stay as they are.
 func hostEnds(text []byte, i int) bool {
 	if i >= len(text) {
 		return true
 	}
-	c := text[i]
-	if c == '.' {
-		return i+1 >= len(text) || !alnum(text[i+1])
+	n := dotAt(text, i)
+	if n > 0 {
+		return i+n >= len(text) || !alnum(text[i+n])
 	}
-	return !hostByte(c)
+	return !hostByte(text[i])
+}
+
+// dotSpellings are the encoded dots dotAt knows, matched without case.
+var dotSpellings = [][]byte{[]byte("%2e"), []byte("&#46;"), []byte("&#x2e;"), []byte("&period;")}
+
+// dotAt returns the length of the dot at text[i] in any spelling, or 0.
+func dotAt(text []byte, i int) int {
+	if text[i] == '.' {
+		return 1
+	}
+	if text[i] != '%' && text[i] != '&' {
+		return 0
+	}
+	for _, d := range dotSpellings {
+		if i+len(d) <= len(text) && bytes.EqualFold(text[i:i+len(d)], d) {
+			return len(d)
+		}
+	}
+	return 0
 }
 
 // userinfo reports whether the host that ends at i is the user part of
@@ -261,23 +306,21 @@ func (r *rule) try(text []byte, h int) (match, bool) {
 	// The port: From's own must be there; otherwise one in the text goes
 	// when To names a port and stays when it doesn't.
 	keepPort := -1
-	if r.from.port != "" {
-		p := ":" + r.from.port
-		if !bytes.HasPrefix(text[end:], []byte(p)) || (end+len(p) < len(text) && isDigit(text[end+len(p)])) {
+	if c := colonAt(text, end); r.from.port != "" {
+		p := end + c
+		if c == 0 || !bytes.HasPrefix(text[p:], []byte(r.from.port)) || (p+len(r.from.port) < len(text) && isDigit(text[p+len(r.from.port)])) {
 			return match{}, false
 		}
-		end += len(p)
-	} else if end < len(text) && text[end] == ':' && end+1 < len(text) && isDigit(text[end+1]) {
-		j := end + 1
+		end = p + len(r.from.port)
+	} else if c > 0 && end+c < len(text) && isDigit(text[end+c]) {
+		j := end + c
 		for j < len(text) && isDigit(text[j]) {
 			j++
 		}
-		if r.to.port != "" {
-			end = j
-		} else {
-			keepPort = end
-			end = j
+		if r.to.port == "" {
+			keepPort = end // kept as written, colon spelling and all
 		}
+		end = j
 	}
 	// The path prefix, segment by segment in any slash spelling.
 	var style []byte
