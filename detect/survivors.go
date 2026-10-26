@@ -142,7 +142,7 @@ func (s *survivorScan) check(token []byte, start, end int, at mapper, enc string
 }
 
 // roadieFake reports whether token is a Roadie fake of kind or of any
-// kind the faker draws from its lists. The lists hold common names, and
+// kind the faker draws from its lists. The lists hold common names;
 // Known can hold the same word as another kind: a real customer living
 // in Austin makes Known call Austin a city while the copy holds Austin
 // as a fake first name. PRD 15.2 leaves values that are also Roadie

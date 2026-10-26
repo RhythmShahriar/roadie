@@ -983,7 +983,7 @@ func (emptyKnown) Len() int { return 0 }
 
 // hostWordKnown is Known without the shop's own name words: a name
 // that holds a word of a production host ("Shop Owner" on
-// shop.example.com) is the business's account, and the word is in page
+// shop.example.com) is the business's account. The word is in page
 // titles, slugs, post types and addresses all over the site. Looked up
 // as a name it would make the scrubber rewrite "Shop" in every note and
 // verify report shop_order as a survivor.

@@ -267,8 +267,8 @@ func (c dbConfig) endpoint(root string) core.Endpoint {
 	}
 	e := core.Endpoint{Kind: core.DSN, Driver: c.driver, Host: c.host, Port: port, User: c.user, Path: c.name, DSN: u.String(), Password: c.password}
 	// Display leaves the user out with the password: both come from the
-	// site's own config, not from what the user typed, and on shared
-	// hosting the database user is often the account holder's name.
+	// site's own config, not from what the user typed. On shared hosting
+	// the database user is often the account holder's name.
 	shown := u
 	shown.User = nil
 	e.Display = shown.String()

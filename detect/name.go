@@ -66,7 +66,7 @@ var systemAuthors = map[string]bool{
 // SystemAuthor reports whether name, trimmed and in any case, is one
 // WordPress or WooCommerce signs its own comments and order notes with.
 // The engine leaves these out of the known set: "WooCommerce" is not a
-// person, and every hook and option name holds the word.
+// person; every hook and option name holds the word.
 func SystemAuthor(name []byte) bool {
 	return systemAuthors[strings.ToLower(strings.TrimSpace(string(name)))]
 }

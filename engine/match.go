@@ -113,7 +113,7 @@ func (s *ruleSet) each(get func(string) ([]byte, bool), fn func(*core.Rule)) {
 // nested names it ("serialized:testmode", "base64:json:billing.email").
 // Profile rules carry the format ("serialized:ip"); the kill switch
 // writes its option rules without one ("testmode"), as core.Rule's own
-// examples do, and such a path matches the leaf in any format.
+// examples do. Such a path matches the leaf in any format.
 func leafMatch(pattern, leaf string) bool {
 	if ok, _ := path.Match(pattern, leaf); ok {
 		return true

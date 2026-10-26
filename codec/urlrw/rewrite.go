@@ -142,8 +142,8 @@ func sepBefore(text []byte, i int, c byte, pct, named string) int {
 }
 
 // escapesBefore is the length of the JSON escapes that end at i before a
-// URL-encoded separator: a JSON string URL-encoded whole writes \/ as
-// %5C%2F, and text decoded once can hold \%2F. Either spelling, any
+// URL-encoded separator. A JSON string URL-encoded whole writes \/ as
+// %5C%2F; text decoded once can hold \%2F. Either spelling counts, any
 // number of times.
 func escapesBefore(text []byte, i int) int {
 	n := 0

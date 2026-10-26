@@ -799,7 +799,7 @@ func (r *runner) endMaintenance(ctx context.Context) {
 }
 
 // dumpNotes hears the dump reader's notes (dump.Notes) for the plan and
-// the report, once each though both passes read the dump, and passes
+// the report, once each though both passes read the dump. It passes
 // them to the run's progress. The reader's byte and table progress is
 // left out: the pipeline reports its own.
 type dumpNotes struct {

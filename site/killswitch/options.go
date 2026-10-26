@@ -39,8 +39,8 @@ func settings(b []byte) (map[string]string, error) {
 func GatewayIDs(order []byte) ([]string, error) {
 	var ids []string
 	// The IDs are the top-level keys: phpser reports keys and string
-	// leaves only, never the integer positions, and a top-level key's
-	// path is the key itself.
+	// leaves only, never the integer positions. A top-level key's path
+	// is the key itself.
 	err := leaves(order, func(path string, leaf []byte, isKey bool) {
 		if isKey && path == string(leaf) && path != "" {
 			ids = append(ids, path)

@@ -1169,7 +1169,7 @@ type countingSink struct {
 func (s *countingSink) ExpectTables(n int) { s.expected = n }
 
 // A run hands the guards --url, the sites --fix-collation, the kill
-// switch the version and the source's gateways, and the sink the
+// switch the version and the source's gateways; the sink hears the
 // table count.
 func TestRunWiring(t *testing.T) {
 	f := useRunFakes(t)

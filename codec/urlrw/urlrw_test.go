@@ -52,7 +52,7 @@ func TestRewriteForms(t *testing.T) {
 		{"https://shop.com:8443/a?u=x@y", "https://staging.shop.test:8443/a?u=x@y", 1},
 		{"https://shop.com mail jane@x.example", "https://staging.shop.test mail jane@x.example", 1},
 		{"https%3A%2F%2Fshop.com%2Fa%40b", "https%3A%2F%2Fstaging.shop.test%2Fa%40b", 1},
-		// a JSON string URL-encoded whole, and one decoded once
+		// a JSON string URL-encoded whole; one decoded once
 		{"u=https%3A%5C%2F%5C%2Fshop.com%5C%2Fcart", "u=https%3A%5C%2F%5C%2Fstaging.shop.test%5C%2Fcart", 1},
 		{`/\%2fSHOP.Com`, `/\%2fstaging.shop.test`, 1},
 		{`https:\%2F\%2Fshop.com`, `https:\%2F\%2Fstaging.shop.test`, 1},
