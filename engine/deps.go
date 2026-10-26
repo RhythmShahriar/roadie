@@ -23,6 +23,7 @@ import (
 	"github.com/RhythmShahriar/roadie/site/dotenv"
 	"github.com/RhythmShahriar/roadie/site/exposure"
 	"github.com/RhythmShahriar/roadie/site/killswitch"
+	"github.com/RhythmShahriar/roadie/site/remote"
 	"github.com/RhythmShahriar/roadie/site/wpconfig"
 	"github.com/RhythmShahriar/roadie/verify"
 )
@@ -73,6 +74,7 @@ var (
 	newStreamSink  = dump.NewStreamSink
 	loadProfiles   = profile.Load
 	runKey         = roadiecfg.RunKey
+	remoteList     = remote.List
 	// excludeGit keeps .roadie/key, the reports and the basic-auth files
 	// out of the git work tree dir is in, if any; best effort, as the
 	// files are written 0600 either way.

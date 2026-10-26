@@ -1180,7 +1180,9 @@ func compiledRules(c *profile.Compiled) []core.Rule {
 }
 
 // remoteCommands lists every remote command the run's sites ran, once
-// each, in order.
+// each, in order. A plan that reaches a host over ssh or a WP-CLI alias
+// adds every command a copy may run there, from the allowlist (PRD
+// 6.7): the target's only when the target is remote.
 func (r *runner) remoteCommands() []string {
 	var out []string
 	for i, s := range r.opened {
@@ -1193,8 +1195,19 @@ func (r *runner) remoteCommands() []string {
 			}
 		}
 	}
+	if r.mode == Plan && (isRemote(r.j.From.Kind) || isRemote(r.j.To.Kind)) {
+		for _, c := range remoteList(isRemote(r.j.To.Kind)) {
+			if !slices.Contains(out, c) {
+				out = append(out, c)
+			}
+		}
+	}
 	return out
 }
+
+// isRemote reports an endpoint Roadie reaches through the remote
+// allowlist: an ssh site or a WP-CLI alias.
+func isRemote(k core.EndpointKind) bool { return k == core.SSHSite || k == core.WPAlias }
 
 // backupErr is the stop for a prepare backup that failed: the target is
 // untouched. A typed cause (ssh, wp-cli) keeps its code and exit; any

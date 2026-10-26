@@ -22,6 +22,7 @@ import (
 	"github.com/RhythmShahriar/roadie/roadiecfg"
 	"github.com/RhythmShahriar/roadie/site"
 	"github.com/RhythmShahriar/roadie/site/killswitch"
+	"github.com/RhythmShahriar/roadie/site/remote"
 	"github.com/RhythmShahriar/roadie/verify"
 )
 
@@ -295,6 +296,16 @@ func TestRunPlanWritesNothing(t *testing.T) {
 	}
 	if len(res.Tables) == 0 || !slices.Contains(res.RemoteCommands, "wp db export -") {
 		t.Errorf("tables %d remote %v", len(res.Tables), res.RemoteCommands)
+	}
+	// The source is reached over ssh: the plan lists the source's
+	// allowlist too; the local staging adds no target commands.
+	for _, c := range remote.List(false) {
+		if !slices.Contains(res.RemoteCommands, c) {
+			t.Errorf("plan lacks %q", c)
+		}
+	}
+	if len(res.RemoteCommands) != len(remote.List(false))+1 {
+		t.Errorf("remote commands %q", res.RemoteCommands)
 	}
 }
 
