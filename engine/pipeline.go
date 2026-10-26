@@ -558,6 +558,16 @@ func (p *pipeline) finalCompile(idx *indexer, schema *core.Schema) (*profile.Com
 	if schema == nil {
 		schema = &core.Schema{}
 	}
+	if schema.Prefix == "" {
+		// A dump of some WordPress tables only (wp db export --tables,
+		// a table restored on its own) has no options table to name the
+		// prefix; its core tables still do.
+		if pfx, ok := guessPrefix(schema); ok && pfx != "" {
+			cp := *schema
+			cp.Prefix = pfx
+			schema = &cp
+		}
+	}
 	c, err := profile.CompileWith(nil, p.defs, schema, p.cfg, profile.Hints{Options: idx.options, Site: p.site, Ctx: idx.ctx})
 	if err != nil {
 		return nil, err

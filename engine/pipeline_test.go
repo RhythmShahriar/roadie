@@ -986,3 +986,23 @@ func TestGuessPrefixNetworkTables(t *testing.T) {
 		t.Errorf("guessed %q %v from wp_sitemeta", p, ok)
 	}
 }
+
+// A dump of a few WordPress tables (wp db export --tables=wp_comments)
+// has no options table; its core tables still give the prefix, so the
+// WordPress rules apply instead of a stop for an unknown stack.
+func TestPipelinePartialWordPressDump(t *testing.T) {
+	useFakes(t)
+	p, sink, _ := fixture(t, Copy, "", func() []tableData {
+		return []tableData{{table("wp_comments", "comment_ID:bigint(20)", "comment_author", "comment_author_email"), rows{{1, "Anna Lee", "anna.lee@example.com"}}}}
+	}, nil, Options{URL: "https://staging.shop.test"})
+	out, err := p.run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Result.Stack.Name != core.StackWordPress {
+		t.Errorf("stack %+v", out.Result.Stack)
+	}
+	if v, _ := valueOf(t, sink, "wp_comments", 0, "comment_author_email"); v == "anna.lee@example.com" {
+		t.Error("the comment's email wasn't faked")
+	}
+}

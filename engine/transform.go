@@ -359,8 +359,13 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 		if !matched && whole != nil && whole.Action == core.Scrub {
 			// A free-text field that holds one production value whole (a
 			// form's address or date field without a type) gets that
-			// value's fake; the scrubber finds only names and shapes.
-			nv, ch, err := t.sweep(cur, nil)
+			// value's fake; the scrubber finds only names and shapes. A
+			// nested leaf keyed as a phone, name or address part gets its
+			// kind's fake first.
+			nv, ch, err := t.keyedLeaf(rc.table, p, cur)
+			if err == nil && !ch {
+				nv, ch, err = t.sweep(cur, nil)
+			}
 			if err != nil {
 				leafErr = err
 				return leaf, false
@@ -408,7 +413,7 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 			}
 		}
 		if !matched && !swept && (whole == nil || whole.Action == core.RewriteURL) {
-			nv, ch, err := t.uncoveredLeaf(p, cur)
+			nv, ch, err := t.uncoveredLeaf(rc.table, p, cur)
 			if err != nil {
 				leafErr = err
 				return leaf, false
@@ -683,42 +688,79 @@ var keyedKinds = map[string]core.FakeKind{
 	"lname": core.KLastName, "billing_last_name": core.KLastName, "shipping_last_name": core.KLastName,
 	"full_name": core.KFullName, "fullname": core.KFullName, "display_name": core.KFullName, "customer_name": core.KFullName,
 	"billing_name": core.KFullName, "shipping_name": core.KFullName, "contact_name": core.KFullName,
+	"street": core.KStreet, "street_address": core.KStreet, "address_1": core.KStreet, "address1": core.KStreet,
+	"line1": core.KStreet, "billing_address_1": core.KStreet, "shipping_address_1": core.KStreet,
+	"address": core.KAddress, "address_line": core.KAddress, "address_2": core.KAddress, "address2": core.KAddress,
+	"line2": core.KAddress, "billing_address_2": core.KAddress, "shipping_address_2": core.KAddress,
+	"postcode": core.KPostcode, "zip": core.KPostcode, "zipcode": core.KPostcode, "postal_code": core.KPostcode,
+	"billing_postcode": core.KPostcode, "shipping_postcode": core.KPostcode,
+}
+
+// personKeys are parent keys under which "name" is a person's: a
+// customer's, a contact's, the billing address's.
+var personKeys = map[string]bool{
+	"customer": true, "billing": true, "shipping": true, "contact": true, "user": true, "buyer": true, "recipient": true,
+	"person": true, "profile": true, "sender": true, "client": true, "member": true, "applicant": true, "author": true,
+}
+
+// keyedLeaf gives a leaf of a serialized or JSON value the fake its key
+// names: a phone (seven digits or more, not fictional already), a first,
+// last or full name, a street, an address line or a postcode. A "name"
+// is a person's under a person's key (customer.name) or in a user's own
+// meta; elsewhere (a product's or a plugin's name) only its known name
+// words are replaced.
+func (t *transformer) keyedLeaf(table, p string, leaf []byte) ([]byte, bool, error) {
+	v := bytes.TrimSpace(leaf)
+	if p == "" || t.sh.parts.noData || len(v) == 0 {
+		return leaf, false, nil
+	}
+	inner, key := keys.LeafKey(p)
+	key = strings.ToLower(key)
+	kind, ok := keyedKinds[key]
+	if key == "name" {
+		_, parent := keys.LeafKey(parentOf(inner))
+		if personKeys[strings.ToLower(parent)] || strings.HasSuffix(table, "usermeta") {
+			kind, ok = core.KFullName, true
+		}
+	}
+	switch {
+	case ok && kind == core.KPhone && (digitCount(v) < 7 || isFake(kind, v)):
+	case ok:
+		nv, err := t.faker.Fake(kind, v, core.FakeOpts{Locale: t.sh.cfg.Pseudonymise.Locale})
+		if err != nil {
+			return leaf, false, err
+		}
+		return nv, len(nv) > 0, nil
+	case key == "name" && t.sh.known != nil:
+		if nv, n := scrubText(leaf, nil, t.sh.known, t.faker); n > 0 && nv != nil {
+			return nv, true, nil
+		}
+	}
+	return leaf, false, nil
 }
 
 // uncoveredLeaf gives a leaf no rule covers the fakes of what it plainly
-// holds. A leaf of a serialized or JSON value keyed as a phone or as a
-// first, last or full name gets its kind's fake (a phone only when it
-// has seven digits or more and isn't fictional already); one keyed "name" gets fakes for the known
-// name words in it, since a product or a plugin has a name too. Then
-// any leaf gets fakes for its personal emails (with any at sign: a
-// URL's %40 too), strong-format phones and public IPs, and XXXX for a
-// card number: what verify reports, so a copy doesn't fail its own
-// verify on a plugin's settings, a cron job's arguments or a URL with
-// an address in its query.
-func (t *transformer) uncoveredLeaf(p string, leaf []byte) ([]byte, bool, error) {
+// holds: keyedLeaf's fakes, then for any leaf fakes for its personal
+// emails (with any at sign: a URL's %40 too), strong-format phones,
+// public IPs and streets written as a number and a street name, and
+// XXXX for a card number: what verify reports, so a copy doesn't fail
+// its own verify on a plugin's settings, a cron job's arguments or a
+// URL with an address in its query. A street in an options or settings
+// table is the business's own and stays.
+func (t *transformer) uncoveredLeaf(table, p string, leaf []byte) ([]byte, bool, error) {
 	if t.sh.parts.noData || len(bytes.TrimSpace(leaf)) == 0 {
 		return leaf, false, nil
 	}
-	if p != "" {
-		_, key := keys.LeafKey(p)
-		key = strings.ToLower(key)
-		if kind, ok := keyedKinds[key]; ok && (kind != core.KPhone || digitCount(leaf) >= 7 && !isFake(kind, bytes.TrimSpace(leaf))) {
-			nv, err := t.faker.Fake(kind, bytes.TrimSpace(leaf), core.FakeOpts{Locale: t.sh.cfg.Pseudonymise.Locale})
-			if err != nil {
-				return leaf, false, err
-			}
-			return nv, len(nv) > 0, nil
-		}
-		if key == "name" && t.sh.known != nil {
-			if nv, n := scrubText(leaf, nil, t.sh.known, t.faker); n > 0 && nv != nil {
-				return nv, true, nil
-			}
-		}
+	if nv, ch, err := t.keyedLeaf(table, p, leaf); err != nil || ch {
+		return nv, ch, err
 	}
 	if t.sh.spans == nil || !mayHoldShapes(leaf) {
 		return leaf, false, nil
 	}
 	spans := t.sh.spans.Spans(leaf)
+	if settingsTable(table) {
+		spans = slices.DeleteFunc(spans, func(s core.Span) bool { return s.Kind == core.KStreet })
+	}
 	if len(spans) == 0 {
 		return leaf, false, nil
 	}
@@ -729,14 +771,21 @@ func (t *transformer) uncoveredLeaf(p string, leaf []byte) ([]byte, bool, error)
 	return nv, true, nil
 }
 
+// settingsTable reports whether a table holds a site's settings (its
+// options, a network's sitemeta, a plugin's settings table).
+func settingsTable(table string) bool {
+	t := strings.ToLower(table)
+	return strings.HasSuffix(t, "options") || strings.HasSuffix(t, "sitemeta") || strings.Contains(t, "setting")
+}
+
 // mayHoldShapes is a cheap test before the text scanners run: an
-// address needs an at sign in some form, a phone, card or IP four
-// digits at least.
+// address needs an at sign in some form, a phone, card, IP or street a
+// digit.
 func mayHoldShapes(b []byte) bool {
 	if bytes.IndexByte(b, '@') >= 0 || bytes.Contains(b, []byte("%40")) || bytes.Contains(b, []byte("&#")) {
 		return true
 	}
-	return digitCount(b) >= 4
+	return bytes.ContainsAny(b, "0123456789")
 }
 
 // digitCount counts the ASCII digits in b.

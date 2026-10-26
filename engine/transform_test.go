@@ -78,8 +78,9 @@ func TestTransformActions(t *testing.T) {
 	if got, notNull := valueOf(t, sink, "t", 0, "nn"); !notNull || got != "" {
 		t.Errorf("a NOT NULL column got NULL or %q", got)
 	}
-	// The path rule fakes billing.email; the other leaves are no rule's,
-	// so only the address in note (uncovered-values) changes.
+	// The path rule fakes billing.email; the other leaves are no rule's
+	// and get uncovered-values: the billing name (a person's name under
+	// billing) and the address in note.
 	var j struct {
 		Billing map[string]string `json:"billing"`
 		Note    string            `json:"note"`
@@ -88,7 +89,7 @@ func TestTransformActions(t *testing.T) {
 	if err := json.Unmarshal([]byte(got), &j); err != nil {
 		t.Fatalf("j %q: %v", got, err)
 	}
-	if j.Billing["email"] != string(email) || j.Billing["name"] != "Anna" || j.Note == "ben@example.com" || !strings.HasSuffix(j.Note, "@example.invalid") {
+	if j.Billing["email"] != string(email) || j.Billing["name"] == "Anna" || j.Billing["name"] == "" || j.Note == "ben@example.com" || !strings.HasSuffix(j.Note, "@example.invalid") {
 		t.Errorf("path rule: %s", got)
 	}
 	if v, _ := valueOf(t, sink, "t", 1, "e"); v != "<dropped>" {
@@ -950,5 +951,40 @@ func TestSweepTextCity(t *testing.T) {
 	}
 	if got, ok := tr.sweepText([]byte("Made in Leeds"), textKinds); ok {
 		t.Errorf("a city in prose: %s", got)
+	}
+}
+
+// keyedLeaf fakes a nested leaf by its key: a person's name under a
+// person's key or in usermeta, address parts and phones; a product's
+// name, a short code under "phone" and a text leaf stay.
+func TestKeyedLeaf(t *testing.T) {
+	useFakes(t)
+	tr := newTransformer(&shared{cfg: roadiecfg.Default(), known: testutil.FakeKnown()}, testutil.FakeFaker())
+	for _, c := range []struct {
+		table, path, leaf string
+		kind              core.FakeKind // "" = unchanged
+	}{
+		{"wp_actionscheduler_actions", "json:customer.name", "Disipoh Rifivolic", core.KFullName},
+		{"wp_actionscheduler_actions", "json:customer.address", "166 Bamelacok Road", core.KAddress},
+		{"wp_usermeta", "serialized:name", "Zoë Taperijeta", core.KFullName},
+		{"wp_usermeta", "serialized:profile.serialized:phone", "+44 7911 668109", core.KPhone},
+		{"wp_options", "serialized:origin.postcode", "LS1 4AP", core.KPostcode},
+		{"wp_options", "json:product.name", "Coffee Grinder", ""},
+		{"wp_options", "json:name", "Stripe", ""},
+		{"wp_options", "json:phone", "n/a", ""},
+		{"wp_options", "", "+44 7911 668109", ""},
+	} {
+		got, ch, err := tr.keyedLeaf(c.table, c.path, []byte(c.leaf))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := c.leaf
+		if c.kind != "" {
+			b, _ := testutil.FakeFaker().Fake(c.kind, []byte(c.leaf), core.FakeOpts{})
+			want = string(b)
+		}
+		if ch != (c.kind != "") || c.kind == "" && string(got) != c.leaf || c.kind != "" && !strings.HasPrefix(string(got), "fake-"+string(c.kind)) {
+			t.Errorf("%s %s %q: %q %v, want %q", c.table, c.path, c.leaf, got, ch, want)
+		}
 	}
 }
