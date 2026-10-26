@@ -31,7 +31,7 @@ const (
 
 // The exact strings of PRD 16.1 and 19.1 that tests pin.
 const (
-	honestyLine = "Pseudonymised, not anonymised. The copy still holds order totals, dates, products and anything Roadie can't recognise in free text. Treat it as personal data." //nolint:misspell // PRD 16.1's British wording, pinned
+	honestyLine = "Pseudonymised, not anonymised. The copy still holds order totals, dates, products and anything Roadie can't recognise in free text. Treat it as personal data."
 	// notStopped is PRD 13.5's list of what the kill switch can't stop.
 	notStopped = report.KillSwitchLimits
 	// cachesLine is the third ROADMAP item the ALSO block names (PRD 5).
