@@ -465,7 +465,8 @@ func TestRowCalls(t *testing.T) {
 	for _, v := range []string{
 		"pg_read_file('/etc/passwd')", "'x' || pg_read_file('/etc/passwd')", "(SELECT 1)",
 		"lo_import('/etc/passwd')", "public.f(1)", "'x'::text and pg_sleep(10)", "\"f\"(1)",
-		"'x'::text || pg_sleep(1)",
+		"'x'::text || pg_sleep(1)", "(('/etc/passwd'::text)).pg_read_file", "(ROW(1)).f", "U&\"\\0070g_read_file\"('/x')",
+		"pg_read_file /* c */ ('/x')",
 	} {
 		_, _, err := drain(t, []byte(head+"'a', "+v+");\n"), SourceOptions{})
 		ce := wantCode(t, err, core.ErrDumpRefused, 3)
@@ -476,6 +477,7 @@ func TestRowCalls(t *testing.T) {
 	for _, v := range []string{
 		"DEFAULT", "true", "'x'::character varying(10)", "'1.5'::numeric(10,2)", "'2024-01-01'::timestamp(3) without time zone",
 		"'{1,2}'::integer[]", "ARRAY['a', 'b']", "'USER'::public.\"Role\"", "-1", "B'0101'", "X'1F'", "E'a\\nb'", "'NaN'::double precision",
+		"NULL::pg_catalog.text", "'1.5'", "1.5", ".5", "'x'::text COLLATE \"C\"",
 	} {
 		bs, _, err := drain(t, []byte(head+"'a', "+v+");\n"), SourceOptions{})
 		if err != nil {

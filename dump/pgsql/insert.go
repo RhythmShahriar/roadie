@@ -480,7 +480,8 @@ var typeWords = map[string]bool{
 // SafeExpr reports whether an expression in a row is data only:
 // literals, keywords such as DEFAULT and true, operators and casts
 // (::type with a numeric modifier). No function call (a name before
-// '(' outside a cast), no qualified name outside a cast and no query
+// '(' outside a cast), no qualified name or field selection outside a
+// cast and no query
 // (SELECT, VALUES, TABLE, WITH).
 func SafeExpr(text []byte, m Mode) bool {
 	t := tokens(text, m, 0)
@@ -496,6 +497,10 @@ func SafeExpr(text []byte, m Mode) bool {
 		case k.kind == tokWord && (k.is("select") || k.is("values") || k.is("table") || k.is("with")):
 			return false
 		case k.isName() && (t.punct(i+1, '(') || t.punct(i+1, '.')):
+			return false
+		case k.punct('.') && t.at(i+1).isName():
+			// (x).f is field selection, which also calls a function f
+			// that takes x.
 			return false
 		}
 	}
