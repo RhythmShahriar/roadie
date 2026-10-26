@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-label="rhythm roadie: is your staging a safe copy of production?">
+  <rect width="1280" height="360" rx="24" fill="#FFFFFF"/>
+  <!-- a road from production to staging: the lane marks run on and the last one, in the signal color, is the copy Roadie checks -->
+  <path d="M700,250 L1200,250" stroke="#E7E4DF" stroke-width="4" stroke-linecap="round"/>
+  <path d="M700,110 L1200,110" stroke="#E7E4DF" stroke-width="4" stroke-linecap="round"/>
+  <g fill="#E7E4DF">
+    <rect x="712" y="174" width="44" height="12" rx="6"/>
+    <rect x="788" y="174" width="44" height="12" rx="6"/>
+    <rect x="864" y="174" width="44" height="12" rx="6"/>
+    <rect x="940" y="174" width="44" height="12" rx="6"/>
+    <rect x="1016" y="174" width="44" height="12" rx="6"/>
+    <rect x="1092" y="174" width="44" height="12" rx="6"/>
+  </g>
+  <rect x="1160" y="168" width="44" height="24" rx="12" fill="#E8603A"/>
+  <text x="96" y="104" font-family="'JetBrains Mono', 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="26" letter-spacing="3" fill="#5F5B55">RHYTHM</text>
+  <text x="90" y="196" font-family="Inter, 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="104" font-weight="800" letter-spacing="-4" fill="#100F0D">roadie<tspan fill="#E8603A">.</tspan></text>
+  <text x="96" y="330" font-family="Inter, 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="28" font-weight="500" fill="#5F5B55">Is your staging a safe copy of production? Copy it pseudonymised, then prove it.</text>
+</svg>
