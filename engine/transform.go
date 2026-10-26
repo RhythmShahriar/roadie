@@ -273,7 +273,7 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 			}
 		}
 	}
-	if fixed, ok := t.addressIndex(rc, col, orig); ok {
+	if fixed, ok := t.addressIndex(rc, col, orig); ok && !t.sh.parts.noData {
 		if !bytes.Equal(fixed, orig) {
 			setValue(v, fixed, false)
 			c := out.change("hpos-address-index", rc.table, col.Name, core.Fixed)
@@ -283,7 +283,7 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 		}
 		return false, nil
 	}
-	if looksSerialized(orig) && nestedFormat(orig) == formatText {
+	if !t.sh.parts.noData && looksSerialized(orig) && nestedFormat(orig) == formatText {
 		done, err := t.unparseable(out, rc, col, v)
 		if done || err != nil {
 			return false, err
@@ -455,6 +455,9 @@ func (t *transformer) scrub(text []byte) ([]byte, bool) {
 // keys finds keys in one leaf and swaps or blanks the live ones as
 // keys.mode says (PRD 12.3); every hit goes into Result.Keys.
 func (t *transformer) keys(out *batchOut, rc rowCtx, col core.Column, leafPath string, leaf []byte, siblings map[string]string) ([]byte, bool, error) {
+	if t.sh.parts.noKeys {
+		return leaf, false, nil
+	}
 	at := rc.loc
 	at.Column, at.Path = col.Name, leafPath
 	hits := scanKeys(leaf, at, siblings)

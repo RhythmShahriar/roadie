@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -54,6 +55,7 @@ func (f *fileInput) close() error { return nil }
 // and pass 2 reads the spool back; --one-pass reads the stream itself.
 type streamInput struct {
 	r       io.Reader
+	rc      io.Closer // closed with the input when set: the site's export
 	dir     string
 	o       dump.Options
 	onePass bool
@@ -95,10 +97,17 @@ func (s *streamInput) open(ctx context.Context, pass int) (core.Source, error) {
 }
 
 func (s *streamInput) close() error {
-	if s.sp == nil {
-		return nil
+	var err error
+	if s.rc != nil {
+		err = s.rc.Close()
 	}
-	return s.sp.Remove()
+	if s.sp == nil {
+		return err
+	}
+	if rerr := s.sp.Remove(); err == nil {
+		err = rerr
+	}
+	return err
 }
 
 // spoolSource is pass 1 over a stream: on Close it copies whatever the
@@ -158,6 +167,16 @@ type shared struct {
 	addr        map[addrKey]*addrLens
 	adminHash   []byte // the kept users' password hash for --admin-password-env
 	onePass     bool
+	parts       parts
+}
+
+// parts is what prepare --only leaves out; the zero value does every
+// part. The kill switch and noindex parts are Steps and data rules the
+// orchestration picks, so only the transform's own parts are here.
+type parts struct {
+	noData bool // no pseudonymising: no profile rules, row fixes or uncovered stop
+	noKeys bool // no live key swap
+	noURLs bool // no URL rewrite
 }
 
 // batchWorker transforms batches in one worker goroutine.
@@ -271,6 +290,13 @@ type pipeline struct {
 	// indexOnly stops after pass 1 (plan --schema-only).
 	indexOnly bool
 	newWorker func(sh *shared, f core.Faker) batchWorker
+	// dataRules gives the kill switch's option-level rules for the stack
+	// the run finds; they join the compiled rules. nil joins none.
+	dataRules func(core.Stack) []core.Rule
+	parts     parts
+	// result is filled in place when set, so the orchestration's fields
+	// stay; nil starts a new one.
+	result *core.Result
 }
 
 // output is a run's result plus what verify and the orchestration need.
@@ -308,7 +334,12 @@ func (p *pipeline) advance(last *int64, off int64) {
 // run runs pass 1 and pass 2. On an error the result still says what
 // state the target is in.
 func (p *pipeline) run(ctx context.Context) (out *output, err error) {
-	out = &output{Result: &core.Result{Kind: string(p.mode), TargetState: core.Untouched, URL: p.opts.URL}}
+	res := p.result
+	if res == nil {
+		res = &core.Result{}
+	}
+	res.Kind, res.TargetState, res.URL = string(p.mode), core.Untouched, p.opts.URL
+	out = &output{Result: res}
 	defer func() {
 		if cerr := p.in.close(); err == nil && cerr != nil {
 			err = cerr
@@ -321,6 +352,10 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 	if p.opts.OnePass && len(p.cfg.Pseudonymise.KeepUsers) > 0 {
 		return out, core.Errorf(core.ErrConfig, 2,
 			"--one-pass can't keep users: a dump has their user meta before the users table. Drop --one-pass or keep_users.")
+	}
+	if p.opts.OnePass && len(p.opts.Sites) > 0 {
+		return out, core.Errorf(core.ErrConfig, 2,
+			"--one-pass can't limit the copy to --site: the blogs are known only after the whole dump is read. Drop one of them.")
 	}
 	known := newKnown(p.key)
 	faker, err := newFaker(p.key, pseudo.Options{EmailDomain: p.cfg.Pseudonymise.EmailDomain,
@@ -350,7 +385,7 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 			return out, err
 		}
 		known.Seal()
-		uncov = scanUncovered(schema, final, idx.samples)
+		uncov = p.uncovered(schema, final, idx)
 		if plan, err = p.urlPlan(ctx, idx, final); err != nil {
 			return out, err
 		}
@@ -362,8 +397,10 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 			out.Known = known
 			return out, nil
 		}
-	} else if plan, err = buildURLPlan(urlSources{Production: p.cfg.Production}, p.opts.URL, p.cfg.URLMap); err != nil {
-		return out, err
+	} else if !p.parts.noURLs {
+		if plan, err = buildURLPlan(urlSources{Production: p.cfg.Production}, p.opts.URL, p.cfg.URLMap); err != nil {
+			return out, err
+		}
 	}
 	t, src, err := p.transform(ctx, idx, final, plan, known, faker, out)
 	if src != nil {
@@ -383,7 +420,7 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 			p.abort(ctx, out)
 			return out, err
 		}
-		uncov = scanUncovered(schema, final, idx.samples)
+		uncov = p.uncovered(schema, final, idx)
 		if len(uncov.Uncovered) > 0 && p.mode != Plan && !p.opts.AllowUncovered {
 			p.abort(ctx, out)
 			return out, uncoveredError(uncov.Uncovered)
@@ -451,7 +488,74 @@ func (p *pipeline) finalCompile(idx *indexer, schema *core.Schema) (*profile.Com
 	if rs := ft.Rules(); len(rs) > 0 {
 		c = c.WithRules(rs)
 	}
-	return c, nil
+	if c, err = p.dropOtherBlogs(idx, schema, c); err != nil {
+		return nil, err
+	}
+	return p.join(c), nil
+}
+
+// join adds the kill switch's data rules for the set's stack.
+func (p *pipeline) join(c *profile.Compiled) *profile.Compiled {
+	if p.dataRules == nil || c == nil {
+		return c
+	}
+	return c.Join(p.dataRules(c.Stack()))
+}
+
+// uncovered is the uncovered-column scan, or nothing when prepare --only
+// leaves the data alone: no rule of a profile runs, so every personal
+// column would look uncovered.
+func (p *pipeline) uncovered(schema *core.Schema, c *profile.Compiled, idx *indexer) uncoveredResult {
+	if p.parts.noData {
+		return uncoveredResult{}
+	}
+	return scanUncovered(schema, c, idx.samples)
+}
+
+// dropOtherBlogs applies copy --site: the tables of every multisite blog
+// not chosen are dropped from the copy, so their people never reach it.
+// The main site (blog 1) holds the network's tables and always stays.
+func (p *pipeline) dropOtherBlogs(idx *indexer, schema *core.Schema, c *profile.Compiled) (*profile.Compiled, error) {
+	if len(p.opts.Sites) == 0 || c.Stack() != core.StackWordPress {
+		return c, nil
+	}
+	have := map[string]bool{}
+	for _, s := range c.Sites() {
+		have[strings.TrimSuffix(s, "_")] = true
+	}
+	want := map[string]bool{"1": true}
+	for _, id := range p.opts.Sites {
+		n := strconv.Itoa(id)
+		if id != 1 && !have[n] {
+			return nil, core.Errorf(core.ErrConfig, 2, "--site %d: this network has no blog %d. Its blogs are %s.", id, id, humanSites(append([]string{"1_"}, c.Sites()...)))
+		}
+		want[n] = true
+	}
+	cfg := *p.cfg
+	cfg.Drop = slices.Clone(p.cfg.Drop)
+	for _, s := range c.Sites() {
+		if n := strings.TrimSuffix(s, "_"); !want[n] {
+			cfg.Drop = append(cfg.Drop, c.Prefix()+s+"*")
+		}
+	}
+	nc, err := profile.CompileWith(nil, p.defs, schema, &cfg, profile.Hints{Options: idx.options, Site: p.site, Ctx: idx.ctx})
+	if err != nil {
+		return nil, err
+	}
+	p.cfg = &cfg
+	return nc, nil
+}
+
+// humanSites lists blog prefixes as numbers: "2, 3 and 11".
+func humanSites(sites []string) string {
+	ns := make([]string, 0, len(sites))
+	for _, s := range sites {
+		ns = append(ns, strings.TrimSuffix(s, "_"))
+	}
+	if len(ns) == 1 {
+		return ns[0]
+	}
+	return strings.Join(ns[:len(ns)-1], ", ") + " and " + ns[len(ns)-1]
 }
 
 // urlPlan builds the URL pairs from what pass 1 found, the settings and,
@@ -484,7 +588,7 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 		p.phase("transform")
 	}
 	sh := &shared{cfg: p.cfg, opts: p.opts, known: known, spans: textSpans(), kept: idx.kept,
-		adminID: idx.firstAdmin(), addr: idx.addr, onePass: p.opts.OnePass}
+		adminID: idx.firstAdmin(), addr: idx.addr, onePass: p.opts.OnePass, parts: p.parts}
 	if p.opts.OnePass {
 		// The reader goroutine fills the address lengths and Known while
 		// the workers run: the workers get neither. Known can't be read
@@ -495,7 +599,7 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 	if final != nil {
 		sh.stack = final.Stack()
 	}
-	if len(plan.Pairs) > 0 {
+	if len(plan.Pairs) > 0 && !p.parts.noURLs {
 		m, err := newURLMap(plan.Pairs)
 		if err != nil {
 			return t, nil, err
@@ -535,6 +639,7 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 		}()
 	}
 	var readErr error
+	var wide, joined *profile.Compiled // the one-pass rule set so far, with the data rules
 	readDone := make(chan struct{})
 	go func() {
 		defer close(readDone)
@@ -553,7 +658,10 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 			comp := final
 			if p.opts.OnePass {
 				idx.observe(b, src.Schema())
-				comp = idx.wide
+				if idx.wide != wide {
+					wide, joined = idx.wide, p.join(idx.wide)
+				}
+				comp = joined
 				if comp == nil && b.Table != nil {
 					// Nothing tells the stack yet: no rule could apply;
 					// writing the rows as they are would copy them unread.
@@ -628,7 +736,7 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 // password becomes.
 func (p *pipeline) adminPassword(sh *shared) error {
 	name := p.opts.AdminPasswordEnv
-	if name == "" {
+	if name == "" || p.parts.noData {
 		return nil
 	}
 	if !strings.HasPrefix(name, "ROADIE_") {

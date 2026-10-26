@@ -16,7 +16,15 @@ import (
 	"github.com/RhythmShahriar/roadie/detect"
 	"github.com/RhythmShahriar/roadie/dump"
 	"github.com/RhythmShahriar/roadie/keys"
+	"github.com/RhythmShahriar/roadie/profile"
 	"github.com/RhythmShahriar/roadie/pseudo"
+	"github.com/RhythmShahriar/roadie/roadiecfg"
+	"github.com/RhythmShahriar/roadie/site"
+	"github.com/RhythmShahriar/roadie/site/dotenv"
+	"github.com/RhythmShahriar/roadie/site/exposure"
+	"github.com/RhythmShahriar/roadie/site/killswitch"
+	"github.com/RhythmShahriar/roadie/site/wpconfig"
+	"github.com/RhythmShahriar/roadie/verify"
 )
 
 // The other lanes' functions the engine calls, as package variables so a
@@ -50,6 +58,38 @@ var (
 		}
 		return s, nil
 	}
+
+	// The orchestration's calls (run.go).
+	openSite       = site.Open
+	guardTarget    = site.Guard
+	lockTarget     = site.Lock
+	killSteps      = killswitch.Steps
+	killDataRules  = killswitch.DataRules
+	exposureSteps  = exposure.Steps
+	basicAuthFiles = exposure.BasicAuth
+	runVerify      = verify.Run
+	runSoundcheck  = verify.Soundcheck
+	newFileSink    = dump.NewFileSink
+	newStreamSink  = dump.NewStreamSink
+	loadProfiles   = profile.Load
+	runKey         = roadiecfg.RunKey
+	wpConfigPairs  = func(b []byte) ([]core.Pair, error) {
+		f, err := wpconfig.Parse(b)
+		if err != nil {
+			return nil, err
+		}
+		return f.Pairs(), nil
+	}
+	dotenvPairs = func(b []byte) ([]core.Pair, error) {
+		f, err := dotenv.Parse(b)
+		if err != nil {
+			return nil, err
+		}
+		return f.Pairs(), nil
+	}
+	stdin   io.Reader = os.Stdin
+	stdout  io.Writer = os.Stdout
+	workDir           = os.Getwd
 )
 
 // urlRewriter is what the engine needs of a *urlrw.Map.
