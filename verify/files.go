@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io/fs"
 	"net"
+	"net/netip"
 	"net/url"
 	"path"
 	"slices"
@@ -144,6 +145,10 @@ func (r *run) countConfig() {
 	}
 }
 
+// hostNames are the productionNames that name a server, whose value can
+// be relative to the machine reading it.
+var hostNames = []string{"DB_HOST", "WP_REDIS_HOST", "REDIS_HOST", "MEMCACHED_HOST"}
+
 // pointsAtProduction compares a setting with production's as text and
 // its host with the production hosts. No name is ever looked up.
 func pointsAtProduction(p core.Pair, prodValue string, inProd bool, hosts []string) bool {
@@ -151,7 +156,9 @@ func pointsAtProduction(p core.Pair, prodValue string, inProd bool, hosts []stri
 	if v == "" {
 		return false
 	}
-	if inProd && v == strings.TrimSpace(prodValue) {
+	// The same machine-local server name on both sides names two servers.
+	sameText := inProd && v == strings.TrimSpace(prodValue)
+	if sameText && (!slices.Contains(hostNames, p.Name) || !machineLocal(hostOf(v))) {
 		return true
 	}
 	if p.Name == "AS3CF_SETTINGS" {
@@ -166,6 +173,24 @@ func pointsAtProduction(p core.Pair, prodValue string, inProd bool, hosts []stri
 		return false
 	}
 	return matchHost(hosts, hostOf(v))
+}
+
+// machineLocal reports whether host means a different server on each
+// machine that reads it: empty (a unix socket path), localhost, a
+// loopback, unspecified or link-local address, or a one-label name such
+// as a Docker service "db". The same value on staging and production
+// then names two servers, not production's. A private address is not
+// machine-local: a staging server in production's network reaches the
+// same database through it.
+func machineLocal(host string) bool {
+	if host == "" || host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	if a, err := netip.ParseAddr(host); err == nil {
+		a = a.Unmap()
+		return a.IsLoopback() || a.IsUnspecified() || a.IsLinkLocalUnicast()
+	}
+	return !strings.Contains(host, ".") && !strings.Contains(host, ":")
 }
 
 // phpArrayValue returns the quoted value of 'key' => 'value' in PHP

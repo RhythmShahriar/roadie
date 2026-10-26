@@ -30,3 +30,39 @@ func TestCodeFileLinear(t *testing.T) {
 		t.Errorf("findings in plain code: %+v", r.res.Findings)
 	}
 }
+
+// A host that means a different server on each machine never points at
+// production just because both sides spell it the same.
+func TestPointsAtProductionMachineLocal(t *testing.T) {
+	cases := []struct {
+		name, value, prod string
+		want              bool
+	}{
+		{"DB_HOST", "localhost", "localhost", false},
+		{"DB_HOST", "127.0.0.1", "127.0.0.1", false},
+		{"DB_HOST", "127.0.0.1:3306", "127.0.0.1:3306", false},
+		{"DB_HOST", "localhost:/var/run/mysqld.sock", "localhost:/var/run/mysqld.sock", false},
+		{"DB_HOST", "/var/run/mysqld/mysqld.sock", "/var/run/mysqld/mysqld.sock", false},
+		{"DB_HOST", "db", "db", false},
+		{"DB_HOST", "db:3306", "db:3306", false},
+		{"DB_HOST", "[::1]:3306", "[::1]:3306", false},
+		{"DB_HOST", "169.254.10.2", "169.254.10.2", false},
+		{"WP_REDIS_HOST", "127.0.0.1", "127.0.0.1", false},
+		{"REDIS_HOST", "redis", "redis", false},
+		{"DB_HOST", "shop-prod.abc123.eu-west-1.rds.amazonaws.com", "shop-prod.abc123.eu-west-1.rds.amazonaws.com", true},
+		{"DB_HOST", "10.0.4.12", "10.0.4.12", true},
+		{"WP_REDIS_HOST", "cache.shop.example.net", "cache.shop.example.net", true},
+		{"AWS_BUCKET", "shop", "shop", true},
+		{"DB_HOST", "staging-db.internal.example.net", "shop-prod.abc123.eu-west-1.rds.amazonaws.com", false},
+	}
+	for _, c := range cases {
+		got := pointsAtProduction(core.Pair{Name: c.name, Value: c.value}, c.prod, true, nil)
+		if got != c.want {
+			t.Errorf("%s=%q vs production %q: got %v, want %v", c.name, c.value, c.prod, got, c.want)
+		}
+	}
+	// A machine-local value still matches a listed production host.
+	if !pointsAtProduction(core.Pair{Name: "DB_HOST", Value: "db"}, "db", true, []string{"db"}) {
+		t.Error("db listed in production: not matched")
+	}
+}
