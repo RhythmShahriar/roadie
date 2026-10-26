@@ -26,12 +26,14 @@ var version, commit string
 func main() { os.Exit(entry(os.Args[1:], os.Stdout, os.Stderr)) }
 
 // entry answers what kit's cli.Main can't say Roadie's way, then hands
-// over: the top help is PRD 6.1's text rather than kit's generic one;
+// over: no arguments on a terminal open the picker; the top help is PRD 6.1's text rather than kit's generic one;
 // update --clear drops the cached profile pack. Everything else (commands,
 // help <command>, version, update, __complete, Ctrl-C and the update
 // prompt) is cli.Main's.
 func entry(args []string, stdout, stderr io.Writer) int {
 	switch {
+	case len(args) == 0 && dep.terminal():
+		return runPicker(stdout, stderr)
 	case len(args) == 0:
 		printTopHelp(stdout)
 		return cli.ExitOK
@@ -86,6 +88,7 @@ func command(name, args, summary string, run runFunc) cli.Command {
 			if err != nil {
 				return err
 			}
+			showFirstRun(p, stderr)
 			return run(ctx, p, stdout, stderr)
 		},
 	}

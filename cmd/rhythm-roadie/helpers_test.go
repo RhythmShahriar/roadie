@@ -100,26 +100,7 @@ func runCmd(t *testing.T, cmd string, args ...string) (string, string, int) {
 
 // exitCode is kit's mapping of a command's error to an exit code; like
 // Main it prints an error that isn't printed yet.
-func exitCode(stderr io.Writer, err error) int {
-	var ee *cli.ExitError
-	var ue cli.UsageError
-	switch {
-	case err == nil, errors.Is(err, cli.ErrHelp):
-		return cli.ExitOK
-	case errors.As(err, &ee):
-		if ee.Err != nil {
-			io.WriteString(stderr, "rhythm-roadie: "+ee.Err.Error()+"\n")
-		}
-		return ee.Code
-	case errors.As(err, &ue):
-		if !ue.Reported {
-			io.WriteString(stderr, "rhythm-roadie: "+ue.Msg+"\n")
-		}
-		return cli.ExitUsage
-	}
-	io.WriteString(stderr, "rhythm-roadie: "+err.Error()+"\n")
-	return cli.ExitUnavailable
-}
+func exitCode(stderr io.Writer, err error) int { return exitFor(stderr, err) }
 
 // mustParse parses a command line or fails the test.
 func mustParse(t *testing.T, cmd string, args ...string) *parsed {

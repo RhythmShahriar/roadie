@@ -21,7 +21,7 @@ import (
 	"github.com/RhythmShahriar/roadie/verify"
 )
 
-// deps are the functions of other lanes the commands call, and the
+// deps are the functions of other lanes the commands call plus the
 // process's clock, environment and terminal. Tests replace them, so the
 // views and exit codes are tested with canned results whatever state the
 // other lanes are in.
@@ -33,6 +33,7 @@ type deps struct {
 	run           func(context.Context, engine.Job) (*core.Result, error)
 	verifyJob     func(context.Context, engine.Job, core.Endpoint, *core.Endpoint) (verify.Job, error)
 	verify        func(context.Context, verify.Job) (*core.VerifyResult, error)
+	loadSigner    func(keyFile string, env func(string) (string, bool)) (signer, bool, error)
 	now           func() time.Time
 	env           envFunc
 	stdin         io.Reader
@@ -56,6 +57,7 @@ func realDeps() deps {
 		run:            engine.Run,
 		verifyJob:      engine.VerifyJob,
 		verify:         verify.Run,
+		loadSigner:     realLoadSigner,
 		now:            time.Now,
 		env:            osEnv,
 		stdin:          os.Stdin,

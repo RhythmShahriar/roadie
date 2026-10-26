@@ -92,7 +92,7 @@ type runFlags struct {
 	maxMemory       string
 	maxValue        string
 
-	// After the copy, and verify's CI block.
+	// After the copy; verify's CI block too.
 	noVerify   bool
 	failOn     string
 	soundcheck bool

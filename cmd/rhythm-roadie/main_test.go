@@ -9,23 +9,43 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 // The tests run the binary as a child process: the test binary itself,
 // re-executed with ROADIE_TEST_MAIN=1 so TestMain calls main.
+//
+// In-process tests get their own config and cache folders, so a first-run
+// marker or a signing key never lands in the real ones.
 func TestMain(m *testing.M) {
 	if os.Getenv("ROADIE_TEST_MAIN") == "1" {
 		os.Args = append([]string{"rhythm-roadie"}, os.Args[1:]...)
+		version = os.Getenv("ROADIE_TEST_VERSION")
 		main()
 		return
 	}
-	os.Exit(m.Run())
+	dir, err := os.MkdirTemp("", "roadie-cmd-test-")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("RHYTHM_CONFIG_DIR", filepath.Join(dir, "config"))
+	os.Setenv("RHYTHM_CACHE_DIR", filepath.Join(dir, "cache"))
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
 }
 
 // run runs rhythm-roadie with args offline and returns stdout, stderr and the exit code.
 func run(t *testing.T, args ...string) (string, string, int) {
+	t.Helper()
+	return runEnv(t, nil, args...)
+}
+
+// runEnv is run with extra environment entries, which win over the
+// defaults (os/exec keeps the last value of a repeated name).
+func runEnv(t *testing.T, env []string, args ...string) (string, string, int) {
 	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
@@ -35,6 +55,7 @@ func run(t *testing.T, args ...string) (string, string, int) {
 	cmd.Env = append(os.Environ(), "ROADIE_TEST_MAIN=1", "RHYTHM_OFFLINE=1", "RHYTHM_INVOKED_AS=", "CI=1",
 		"XDG_CONFIG_HOME="+t.TempDir(), "HOME="+t.TempDir(), "APPDATA="+t.TempDir(),
 		"RHYTHM_CONFIG_DIR="+t.TempDir(), "RHYTHM_CACHE_DIR="+t.TempDir())
+	cmd.Env = append(cmd.Env, env...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err = cmd.Run()
