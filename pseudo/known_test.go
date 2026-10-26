@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"hash/maphash"
 	"math/rand/v2"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -133,7 +134,7 @@ func TestKnownKeyed(t *testing.T) {
 	b.Add(core.KEmail, []byte("someone@shop.com"))
 	b.Seal()
 	ka, kb := a.(*known), b.(*known)
-	if ka.tabs[0].h[0] == ka.hash([]byte("jane.doe@shop.com")) && kb.hash([]byte("jane.doe@shop.com")) == ka.tabs[0].h[0] {
+	if e := *ka.tabs[0].at(0); sameHash(e, ka.hash([]byte("jane.doe@shop.com"))) && sameHash(e, kb.hash([]byte("jane.doe@shop.com"))) {
 		t.Error("two keys hash a token alike")
 	}
 }
@@ -203,8 +204,8 @@ var bigKnown = sync.OnceValue(func() core.Known {
 	return k
 })
 
-// At 2 million values the tables hold 6 million 8-byte hashes, so a
-// random token matches with probability about 6e6 / 2^64, far under
+// At 2 million values the tables hold 6 million 56-bit hashes, so a
+// random token matches with probability about 6e6 / 2^56, far under
 // 1e-9; 10 million random lookups find nothing. A sample of real tokens
 // goes through Contains as well. Under the race detector the set is a
 // tenth of the size.
@@ -235,14 +236,14 @@ func TestKnownFalsePositives(t *testing.T) {
 }
 
 // 2 million emails fit in under 64 MB once sealed. The tables' and the
-// Bloom filters' own size is the measure: the heap of a test binary also
-// holds what earlier tests left behind.
+// Bloom filters' own size is the measure here, so it holds under the
+// race detector too; TestKnownHeap measures the heap itself.
 func TestKnownMemory(t *testing.T) {
 	values := scaled(2_000_000)
 	kn := bigKnown().(*known)
 	for _, tab := range kn.tabs {
-		if tab.hchunks != nil || tab.kchunks != nil {
-			t.Error("Seal kept the chunks")
+		if tab.runs != nil || tab.firsts == nil {
+			t.Error("Seal left a table unsorted")
 		}
 	}
 	at2M := float64(knownSize(kn)) / float64(values) * 2_000_000
@@ -252,40 +253,85 @@ func TestKnownMemory(t *testing.T) {
 	}
 }
 
+// addNames adds n made-up full names: at 2M, 2,000 first names and
+// 100,003 last names, every pair distinct. A smaller n keeps the same
+// ratios. after runs every so many names.
+func addNames(k core.Known, n, every int, after func()) {
+	firsts, lasts := n/1000, n/20+3
+	for i := range n {
+		k.Add(core.KFullName, []byte(letters(i%firsts)+" "+letters(i%lasts)))
+		if i%every == every-1 {
+			after()
+		}
+	}
+}
+
 // TestKnownMemoryNames measures full names, which hold more tokens than
 // emails: each word and each pair of a longer name as well as the whole
-// value and its hashes. Words repeat across customers, so Seal's dedup
-// shrinks the tables; the peak is just before Seal, when every token is
-// still held. The bounds here are the ones changes/values.md states.
+// value and its hashes. Words repeat across customers, so Add drops a
+// repeat at its next compaction and Seal adds nothing: the set stays
+// under 64 MB while it grows and once sealed.
 func TestKnownMemoryNames(t *testing.T) {
 	values := scaled(2_000_000)
 	k := NewKnown(testKey(7))
-	// At 2M: 2,000 first names and 100,003 last names, every pair
-	// distinct. The race detector's smaller set keeps the same ratios.
-	firsts, lasts := values/1000, values/20+3
-	for i := range values {
-		first, last := letters(i%firsts), letters(i%lasts)
-		k.Add(core.KFullName, []byte(first+" "+last))
-	}
 	kn := k.(*known)
-	// The last chunk's unused room doesn't grow with the set, so it is
-	// left out before scaling up the race detector's smaller set.
-	spare := 0
-	for _, tab := range kn.tabs {
-		if n := len(tab.hchunks); n > 0 {
-			spare += (chunkLen - len(tab.hchunks[n-1])) * 9
-		}
+	// The uncompacted tails and the last chunks' unused room don't grow
+	// with the set, so they are counted at full size, not scaled up.
+	fixed := 3 * (compactLen + chunkLen) * 8
+	scale := func(size int) float64 {
+		return float64(size-fixed)/float64(values)*2_000_000 + float64(fixed)
 	}
-	peak := float64(knownSize(kn)-spare) / float64(values) * 2_000_000
+	peak := 0.0
+	addNames(k, values, 16_384, func() { peak = max(peak, scale(knownSize(kn))) })
+	peak = max(peak, scale(knownSize(kn)))
 	k.Seal()
 	sealed := float64(knownSize(kn)) / float64(values) * 2_000_000
-	t.Logf("%d full names at 2M: %.1f MB before Seal, %.1f MB after", values, peak/1e6, sealed/1e6)
-	if peak >= 96<<20 || sealed >= 64<<20 {
-		t.Errorf("2M full names would take %.1f MB before Seal and %.1f MB after, want under 96 MB and 64 MB",
+	t.Logf("%d full names at 2M: %.1f MB at most while adding, %.1f MB sealed", values, peak/1e6, sealed/1e6)
+	if peak >= 64<<20 || sealed >= 64<<20 {
+		t.Errorf("2M full names would take %.1f MB while adding and %.1f MB sealed, want under 64 MB",
 			peak/(1<<20), sealed/(1<<20))
 	}
+	firsts := values / 1000
 	if _, _, ok := k.Contains([]byte(letters(firsts-1) + " " + letters(firsts-1))); !ok {
 		t.Error("a full name added was not found")
+	}
+}
+
+// TestKnownHeap measures the Go heap a set of 2 million full names holds
+// while it is built and sealed: the live heap after a collection every
+// 65,536 names plus every byte Seal allocates. A sample can miss the top
+// of a compaction batch by at most the repeats a batch drops (under 4 MB
+// of a raw table's 524,288 entries), which the check adds. It
+// runs only at full size, not under the race detector or -short, because
+// the heap has fixed costs that a smaller set would scale up.
+func TestKnownHeap(t *testing.T) {
+	if raceEnabled || testing.Short() {
+		t.Skip("needs the full set")
+	}
+	var ms runtime.MemStats
+	// Two collections: sync.Pool keeps what it holds through one.
+	live := func() int64 {
+		runtime.GC()
+		runtime.GC()
+		runtime.ReadMemStats(&ms)
+		return int64(ms.HeapAlloc) // #nosec G115 -- a test's heap is far under 2^63
+	}
+	base := live()
+	k := NewKnown(testKey(8))
+	var peak int64
+	addNames(k, 2_000_000, 65_536, func() { peak = max(peak, live()-base) })
+	peak = max(peak, live()-base)
+	before := ms.TotalAlloc
+	k.Seal()
+	runtime.ReadMemStats(&ms)
+	sealAlloc := int64(ms.TotalAlloc - before) // #nosec G115 -- as above
+	sealed := live() - base
+	runtime.KeepAlive(k)
+	t.Logf("2M full names: heap %.1f MB at most while adding, Seal allocates %.2f MB, %.1f MB sealed",
+		float64(peak)/1e6, float64(sealAlloc)/1e6, float64(sealed)/1e6)
+	if peak+compactLen*8+sealAlloc >= 64<<20 || sealed >= 64<<20 {
+		t.Errorf("heap %.1f MB while adding plus a batch plus %.1f MB in Seal, %.1f MB sealed; want under 64 MB",
+			float64(peak)/(1<<20), float64(sealAlloc)/(1<<20), float64(sealed)/(1<<20))
 	}
 }
 
@@ -302,17 +348,16 @@ func letters(i int) string {
 	return string(b)
 }
 
-// knownSize is the memory a set's tables and filters hold, counting the
-// chunks a set holds before Seal.
+// knownSize is the memory a set's tables and filters hold.
 func knownSize(kn *known) int {
 	size := 0
 	for _, f := range kn.filters {
 		size += cap(f.bits) * 8
 	}
 	for _, tab := range kn.tabs {
-		size += cap(tab.h)*8 + cap(tab.k)
-		for i := range tab.hchunks {
-			size += cap(tab.hchunks[i])*8 + cap(tab.kchunks[i])
+		size += cap(tab.firsts) * 8
+		for _, c := range tab.chunks {
+			size += cap(c) * 8
 		}
 	}
 	return size

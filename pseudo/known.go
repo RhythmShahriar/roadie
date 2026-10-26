@@ -41,9 +41,25 @@ const minKnownLen = 4
 // minWordLetters is the shortest name word Known keeps.
 const minWordLetters = 3
 
-// chunkLen is how many hashes one storage chunk holds before Seal: the
-// tables grow a chunk at a time, so memory never doubles on a resize.
-const chunkLen = 1 << 16
+// chunkShift sets chunkLen, how many entries one storage chunk holds:
+// the tables grow a chunk at a time, so memory never doubles on a
+// resize. They are sorted where they are, so Seal copies nothing.
+const (
+	chunkShift = 16
+	chunkLen   = 1 << chunkShift
+)
+
+// compactLen is how many entries a table takes in before Add sorts them
+// and drops the ones it already holds. A name word repeated by many
+// customers then costs room once, not once per customer. The most a set
+// holds beyond its sealed size is one such batch per table.
+const compactLen = 8 * chunkLen
+
+// kindMask is the low byte of an entry, which holds the kind byte; the
+// other 56 bits are the token's keyed hash. One 8-byte word per token
+// keeps 2 million values under 64 MB; at 6 million entries a random
+// token matches one with probability about 6e6 / 2^56, under 1e-10.
+const kindMask = 0xff
 
 // wholeValue marks, in a kind byte, a token that is a whole value and
 // not a word of one; Len counts those.
@@ -68,13 +84,15 @@ type known struct {
 	filters []*filter
 }
 
-// table is one encoding's tokens: 8-byte keyed hashes and kind bytes,
-// appended in chunks, then flattened and sorted by Seal.
+// table is one encoding's tokens: entries of a 56-bit keyed hash and a
+// kind byte, appended in chunks. Before Seal the entries before tail are
+// sorted runs with no hash in two places; Seal sorts them into one.
 type table struct {
-	hchunks [][]uint64
-	kchunks [][]byte
-	h       []uint64
-	k       []byte
+	chunks [][]uint64 // each chunkLen long; entries past n are unused
+	n      int        // entries held
+	runs   []int      // the start of each sorted run before tail
+	tail   int        // the first entry not yet compacted
+	firsts []uint64   // after Seal: each chunk's first entry
 }
 
 func newKnown(k Key) core.Known {
@@ -124,14 +142,96 @@ func (sc *scratch) hash(token []byte) uint64 {
 }
 
 func (t *table) add(h uint64, k byte) {
-	n := len(t.hchunks)
-	if n == 0 || len(t.hchunks[n-1]) == chunkLen {
-		t.hchunks = append(t.hchunks, make([]uint64, 0, chunkLen))
-		t.kchunks = append(t.kchunks, make([]byte, 0, chunkLen))
-		n++
+	if t.n == len(t.chunks)*chunkLen {
+		t.chunks = append(t.chunks, make([]uint64, chunkLen))
 	}
-	t.hchunks[n-1] = append(t.hchunks[n-1], h)
-	t.kchunks[n-1] = append(t.kchunks[n-1], k)
+	*t.at(t.n) = h&^kindMask | uint64(k)
+	t.n++
+	if t.n-t.tail >= compactLen {
+		t.compact()
+	}
+}
+
+// at returns entry i.
+func (t *table) at(i int) *uint64 {
+	return &t.chunks[i>>chunkShift][i&(chunkLen-1)]
+}
+
+// sameHash reports whether two entries hold the same token hash.
+func sameHash(a, b uint64) bool { return a>>8 == b>>8 }
+
+// compact sorts the tail and drops every entry whose hash is already in
+// the tail or in an earlier run, keeping the whole value mark of what it
+// drops. What is left becomes a new run. It works in place.
+func (t *table) compact() {
+	if t.tail == t.n {
+		return
+	}
+	sort.Sort(span{t, t.tail, t.n})
+	w := t.tail
+	for r := t.tail; r < t.n; r++ {
+		e := *t.at(r)
+		if w > t.tail && sameHash(*t.at(w - 1), e) {
+			*t.at(w - 1) |= e & wholeValue
+			continue
+		}
+		if i, ok := t.inRuns(e); ok {
+			*t.at(i) |= e & wholeValue
+			continue
+		}
+		*t.at(w) = e
+		w++
+	}
+	if w > t.tail {
+		t.runs = append(t.runs, t.tail)
+	}
+	t.n, t.tail = w, w
+	// Free the chunks the dropped entries leave empty.
+	keep := (w + chunkLen - 1) >> chunkShift
+	clear(t.chunks[keep:])
+	t.chunks = t.chunks[:keep]
+}
+
+// inRuns returns the index of the entry with e's hash in the runs before
+// tail.
+func (t *table) inRuns(e uint64) (int, bool) {
+	for r, lo := range t.runs {
+		hi := t.tail
+		if r+1 < len(t.runs) {
+			hi = t.runs[r+1]
+		}
+		if i := t.search(lo, hi, e>>8); i < hi && *t.at(i)>>8 == e>>8 {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// search returns the first index in [lo, hi), a sorted range, whose
+// hash is at least p, or hi.
+func (t *table) search(lo, hi int, p uint64) int {
+	for lo < hi {
+		m := int(uint(lo+hi) >> 1) // #nosec G115 -- lo+hi is positive
+		if *t.at(m)>>8 < p {
+			lo = m + 1
+		} else {
+			hi = m
+		}
+	}
+	return lo
+}
+
+// span sorts entries lo to hi of a table in place.
+type span struct {
+	t      *table
+	lo, hi int
+}
+
+func (s span) Len() int           { return s.hi - s.lo }
+func (s span) Less(i, j int) bool { return *s.t.at(s.lo + i) < *s.t.at(s.lo + j) }
+func (s span) Swap(i, j int) {
+	a, b := s.t.at(s.lo+i), s.t.at(s.lo+j)
+	*a, *b = *b, *a
 }
 
 // Add stores the keyed hashes of the normalised value, its md5 hex and
@@ -299,7 +399,7 @@ func nameWords(b []byte) [][2]int {
 	return out
 }
 
-// Seal flattens, sorts and dedups each table. Contains works after it.
+// Seal sorts and dedups each table in place. Contains works after it.
 func (kn *known) Seal() {
 	kn.mu.Lock()
 	defer kn.mu.Unlock()
@@ -314,51 +414,50 @@ func (kn *known) Seal() {
 }
 
 func (t *table) seal() {
-	n := 0
-	for _, c := range t.hchunks {
-		n += len(c)
+	t.compact()
+	if len(t.runs) > 1 {
+		// No hash is in two runs, so one sort leaves each hash once.
+		sort.Sort(span{t, 0, t.n})
 	}
-	t.h, t.k = make([]uint64, 0, n), make([]byte, 0, n)
-	for i := range t.hchunks {
-		t.h = append(t.h, t.hchunks[i]...)
-		t.k = append(t.k, t.kchunks[i]...)
-		t.hchunks[i], t.kchunks[i] = nil, nil // free each chunk as soon as it is copied
+	t.runs = nil
+	if last := len(t.chunks) - 1; last >= 0 && t.n < len(t.chunks)*chunkLen {
+		// Give back the last chunk's unused room.
+		t.chunks[last] = slices.Clone(t.chunks[last][:t.n-last<<chunkShift])
 	}
-	t.hchunks, t.kchunks = nil, nil
-	sort.Sort(byHash{t})
-	// Dedup: one entry per hash, keeping the first kind and the whole
-	// value mark of any duplicate.
-	w := 0
-	for r := range t.h {
-		if w > 0 && t.h[w-1] == t.h[r] {
-			t.k[w-1] |= t.k[r] & wholeValue
-			continue
-		}
-		t.h[w], t.k[w] = t.h[r], t.k[r]
-		w++
-	}
-	if w < len(t.h) {
-		// Copy so the duplicates' room is freed and not just hidden.
-		t.h, t.k = slices.Clone(t.h[:w]), slices.Clone(t.k[:w])
+	t.firsts = make([]uint64, len(t.chunks))
+	for i, c := range t.chunks {
+		t.firsts[i] = c[0]
 	}
 }
 
-// byHash sorts a table's two slices together.
-type byHash struct{ t *table }
-
-func (b byHash) Len() int { return len(b.t.h) }
-func (b byHash) Less(i, j int) bool {
-	return b.t.h[i] < b.t.h[j] || b.t.h[i] == b.t.h[j] && b.t.k[i] < b.t.k[j]
-}
-func (b byHash) Swap(i, j int) {
-	b.t.h[i], b.t.h[j] = b.t.h[j], b.t.h[i]
-	b.t.k[i], b.t.k[j] = b.t.k[j], b.t.k[i]
-}
-
-// find returns the kind byte stored for h.
+// find returns the kind byte stored for hash h. The table is sealed.
 func (t *table) find(h uint64) (byte, bool) {
-	if i, ok := slices.BinarySearch(t.h, h); ok {
-		return t.k[i], true
+	p := h >> 8
+	// The last chunk whose first hash is at most p, then p within it.
+	lo, hi := 0, len(t.firsts)
+	for lo < hi {
+		m := int(uint(lo+hi) >> 1) // #nosec G115 -- lo+hi is positive
+		if t.firsts[m]>>8 <= p {
+			lo = m + 1
+		} else {
+			hi = m
+		}
+	}
+	if lo == 0 {
+		return 0, false
+	}
+	c := t.chunks[lo-1]
+	lo, hi = 0, len(c)
+	for lo < hi {
+		m := int(uint(lo+hi) >> 1) // #nosec G115 -- lo+hi is positive
+		if c[m]>>8 < p {
+			lo = m + 1
+		} else {
+			hi = m
+		}
+	}
+	if lo < len(c) && c[lo]>>8 == p {
+		return byte(c[lo] & kindMask), true
 	}
 	return 0, false
 }
@@ -522,9 +621,11 @@ func (kn *known) Len() int {
 		return kn.adds
 	}
 	n := 0
-	for _, k := range kn.tabs[0].k {
-		if k&wholeValue != 0 {
-			n++
+	for _, c := range kn.tabs[0].chunks {
+		for _, e := range c {
+			if e&wholeValue != 0 {
+				n++
+			}
 		}
 	}
 	return n
