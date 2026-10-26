@@ -18,10 +18,6 @@ func TestStubsNotBuilt(t *testing.T) {
 	if !errors.Is(err, core.ErrNotBuilt) {
 		t.Fatalf("call 1: %v, want core.ErrNotBuilt", err)
 	}
-	_, _, err = Sniff(nil)
-	if !errors.Is(err, core.ErrNotBuilt) {
-		t.Fatalf("call 2: %v, want core.ErrNotBuilt", err)
-	}
 	_, err = NewFileSink("x.sql", WriterOptions{})
 	if !errors.Is(err, core.ErrNotBuilt) {
 		t.Fatalf("call 3: %v, want core.ErrNotBuilt", err)

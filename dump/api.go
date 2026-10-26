@@ -35,8 +35,12 @@ func Open(ctx context.Context, r io.Reader, o Options) (core.Source, error) {
 }
 
 // Sniff reads the head of a file and tells its dialect and compression.
+// head is the first bytes of the file as stored (up to HeadSize; less is
+// fine). A head that isn't SQL gives *core.Error dump-format. The dialect
+// is "" when the head holds SQL without a marker of any dump tool.
 func Sniff(head []byte) (dialect core.Dialect, compression string, err error) {
-	return "", "", core.ErrNotBuilt
+	dialect, compression, _, err = sniff("the input", head)
+	return dialect, compression, err
 }
 
 // WriterOptions configures a dump writer.
