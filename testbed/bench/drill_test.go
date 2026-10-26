@@ -19,10 +19,12 @@ import (
 	"time"
 )
 
-// The lane's test ports (127.0.0.1:33120-33139).
+// The lane's test ports (127.0.0.1:33120-33139). The sinkhole's tests
+// hold 33120 and 33121 and the stubs' 33122; packages test in
+// parallel, so these differ.
 const (
-	portTraffic = "127.0.0.1:33120"
-	portEcho    = "127.0.0.1:33121"
+	portTraffic = "127.0.0.1:33124"
+	portEcho    = "127.0.0.1:33125"
 )
 
 func writeLines(t *testing.T, path string, recs ...any) {

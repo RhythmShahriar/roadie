@@ -30,7 +30,7 @@ import (
 )
 
 // portFetch is this file's test listener (the lane's ports are
-// 127.0.0.1:33120-33139; drill_test.go has 33120 and 33121).
+// 127.0.0.1:33120-33139; see drill_test.go for the others).
 const portFetch = "127.0.0.1:33123"
 
 func TestCountHost(t *testing.T) {
