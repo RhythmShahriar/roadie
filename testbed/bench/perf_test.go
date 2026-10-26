@@ -22,6 +22,9 @@ func TestPerfRun(t *testing.T) {
 	if pr.MBps != 250 || pr.RoadieMS != 8000 || pr.PhasesMS["transform"] != 6000 {
 		t.Errorf("Roadie's own duration wins: %+v", pr)
 	}
+	if pr = perfRun("db.sql.gz", 2_000_000_000, &Run{Exit: 2, Wall: time.Millisecond}, nil); pr.MBps != 0 {
+		t.Errorf("a failed copy has no throughput: %+v", pr)
+	}
 }
 
 func TestPerfJudge(t *testing.T) {

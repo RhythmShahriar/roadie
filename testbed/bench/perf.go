@@ -117,7 +117,7 @@ func (p *Perf) judge() {
 
 // perfRun turns a run into its record. MB/s counts SQL bytes (before
 // compression) over Roadie's own duration when it reports one, else the
-// wall time.
+// wall time; a copy that failed has none.
 func perfRun(input string, bytes int64, r *Run, e *Envelope) PerfRun {
 	pr := PerfRun{Input: input, InputBytes: bytes, Exit: r.Exit, WallMS: r.Wall.Milliseconds(), MaxRSSKB: r.MaxRSSKB}
 	ms := pr.WallMS
@@ -127,7 +127,7 @@ func perfRun(input string, bytes int64, r *Run, e *Envelope) PerfRun {
 			ms = pr.RoadieMS
 		}
 	}
-	if ms > 0 && bytes > 0 {
+	if ms > 0 && bytes > 0 && r.Exit == 0 {
 		pr.MBps = float64(bytes) / 1e6 / (float64(ms) / 1000)
 	}
 	return pr
