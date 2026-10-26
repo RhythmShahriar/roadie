@@ -153,14 +153,14 @@ func summaryDiff(env, data map[string]any) string {
 }
 
 // pinnedKeyIDs reads the key report check --key pins: a key ID
-// ("roadie:" and 16 characters), a report's public_key (base64), a PEM
-// public or private key, a signing.key file (base64 seed) or raw key
-// bytes. Base64 or raw bytes of 32 could be a public key or a seed, so
-// both readings count: only the holder of a private key can sign as
-// either.
+// ("roadie:" and 16 characters), a report's public_key (base64), raw
+// public key bytes or a PEM public or private key. A bare 32-byte value
+// is only ever a public key: reading it as a seed too would let anyone
+// sign as the key that seed makes, since a report's public_key is public.
+// A private key pins only as PEM, whose PRIVATE KEY label says what it is.
 func pinnedKeyIDs(pinned []byte) ([]string, error) {
 	bad := core.Errorf(core.ErrConfig, cli.ExitUsage,
-		"report check: --key isn't a key: give a key ID (roadie:...), a report's public_key, a PEM Ed25519 key or a signing.key file")
+		"report check: --key isn't a public key: give a key ID (roadie:...), a report's public_key or a PEM Ed25519 key")
 	text := strings.TrimSpace(string(pinned))
 	switch {
 	case strings.HasPrefix(text, "roadie:"):
@@ -194,7 +194,7 @@ func pinnedKeyIDs(pinned []byte) ([]string, error) {
 	if len(raw) != ed25519.PublicKeySize {
 		return nil, bad
 	}
-	return []string{KeyID(ed25519.NewKeyFromSeed(raw).Public().(ed25519.PublicKey)), KeyID(raw)}, nil
+	return []string{KeyID(raw)}, nil
 }
 
 // checkInput compares data.input with the SHA-256 of input.

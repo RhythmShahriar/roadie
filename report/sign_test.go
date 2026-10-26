@@ -286,7 +286,6 @@ func TestCheckPinned(t *testing.T) {
 		"key id":      []byte(theirs.KeyID() + "\n"),
 		"public_key":  []byte(base64.StdEncoding.EncodeToString(theirs.PublicKey())),
 		"raw public":  theirs.PublicKey(),
-		"signing.key": []byte(base64.StdEncoding.EncodeToString(seedOf(2)) + "\n"),
 		"PEM public":  pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}),
 		"PEM private": pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER}),
 	} {
@@ -294,8 +293,43 @@ func TestCheckPinned(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
+	// A bare 32-byte value is a public key, never a seed: a signing.key
+	// file pins the key its bytes would be, not the key it makes.
+	ce = wantCode(t, Check(rep, []byte(base64.StdEncoding.EncodeToString(seedOf(2))+"\n"), nil), core.ErrReportEdited, 1)
+	if !strings.Contains(ce.Msg, theirs.KeyID()) {
+		t.Error(ce.Msg)
+	}
 	for _, pin := range []string{"roadie:7Q3kXc2…", "hello", "-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n"} {
 		wantCode(t, Check(rep, []byte(pin), nil), core.ErrConfig, 2)
+	}
+}
+
+// A report's public_key is public, so a forger can use it as a seed. A
+// pin on that public key must refuse the key the seed makes.
+func TestCheckPinnedPublicKeyIsNotASeed(t *testing.T) {
+	victim := testSigner(t, 3)
+	pub := base64.StdEncoding.EncodeToString(victim.PublicKey())
+	forger, _, err := LoadSigner("", envWith(pub))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forger.KeyID() == victim.KeyID() {
+		t.Fatal("the forger's key is the victim's")
+	}
+	rep := signed(t, forger, verifyFail())
+	for name, pin := range map[string][]byte{
+		"public_key": []byte(pub),
+		"raw public": victim.PublicKey(),
+	} {
+		ce := wantCode(t, Check(rep, pin, nil), core.ErrReportEdited, 1)
+		want := "report check: report.json is signed by " + forger.KeyID() + ", not by the key you pinned (" + victim.KeyID() + ")."
+		if ce.Msg != want {
+			t.Errorf("%s: %q, want %q", name, ce.Msg, want)
+		}
+	}
+	// The victim's own report still passes the same pin.
+	if err := Check(signed(t, victim, verifyFail()), []byte(pub), nil); err != nil {
+		t.Error(err)
 	}
 }
 
