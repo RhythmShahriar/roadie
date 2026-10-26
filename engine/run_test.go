@@ -612,6 +612,53 @@ func TestRunStepOrder(t *testing.T) {
 	}
 }
 
+// backupSite is the staging fake with a Backup that fails.
+type backupSite struct {
+	*testutil.Site
+	err error
+}
+
+func (s backupSite) Backup(context.Context) (string, string, error) { return "", "", s.err }
+
+// A failed prepare backup stops the run with a typed error before
+// anything is written: a plain cause as site-config, exit 3, a typed one
+// with its own code.
+func TestRunBackupFails(t *testing.T) {
+	for _, tc := range []struct {
+		cause     error
+		code      string
+		exit      int
+		msgPrefix string
+	}{
+		{errors.New("disk quota exceeded"), core.ErrSiteConfig, 3, "backup of /srv/staging: disk quota exceeded. Fix it, or pass --no-backup"},
+		{core.Errorf(core.ErrWPCLI, 3, "wp-cli: wp isn't on PATH."), core.ErrWPCLI, 3, "backup of /srv/staging: wp-cli: wp isn't on PATH. Fix it"},
+	} {
+		f := useRunFakes(t)
+		old := openSite
+		openSite = func(ctx context.Context, e core.Endpoint, o site.Options) (core.Site, error) {
+			s, err := old(ctx, e, o)
+			if s == core.Site(f.staging) {
+				return backupSite{Site: f.staging, err: tc.cause}, err
+			}
+			return s, err
+		}
+		res, err := Run(context.Background(), f.job(Prepare))
+		openSite = old
+		if code, exit := errCode(err); code != tc.code || exit != tc.exit {
+			t.Fatalf("err %v: code %q exit %d", err, code, exit)
+		}
+		if !strings.HasPrefix(err.Error(), tc.msgPrefix) {
+			t.Errorf("message %q", err)
+		}
+		if res.Err == nil || res.Err.Code != tc.code || res.TargetState != core.Untouched {
+			t.Errorf("result err %+v state %s", res.Err, res.TargetState)
+		}
+		if len(f.staging.Writes()) != 0 || f.rec.index("sink") >= 0 {
+			t.Errorf("wrote after a failed backup: %v", f.rec.all())
+		}
+	}
+}
+
 // A guard that refuses leaves the target as it was.
 func TestRunGuardRefusal(t *testing.T) {
 	f := useRunFakes(t)
@@ -896,5 +943,173 @@ func TestRunSamePlace(t *testing.T) {
 	}
 	if g := f.guards[len(f.guards)-1]; g.Mode != "prepare" || g.FromSite != g.ToSite {
 		t.Errorf("plan of a staging guarded as %+v", g)
+	}
+}
+
+// An uncovered column stops copy and prepare after pass 1 and before the
+// kill switch, the maintenance page or the sink touch the target.
+func TestRunUncoveredLeavesTarget(t *testing.T) {
+	for _, mode := range []Mode{Copy, Prepare} {
+		t.Run(string(mode), func(t *testing.T) {
+			f := useRunFakes(t)
+			detectUncovered = func(tb *core.Table, covered map[string]bool, _ map[string][][]byte) []core.Uncovered {
+				for _, c := range tb.Columns {
+					if !covered[c.Name] {
+						return []core.Uncovered{{Table: tb.Name, Column: c.Name, Rate: 40}}
+					}
+				}
+				return nil
+			}
+			res, err := Run(context.Background(), f.job(mode))
+			if code, exit := errCode(err); code != core.ErrUncovered || exit != 1 {
+				t.Fatalf("err %v", err)
+			}
+			if len(f.applied()) != 0 || f.rec.index("sink") >= 0 || len(f.staging.Writes()) != 0 {
+				t.Errorf("an uncovered stop still did %v, writes %v", f.rec.all(), f.staging.Writes())
+			}
+			if res.TargetState != core.Untouched || res.Err == nil || res.Err.State != core.Untouched {
+				t.Errorf("state %s err %+v", res.TargetState, res.Err)
+			}
+		})
+	}
+}
+
+// A run that stops after a step changed the target says mixed, not
+// untouched: the kill switch already edited the site.
+func TestRunStoppedAfterStepIsMixed(t *testing.T) {
+	f := useRunFakes(t)
+	f.staging.SinkFunc = func() (core.Sink, error) { return nil, errors.New("access denied for user 'staging'") }
+	res, err := Run(context.Background(), f.job(Copy))
+	if err == nil || !strings.Contains(err.Error(), "access denied") {
+		t.Fatalf("err %v", err)
+	}
+	if got := f.applied(); len(got) == 0 || res.TargetState != core.Mixed || res.Target.State != core.Mixed {
+		t.Errorf("applied %v state %s", got, res.TargetState)
+	}
+}
+
+// prepare reads the staging it writes, never a source: from the config.
+func TestRunPrepareIgnoresSource(t *testing.T) {
+	f := useRunFakes(t)
+	f.prod.SourceFunc = func([]string) (core.Source, error) {
+		t.Error("prepare read production")
+		return nil, errors.New("no")
+	}
+	j := f.job(Prepare)
+	j.From = prodEP
+	res, err := Run(context.Background(), j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.guards) != 1 || f.guards[0].From.Raw != stagingEP.Raw || f.guards[0].FromSite != f.guards[0].ToSite {
+		t.Errorf("guard %+v", f.guards)
+	}
+	if len(f.opened) != 2 || res.Source.Display != stagingEP.Display {
+		t.Errorf("opened %d sites, source %+v", len(f.opened), res.Source)
+	}
+}
+
+// prepare --only noindex reads no data, yet a Laravel staging still gets
+// PRD 13.2's noindex line.
+func TestRunOnlyNoindexLaravel(t *testing.T) {
+	f := useRunFakes(t)
+	f.staging.StackName = core.StackLaravel
+	j := f.job(Prepare)
+	j.Opts.Only = []string{"noindex"}
+	res, err := Run(context.Background(), j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Stack.Name != core.StackLaravel || !slices.Contains(res.NotCovered, notCoveredLaravel) {
+		t.Errorf("stack %q not covered %q", res.Stack.Name, res.NotCovered)
+	}
+}
+
+// A standalone verify --from keeps every production host, also a blog's
+// custom domain that url_map doesn't name: verify rewrites nothing. Both
+// sides from stdin is refused.
+func TestVerifyJobProductionHosts(t *testing.T) {
+	f := useRunFakes(t)
+	f.prod.SourceFunc = func([]string) (core.Source, error) {
+		td := blogTables()
+		td[0].rows = append(td[0].rows, []any{4, "boutique.example", "/"})
+		return testutil.FakeSource(schemaOf("wp_", td), batches(td)), nil
+	}
+	cfg := roadiecfg.Default()
+	cfg.URL = "https://staging.shop.test"
+	j := Job{Config: cfg, Opts: Options{FailOn: core.SeverityHigh}}
+	from := prodEP
+	vj, err := VerifyJob(context.Background(), j, stagingEP, &from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range []string{"shop.com", "fr.shop.com", "boutique.example"} {
+		if !slices.Contains(vj.Production, h) {
+			t.Errorf("production %v lacks %s", vj.Production, h)
+		}
+	}
+	stdio := core.Endpoint{Kind: core.Stdio, Raw: "-", Display: "-"}
+	if _, err := VerifyJob(context.Background(), j, stdio, &stdio); !isCode(err, core.ErrConfig) {
+		t.Errorf("stdin twice: %v", err)
+	}
+}
+
+// loadConfig writes yaml as .roadie/config.yaml in a temp project and
+// loads it with no ROADIE_ variables set.
+func loadConfig(t *testing.T, yaml string) *roadiecfg.Config {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), ".roadie")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := roadiecfg.Load(path, func(string) (string, bool) { return "", false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// A key the run uses that reads an unset ${ROADIE_*} stops the run with
+// config, exit 2, before the lock: the literal placeholder is never used
+// as a drop glob, a test key or a rewrite target. A key a flag replaces
+// doesn't stop it.
+func TestRunUnsetVariable(t *testing.T) {
+	for _, tc := range []struct{ name, yaml, want string }{
+		{"drop", "drop: ['${ROADIE_T}']\n", "drop[0] reads ${ROADIE_T}, which isn't set."},
+		{"test key", "keys:\n  test_keys:\n    stripe: '${ROADIE_STRIPE_TEST}'\n", "keys.test_keys.stripe reads ${ROADIE_STRIPE_TEST}, which isn't set."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := useRunFakes(t)
+			j := f.job(Copy)
+			j.Config = loadConfig(t, tc.yaml)
+			_, err := Run(context.Background(), j)
+			var ce *core.Error
+			if !errors.As(err, &ce) || ce.Code != core.ErrConfig || ce.Exit != 2 || !strings.Contains(ce.Msg, tc.want) ||
+				!strings.HasSuffix(ce.Msg, "Set it in the environment, or remove the entry.") {
+				t.Fatalf("err %v", err)
+			}
+			if f.rec.index("lock") >= 0 || len(f.opened) != 0 || len(f.staging.Writes()) != 0 {
+				t.Errorf("ran past the check: %v", f.rec.all())
+			}
+			vj := Job{Config: j.Config, Opts: Options{FailOn: core.SeverityHigh}}
+			if _, err := VerifyJob(context.Background(), vj, stagingEP, nil); !isCode(err, core.ErrConfig) {
+				t.Errorf("verify: %v", err)
+			}
+		})
+	}
+	// --url replaces url:, so its unset variable is never read.
+	f := useRunFakes(t)
+	j := f.job(Copy)
+	j.Config = loadConfig(t, "url: '${ROADIE_URL}'\n")
+	if _, err := Run(context.Background(), j); err != nil {
+		t.Errorf("url replaced by the flag: %v", err)
+	}
+	j.Opts.URL = ""
+	if _, err := Run(context.Background(), j); !isCode(err, core.ErrConfig) {
+		t.Errorf("url read from the file: %v", err)
 	}
 }

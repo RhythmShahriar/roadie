@@ -153,3 +153,9 @@ rules:
   "wordpress.options.option_value._site_transient_*":
     positive: {table: wp_2_options, row: {option_value: "x", option_name: "_site_transient_x"}}
     negative: {table: wp_2_options, row: {option_value: "x", option_name: "x_site_transient_x"}}
+  "wordpress.posts.post_title.user_request":
+    positive: {table: wp_2_posts, row: {post_title: "anna.lee@example.com", post_type: "user_request"}}
+    negative: {table: wp_2_posts, row: {post_title: "anna.lee@example.com", post_type: "post"}}
+  "wordpress.posts.post_content.user_request":
+    positive: {table: wp_posts, row: {post_content: "{\"note\":\"Anna Lee\"}", post_type: "user_request"}}
+    negative: {table: wp_posts, row: {post_content: "{\"note\":\"Anna Lee\"}", post_type: "xuser_request"}}

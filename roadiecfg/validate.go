@@ -108,7 +108,7 @@ func (l *loader) validateTop(c *Config) error {
 			continue
 		}
 		if _, err := site.ParseEndpoint(k.v); err != nil && !errors.Is(err, core.ErrNotBuilt) && !missingFolder(k.v) {
-			return l.errAt(k.key, "%s: %s", k.key, strings.TrimSuffix(err.Error(), "."))
+			return l.errAt(k.key, "%s: %s", k.key, endpointMsg(k.v, err))
 		}
 	}
 	if c.URL != "" && l.unset["url"] == "" {
@@ -118,6 +118,9 @@ func (l *loader) validateTop(c *Config) error {
 	}
 	for i, p := range c.Production {
 		key := fmt.Sprintf("production[%d]", i)
+		if l.unset[key] != "" {
+			continue
+		}
 		if err := CheckProduction(p); err != nil {
 			return l.errAt(key, "%s is %q, which isn't a site like shop.com, *.shop.com or https://shop.com/shop/", key, p)
 		}
@@ -296,7 +299,7 @@ func (l *loader) validateKeys(c *Config) error {
 		var ce *core.Error
 		if errors.As(err, &ce) {
 			out := *ce
-			out.Msg = l.file + l.lineOf(key) + ": " + ce.Msg
+			out.Msg = l.file + l.lineOf(key) + ": " + l.redact(key, ce.Msg)
 			return &out
 		}
 		return l.errAt(key, "%s: %v", key, err)
@@ -379,7 +382,7 @@ func (l *loader) validateSideEffects(c *Config) error {
 func ValidateEchoURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") {
-		return fmt.Errorf("is %q, which isn't a URL like http://127.0.0.1:8025", raw)
+		return fmt.Errorf("is %q, which isn't a URL like http://127.0.0.1:8025", stripPassword(raw))
 	}
 	if u.User != nil {
 		return errors.New("holds a user name or password; Echo reads its token from RHYTHM_ECHO_TOKEN, never from the URL")
@@ -387,7 +390,7 @@ func ValidateEchoURL(raw string) error {
 	if u.Scheme == "https" || privateHost(u.Hostname()) {
 		return nil
 	}
-	return fmt.Errorf("is %s over plain http to a public host; use https or an address on this machine or a private network", u.Redacted())
+	return fmt.Errorf("is %s over plain http to a public host; use https or an address on this machine or a private network", stripPassword(u.Redacted()))
 }
 
 // privateHost reports whether host is loopback, private or link-local,
@@ -416,8 +419,8 @@ func (l *loader) validateVerify(c *Config) error {
 		return l.oneOf("verify.fail_on", c.Verify.FailOn, failOns)
 	}
 	for i, e := range c.Verify.AllowEmails {
-		if !strings.Contains(e, "@") {
-			key := fmt.Sprintf("verify.allow_emails[%d]", i)
+		key := fmt.Sprintf("verify.allow_emails[%d]", i)
+		if !strings.Contains(e, "@") && l.unset[key] == "" {
 			return l.errAt(key, "%s is %q, which isn't an email address or a glob like *@shop.com", key, e)
 		}
 	}

@@ -179,9 +179,12 @@ type indexer struct {
 	siteUsers *siteUsers
 	admins    []uint64
 	forms     []formRow
-	addr      *addrIndex
-	rows      map[string]int64
-	order     []string // tables in the order their rows came
+	// entries are the form entry values the field-type rules may cover,
+	// for Known; nil when Known isn't filled in pass 1 (--one-pass).
+	entries *formEntries
+	addr    *addrIndex
+	rows    map[string]int64
+	order   []string // tables in the order their rows came
 
 	// prov is the rule set of the profiles detected so far, wide every
 	// profile of the stack; both are rebuilt when the schema or the
@@ -194,9 +197,13 @@ type indexer struct {
 }
 
 func newIndexer(ctx context.Context, cfg *roadiecfg.Config, defs []profile.Def, site core.Site, known core.Known) *indexer {
-	return &indexer{ctx: ctx, cfg: cfg, defs: defs, site: site, known: known, samples: newSamples(),
+	x := &indexer{ctx: ctx, cfg: cfg, defs: defs, site: site, known: known, samples: newSamples(),
 		options: map[string]bool{}, siteURLs: map[string][2]string{}, rows: map[string]int64{},
 		kept: &keptUsers{ids: map[string]bool{}, orders: map[string]bool{}}, addr: newAddrIndex(), nTables: -1}
+	if known != nil {
+		x.entries = &formEntries{}
+	}
+	return x
 }
 
 // refresh rebuilds the provisional rule sets when the schema has new
@@ -306,6 +313,11 @@ func (x *indexer) observe(b *core.Batch, s *core.Schema) {
 // collect keeps the facts pass 1 reads from particular tables.
 func (x *indexer) collect(b *core.Batch, pos map[string]int) {
 	name, p := b.Table.Name, x.prefix
+	var fixes []string
+	if x.entries != nil && x.prov != nil {
+		fixes = x.prov.RowFixes()
+	}
+	isBlog := func(table, suffix string) bool { _, ok := blogOf(table, p, suffix); return ok }
 	for ri := range b.Rows {
 		get := rowGet(b, pos, &b.Rows[ri])
 		str := func(c string) string { v, _ := get(c); return string(v) }
@@ -378,6 +390,7 @@ func (x *indexer) collect(b *core.Batch, pos map[string]int) {
 			}
 			x.forms = append(x.forms, formRow{table: name, vals: vals})
 		}
+		x.entries.observe(name, fixes, isBlog, get)
 		x.address(name, get)
 	}
 }

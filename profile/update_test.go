@@ -348,3 +348,37 @@ func FuzzChecksumOf(f *testing.F) {
 		}
 	})
 }
+
+// A release whose version isn't a plain release version never names a
+// cache folder; a pack over 16 MiB of profiles in all is refused even
+// when each file is under 1 MiB.
+func TestUpdateRefusesVersionAndTotal(t *testing.T) {
+	good := builtinFile(t, "wordpress")
+	for _, v := range []string{"../../9.9.9", "9.9.9/x", "next"} {
+		src := &memSource{latest: v, rels: map[string]map[string][]byte{v: release(v, makeTar(t, []entry{{name: "wordpress.yaml", body: good}}))}}
+		fv, dir := usePack(t, src)
+		if _, err := Update(context.Background(), io.Discard); err == nil || !strings.Contains(err.Error(), "isn't a release version") {
+			t.Errorf("version %q: %v", v, err)
+		}
+		if entries, _ := os.ReadDir(dir); len(entries) != 0 || fv.calls != 0 {
+			t.Errorf("version %q stored %v, verified %d times", v, entries, fv.calls)
+		}
+	}
+	ids, err := builtinFS.ReadDir("builtin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entries []entry
+	for _, e := range ids[:17] {
+		id := strings.TrimSuffix(e.Name(), ".yaml")
+		b := builtinFile(t, id)
+		pad := maxEntry - len(b) - 16
+		b = append(append(bytes.Clone(b), "\n# "...), bytes.Repeat([]byte("x"), pad)...)
+		entries = append(entries, entry{name: e.Name(), body: append(b, '\n')})
+	}
+	src := &memSource{latest: "9.9.9", rels: map[string]map[string][]byte{"9.9.9": release("9.9.9", makeTar(t, entries))}}
+	usePack(t, src)
+	if _, err := Update(context.Background(), io.Discard); err == nil || !strings.Contains(err.Error(), "over 16 MiB") {
+		t.Errorf("total: %v", err)
+	}
+}

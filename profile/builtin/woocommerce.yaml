@@ -51,8 +51,12 @@ rules:
   - {table: "{prefix}{site}wc_customer_lookup", column: username, rule: username, explain: "the customer's login"}
   - {table: "{prefix}{site}wc_customer_lookup", column: city, rule: city, part: city, explain: "the customer's city"}
   - {table: "{prefix}{site}wc_customer_lookup", column: postcode, rule: postcode, part: postcode, explain: "the customer's postcode"}
+  - {table: "{prefix}{site}wc_customer_lookup", column: country, rule: blank, part: country, explain: "the customer's country, kept by default like the order's"}
+  - {table: "{prefix}{site}wc_customer_lookup", column: state, rule: blank, part: state, explain: "the customer's state, kept by default like the order's"}
   - {table: "{prefix}{site}woocommerce_downloadable_product_permissions", column: user_email, rule: email, explain: "the email a download was granted to"}
   - {table: "{prefix}{site}wc_download_log", column: user_ip_address, rule: ip, explain: "the IP address of a download"}
+  - {table: "{prefix}{site}woocommerce_log", column: message, rule: text, explain: "WooCommerce log lines (the database log handler), which can name customers and their emails"}
+  - {table: "{prefix}{site}woocommerce_log", column: context, rule: text, explain: "the log line's context, a serialized array that can hold order and customer details"}
   - {table: "{prefix}{site}wc_webhooks", column: status, rule: "fixed:paused", explain: "webhooks paused so the copy never calls the live endpoints"}
   - {table: "{prefix}{site}wc_webhooks", column: secret, rule: blank, explain: "the webhook signing secret"}
   - {table: "{prefix}{site}wc_webhooks", column: delivery_url, rule: keep, explain: "kept so the webhook can be checked; it is paused"}

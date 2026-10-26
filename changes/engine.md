@@ -66,7 +66,7 @@ The file is called `.roadie/config.yaml` in messages when it is in the usual pla
 - `<file> line N: this isn't valid YAML: <yaml's words>` and `<file> line 1: the file must be a list of settings like "source:" and "stack: auto"`
 - `.roadie/config.yaml line 1: drop[1] is "wp_[", which isn't a valid glob (use *, ? and [abc] as in path.Match)`
 - `.roadie/config.yaml line 4: keys.test_keys.stripe reads ${STRIPE_TEST}; only ROADIE_ variables are read. Rename it ROADIE_STRIPE_TEST.`
-- `.roadie/config.yaml line 5: keys.test_keys.stripe reads ${ROADIE_STRIPE_TEST_SECRET}, which isn't set. Set it in the environment, or remove the entry.` (only when a run uses that key; `config check` lists every unset one)
+- `.roadie/config.yaml line 5: keys.test_keys.stripe reads ${ROADIE_STRIPE_TEST_SECRET}, which isn't set. Set it in the environment, or remove the entry.` (`plan`, `copy`, `prepare` and `verify` stop with it, exit 2, before the lock when a key they use reads an unset variable; a key a flag replaces, such as `url:` under `--url`, doesn't stop them; `config check` lists every unset one, `production:` and `verify.allow_emails` included)
 - `.roadie/config.yaml line 2: pseudonymise.email_domain is "shop.com", which can receive real mail. Use a reserved domain: example.invalid, example.com or a name under .test, .example, .invalid or .localhost.`
 - `stack is "wordpres"; did you mean wordpress? It takes auto, wordpress, laravel or sql.` and the same shape for every other enum.
 - `verify.ignore[0] needs a reason: say why this value may stay`, `keys.ignore[0].id is "pii.phnoe", which isn't a finding ID; did you mean pii.phone? rhythm-roadie explain lists them.`, `keys.ignore[0].until is "soon"; write a date like 2027-01-31`
@@ -76,14 +76,16 @@ The file is called `.roadie/config.yaml` in messages when it is in the usual pla
 - A live key given as a test key: the keys lane's `test-key-is-live` message with `.roadie/config.yaml line N: ` in front.
 - `.roadie/config.yaml line 2: side_effects.echo.url is http://echo.example.com:8025 over plain http to a public host; use https or an address on this machine or a private network` (plain http is fine to loopback, private and link-local IPs, `localhost`, single-label names and names under `.local`, `.localhost`, `.internal`, `.lan`, `.home.arpa`)
 
-`${ROADIE_NAME}` is read only in string values. `config show` masks test keys and every interpolated value (`sk_t•••••`); DSN and proxy passwords show as `•••`. Each value names its source: flag, file, echo, soundcheck or default.
+`${ROADIE_NAME}` is read only in string values. `config show` masks test keys and every interpolated value (`sk_t•••••`); DSN and proxy passwords show as `•••`, in the user info and in a `password`, `pass`, `pwd` or `sslpassword` query parameter (any case): `postgres://u@db.example/shop?sslmode=require&password=•••`. The user-info password is found on the raw text (first `:` after `://` to the last `@` before the query), so an unencoded `#` or `/` in it is masked too: `mysql://root:•••@db/shop`. A query password runs to the next `&`, `#` included. A `source:` or `target:` the parser refuses is named masked; when it carries a password the parser's own text is left out: `source: "mysql://root:•••@db/shop" isn't a site path, ssh:// address, @alias, dump file or DSN Roadie can read` (exit 2, code `config`). Each value names its source: flag, file, echo, soundcheck or default.
+
+A validation error about a value read from the environment shows the `${ROADIE_NAME}` reference where the value would stand, never the value: `.roadie/config.yaml line 1: url is "${ROADIE_URL}", which isn't a URL like https://staging.shop.test`. A value of three bytes or less is replaced only where it stands quoted.
 
 ### `config init`
 
 - WordPress and WooCommerce (and `auto`) get the PRD 8.1 file byte for byte (`roadiecfg/testdata/golden/init-wordpress.yaml`). Laravel (`init-laravel.yaml`) and SQL (`init-sql.yaml`) get their own: Laravel marks the WordPress-only side effects and `noindex` as such and shows `laravel.tables`; SQL starts with an active `columns:` example.
 - Messages: `Wrote .roadie/config.yaml for a WooCommerce site.`, `... for a WordPress site.`, `... for a Laravel app.`, `... for a generic SQL database.`
 - Git: `.roadie/reports/`, `.roadie/key`, `.roadie/backups/` and `.roadie/basic-auth/` go into `.git/info/exclude` (of the main repository for a linked worktree) under `# rhythm-roadie: reports, keys and backups stay out of git`, anchored at the work tree root. Glob characters in the project's path (`*`, `?`, `[`, `]`, `\`) are backslash-escaped, so a folder named `shop[1]` is excluded too.
-- `config init --from <dump>` adds the uncovered columns as commented suggestions before `keys:` (`roadiecfg/testdata/golden/init-from.yaml`): `#    rule: <guess>  # 98% of sampled values look personal` or `# the name looks personal`.
+- `config init --from <dump>` adds the uncovered columns as commented suggestions before `keys:` (`roadiecfg/testdata/golden/init-from.yaml`): `#    rule: <guess>  # 98% of sampled values look personal` or `# the name looks personal`. A table or column name that isn't plain (letters, digits, `_`, `$`, `.`, `-`) is written as a double-quoted YAML string, so a name holding a newline can't become an active setting: `#    column: "notes\nsource: ..."`.
 
 ## 2. The consistency key
 
@@ -96,7 +98,7 @@ The file is called `.roadie/config.yaml` in messages when it is in the usual pla
 
 A profile names the tables and columns of one stack or plugin and the rule for each. `auto` picks the detected profiles of the stack plus the stack's base profile. `{prefix}` is the WordPress table prefix (from `$table_prefix`, else the options table); `{site}` is the main site and every multisite blog (`2_`, `11_`), matched exactly so `wp_1_` never takes `wp_11_` tables.
 
-- A `columns:` rule replaces the profile's rule on the same table, column, where clause and path; without a where clause it replaces every profile rule on that column.
+- A `columns:` rule replaces the profile's rule on the same table, column, where clause and path; without a where clause it replaces every profile rule on that column. A `columns:` table glob (`wp_*meta`) replaces the profile rules on every table it matches the same way.
 - Table actions, first match wins: config drop, config truncate, a table `columns:` names, profile drop, profile truncate, profile keep, has rules, else kept.
 - `pseudonymise.keep` keeps the address parts it names; `free_text: blank|keep` turns text rules into blank or keep; `passwords: keep` keeps password hashes.
 - Errors (exit 2): `profiles names "mini-cor", which isn't a profile; did you mean mini-core? rhythm-roadie profiles lists them.`, `profiles names laravel, which is for laravel; this is a wordpress schema. Remove it or set stack:.`, `stack: no profile matches this dump (no wp_options or migrations table). For your own schema, list the tables under columns: and set stack: sql.`
@@ -143,6 +145,8 @@ The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrub
 | `{prefix}{site}postmeta` | `meta_value` | `meta_key=_from` |  | text | the sender as name and email |
 | `{prefix}{site}postmeta` | `meta_value` | `meta_key=_from_email` |  | email | the sender's email |
 | `{prefix}{site}postmeta` | `meta_value` | `meta_key=_from_name` |  | full_name | the sender's name |
+| `{prefix}{site}postmeta` | `meta_value` | `meta_key=_field_your-email` |  | email | the email field of Contact Form 7's default form (your-email) |
+| `{prefix}{site}postmeta` | `meta_value` | `meta_key=_field_your-name` |  | full_name | the name field of Contact Form 7's default form (your-name) |
 | `{prefix}{site}postmeta` | `meta_value` | `meta_key=_field_*` |  | text | one form field of the message |
 | `{prefix}{site}postmeta` | `meta_value` | `meta_key=_meta` | `serialized:remote_ip` | ip | the sender's IP address in the request details |
 | `{prefix}{site}postmeta` | `meta_value` | `meta_key=_meta` | `serialized:user_agent` | user_agent | the sender's browser in the request details |
@@ -184,6 +188,8 @@ The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrub
 | `{prefix}{site}edd_logs_file_downloads` | `ip` |  |  | ip | the IP address of a file download |
 | `{prefix}{site}edd_logs_file_downloads` | `user_agent` |  |  | user_agent | the browser of a file download |
 | `{prefix}{site}edd_notes` | `content` |  |  | text | notes on orders and customers |
+| `{prefix}{site}edd_logs_emails` | `email` |  |  | email | the recipient of a mail EDD sent (the email log of EDD 3.3) |
+| `{prefix}{site}edd_logs_emails` | `subject` |  |  | text | the subject of a mail EDD sent, which can name the customer |
 
 #### `email-log` (Email Log)
 
@@ -200,9 +206,31 @@ The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrub
 | Table | Column | Where | Path | Rule | Why |
 |---|---|---|---|---|---|
 | `{prefix}{site}fluentform_submissions` | `response` |  |  | text | every field of the submission as JSON |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:email` | email | the email field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:names.first_name` | first_name | the first name of the name field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:names.middle_name` | first_name | the middle name of the name field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:names.last_name` | last_name | the last name of the name field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:phone` | phone | the phone field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:address_1.address_line_1` | street | the street of the address field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:address_1.address_line_2` | street | the second line of the address field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:address_1.city` | city | the city of the address field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:address_1.zip` | postcode | the postcode of the address field as a new form names it |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:address_1.state` | blank | the state of the address field as a new form names it; kept by default |
+| `{prefix}{site}fluentform_submissions` | `response` |  | `json:address_1.country` | blank | the country of the address field as a new form names it; kept by default |
 | `{prefix}{site}fluentform_submissions` | `source_url` |  |  | rewrite-url | the page the form was on |
 | `{prefix}{site}fluentform_submissions` | `ip` |  |  | ip | the IP address the submission came from |
 | `{prefix}{site}fluentform_submissions` | `city` |  |  | city | the city looked up from the IP address |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=email` |  | email | the email field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=phone` |  | phone | the phone field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=names, sub_field_name=first_name` |  | first_name | the first name of the name field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=names, sub_field_name=middle_name` |  | first_name | the middle name of the name field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=names, sub_field_name=last_name` |  | last_name | the last name of the name field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=address_1, sub_field_name=address_line_1` |  | street | the street of the address field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=address_1, sub_field_name=address_line_2` |  | street | the second line of the address field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=address_1, sub_field_name=city` |  | city | the city of the address field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=address_1, sub_field_name=zip` |  | postcode | the postcode of the address field as a new form names it |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=address_1, sub_field_name=state` |  | blank | the state of the address field as a new form names it; kept by default |
+| `{prefix}{site}fluentform_entry_details` | `field_value` | `field_name=address_1, sub_field_name=country` |  | blank | the country of the address field as a new form names it; kept by default |
 | `{prefix}{site}fluentform_entry_details` | `field_value` |  |  | text | one field's value |
 | `{prefix}{site}fluentform_submission_meta` | `value` |  |  | text | notes and data attached to a submission |
 | `{prefix}{site}fluentform_logs` | `description` |  |  | text | log lines that quote submissions |
@@ -264,15 +292,15 @@ The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrub
 #### `learndash` (LearnDash)
 
 - Stack: wordpress. Checked against: `docs: https://plugins.svn.wordpress.org/wp-pro-quiz/trunk/lib/helper/WpProQuiz_Helper_DbUpgrade.php`.
-- Detected by: table `{prefix}learndash_user_activity`, table `{prefix}learndash_pro_quiz_toplist`, file `wp-content/plugins/sfwd-lms/sfwd_lms.php`.
-- Kept as they are: `{prefix}learndash_user_activity`.
+- Detected by: table `{prefix}{site}learndash_user_activity`, table `{prefix}{site}learndash_pro_quiz_toplist`, file `wp-content/plugins/sfwd-lms/sfwd_lms.php`.
+- Kept as they are: `{prefix}{site}learndash_user_activity`.
 
 | Table | Column | Where | Path | Rule | Why |
 |---|---|---|---|---|---|
-| `{prefix}learndash_pro_quiz_toplist` | `name` |  |  | full_name | the name on the leaderboard |
-| `{prefix}learndash_pro_quiz_toplist` | `email` |  |  | email | the email on the leaderboard |
-| `{prefix}learndash_pro_quiz_toplist` | `ip` |  |  | ip | the IP address of the attempt |
-| `{prefix}learndash_pro_quiz_statistic_ref` | `form_data` |  |  | text | the quiz's custom form fields, such as name and email |
+| `{prefix}{site}learndash_pro_quiz_toplist` | `name` |  |  | full_name | the name on the leaderboard |
+| `{prefix}{site}learndash_pro_quiz_toplist` | `email` |  |  | email | the email on the leaderboard |
+| `{prefix}{site}learndash_pro_quiz_toplist` | `ip` |  |  | ip | the IP address of the attempt |
+| `{prefix}{site}learndash_pro_quiz_statistic_ref` | `form_data` |  |  | text | the quiz's custom form fields, such as name and email |
 
 #### `mailpoet` (MailPoet)
 
@@ -295,19 +323,19 @@ The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrub
 #### `memberpress` (MemberPress)
 
 - Stack: wordpress. Checked against: `docs: https://memberpress.com/docs/where-is-data-stored/`.
-- Detected by: table `{prefix}mepr_transactions`, table `{prefix}mepr_members`, file `wp-content/plugins/memberpress/memberpress.php`.
-- Kept as they are: `{prefix}mepr_members`.
+- Detected by: table `{prefix}{site}mepr_transactions`, table `{prefix}{site}mepr_members`, file `wp-content/plugins/memberpress/memberpress.php`.
+- Kept as they are: `{prefix}{site}mepr_members`.
 
 | Table | Column | Where | Path | Rule | Why |
 |---|---|---|---|---|---|
-| `{prefix}mepr_transactions` | `ip_addr` |  |  | ip | the IP address of the payment |
-| `{prefix}mepr_transactions` | `trans_num` |  |  | blank | the gateway's transaction ID |
-| `{prefix}mepr_transactions` | `response` |  |  | blank | the gateway's raw answer, with card and customer details |
-| `{prefix}mepr_subscriptions` | `subscr_id` |  |  | blank | the gateway's subscription ID, which a renewal would charge |
-| `{prefix}mepr_subscriptions` | `ip_addr` |  |  | ip | the IP address of the sign-up |
-| `{prefix}mepr_subscriptions` | `token` |  |  | blank | the saved payment token |
-| `{prefix}mepr_subscriptions` | `cc_last4` |  |  | blank | the last four card digits |
-| `{prefix}mepr_subscriptions` | `response` |  |  | blank | the gateway's raw answer |
+| `{prefix}{site}mepr_transactions` | `ip_addr` |  |  | ip | the IP address of the payment |
+| `{prefix}{site}mepr_transactions` | `trans_num` |  |  | blank | the gateway's transaction ID |
+| `{prefix}{site}mepr_transactions` | `response` |  |  | blank | the gateway's raw answer, with card and customer details |
+| `{prefix}{site}mepr_subscriptions` | `subscr_id` |  |  | blank | the gateway's subscription ID, which a renewal would charge |
+| `{prefix}{site}mepr_subscriptions` | `ip_addr` |  |  | ip | the IP address of the sign-up |
+| `{prefix}{site}mepr_subscriptions` | `token` |  |  | blank | the saved payment token |
+| `{prefix}{site}mepr_subscriptions` | `cc_last4` |  |  | blank | the last four card digits |
+| `{prefix}{site}mepr_subscriptions` | `response` |  |  | blank | the gateway's raw answer |
 | `{prefix}usermeta` | `meta_value` | `meta_key=mepr-address-one` |  | street | the member's street |
 | `{prefix}usermeta` | `meta_value` | `meta_key=mepr-address-two` |  | street | the member's second address line |
 | `{prefix}usermeta` | `meta_value` | `meta_key=mepr-address-city` |  | city | the member's city |
@@ -412,8 +440,12 @@ The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrub
 | `{prefix}{site}wc_customer_lookup` | `username` |  |  | username | the customer's login |
 | `{prefix}{site}wc_customer_lookup` | `city` |  |  | city | the customer's city |
 | `{prefix}{site}wc_customer_lookup` | `postcode` |  |  | postcode | the customer's postcode |
+| `{prefix}{site}wc_customer_lookup` | `country` |  |  | blank | the customer's country, kept by default like the order's |
+| `{prefix}{site}wc_customer_lookup` | `state` |  |  | blank | the customer's state, kept by default like the order's |
 | `{prefix}{site}woocommerce_downloadable_product_permissions` | `user_email` |  |  | email | the email a download was granted to |
 | `{prefix}{site}wc_download_log` | `user_ip_address` |  |  | ip | the IP address of a download |
+| `{prefix}{site}woocommerce_log` | `message` |  |  | text | WooCommerce log lines (the database log handler), which can name customers and their emails |
+| `{prefix}{site}woocommerce_log` | `context` |  |  | text | the log line's context, a serialized array that can hold order and customer details |
 | `{prefix}{site}wc_webhooks` | `status` |  |  | fixed:paused | webhooks paused so the copy never calls the live endpoints |
 | `{prefix}{site}wc_webhooks` | `secret` |  |  | blank | the webhook signing secret |
 | `{prefix}{site}wc_webhooks` | `delivery_url` |  |  | keep | kept so the webhook can be checked; it is paused |
@@ -537,6 +569,8 @@ The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrub
 | `{prefix}{site}comments` | `comment_agent` |  |  | user_agent | the commenter's browser |
 | `{prefix}{site}comments` | `comment_content` |  |  | text | comment and order note text; emails, phones and known names in it are replaced |
 | `{prefix}{site}commentmeta` | `meta_value` |  |  | text | comment metadata of any plugin, scrubbed as free text |
+| `{prefix}{site}posts` | `post_title` | `post_type=user_request` |  | email | the email of a personal data export or erasure request |
+| `{prefix}{site}posts` | `post_content` | `post_type=user_request` |  | text | the request's extra data as JSON; free text |
 | `{prefix}{site}options` | `option_value` | `option_name=admin_email` |  | email | the site's admin email; keep_users keeps it when it matches |
 | `{prefix}{site}options` | `option_value` | `option_name=new_admin_email` |  | email | an admin email change waiting for confirmation |
 | `{prefix}{site}options` | `option_value` | `option_name=siteurl` |  | rewrite-url | the site's own URL, rewritten to the staging URL |
@@ -599,22 +633,25 @@ It hasn't run yet: the schema files in `profile/testdata/schemas/` were written 
 4. The target guards (PRD 10.4). Nothing is written when one refuses.
 5. The confirmation (below), before anything is written.
 6. `prepare`: the database backup (unless `--no-backup`).
-7. The file-level kill switch (wp-config defines, mu-plugins, `.env`) on a site target, before anything is imported.
-8. `prepare` on WordPress: `.maintenance` is written (`<?php $upgrading = <unix time>; ?>`), so visitors see WordPress's maintenance page during the import. It is removed after the import, also when the run fails.
-9. Pass 1 (index) and pass 2 (transform or import), then the commit.
-10. The after-import kill switch steps, `--basic-auth`, then verify in exact mode on what was written, read back from the target. `--soundcheck` runs Soundcheck on `--url` after it.
+7. Pass 1 (index) and its checks: the uncovered-column stop, the url-map stop and `--site`. A stop here leaves the target untouched: no kill switch step, no `.maintenance`, no sink.
+8. The file-level kill switch (wp-config defines, mu-plugins, `.env`) on a site target, before anything is imported.
+9. `prepare` on WordPress: `.maintenance` is written (`<?php $upgrading = <unix time>; ?>`), so visitors see WordPress's maintenance page during the import. It is removed after the import, also when the run fails.
+10. Pass 2 (transform or import), then the commit.
+11. The after-import kill switch steps, `--basic-auth`, then verify in exact mode on what was written, read back from the target. `--soundcheck` runs Soundcheck on `--url` after it.
+
+A run that stops after a kill switch or exposure step changed the target reports the target `mixed` (in `data.target_state` and in the error), not `untouched`, also when no row was imported yet. A step that fails first leaves it `untouched`.
 
 ### Two passes, the spool and `--one-pass`
 
-- A dump file is read twice. A stream (stdin, or an ssh or alias site that can stream its export) is copied to the encrypted spool in `<cache>/roadie/spool/` (folder 0700) while pass 1 reads it; pass 2 reads the spool. The spool is removed on success, error and Ctrl-C. A site or database without a stream is exported once per pass.
-- Pass 1 reads the schema, row counts, option names, siteurl and home per blog, multisite domains, HPOS mode, kept users, administrators, form definitions, order address part lengths, the uncovered-column samples and the known-value set for exact-mode verify. The rules are then compiled with what it found.
+- A dump file is read twice. A stream (stdin, or an ssh or alias site that can stream its export) is copied to the encrypted spool in `<cache>/roadie/spool/` (folder 0700) while pass 1 reads it; pass 2 reads the spool. The spool is removed on success, error and Ctrl-C. The rest of a stream after the last statement goes into the spool only when pass 1 reached the end; a parse error or Ctrl-C in pass 1 stops at once, without reading the rest of an ssh export or waiting for stdin to end. A site or database without a stream is exported once per pass.
+- Pass 1 reads the schema, row counts, option names, siteurl and home per blog, multisite domains, HPOS mode, kept users, administrators, form definitions, order address part lengths, the uncovered-column samples and the known-value set for exact-mode verify. The rules are then compiled with what it found. Form entries (Gravity Forms `gf_entry_meta`, WPForms `wpforms_entry_fields` and `wpforms_entries`, Ninja Forms `_field_<N>` post meta) are kept in pass 1 (up to 32 MiB, 64 KiB a value); the ones a field-type rule fakes join the known-value set before it is sealed, whichever comes first in the dump (mysqldump writes `gf_entry_meta` before `gf_form_meta`). Past 32 MiB the rest are only faked in their own rows; their emails and phones are still found by the detectors.
 - Pass 2 runs `--jobs` workers (default the CPUs, at most 8) with an ordered writer; output order is input order. The window holds at most 2 x jobs batches and at most 96 MiB of batch memory (rows and values counted as held in memory), or a quarter of `--max-memory` when that is smaller; a batch larger than the window still goes when nothing else is in flight.
 - `--one-pass` reads once: rules from every profile of the stack, URLs rewritten only for `production:` and `url_map` entries, no names from the known set in free text. It refuses `keep_users` (`--one-pass can't keep users: a dump has their user meta before the users table. Drop --one-pass or keep_users.`) and `--site` (`--one-pass can't limit the copy to --site: the blogs are known only after the whole dump is read. Drop one of them.`). Its uncovered-column check runs after pass 2 has written: a dump file is removed and the message ends `The target is untouched.` while a site or database target the abort leaves mixed reports `mixed` in `data.target_state` and in the error; its message ends `The target is in a mixed state and may hold the column as it was in production: run the same command again once it has a rule, or without --one-pass to check before writing.` (`the columns as they were` and `they have` for several).
 - `--max-memory` sets Go's soft memory limit for the run. Without it the run sets 300 MiB (PRD 22.3), unless `GOMEMLIMIT` already set one; the limit in place before the run is put back after.
 
 ### Uncovered columns
 
-A text column no rule covers is scanned in pass 1 (up to 1,000 non-empty values, each cut to 1 KiB) and listed when its name or its values look personal (the detect lane's PRD 11.3 rule). `copy` and `prepare` then stop before pass 2, exit 1, target untouched:
+A text column no rule covers is scanned in pass 1 (a column with no type, as a data-only dump gives it, counts as text) (up to 1,000 non-empty values, each cut to 1 KiB) and listed when its name or its values look personal (the detect lane's PRD 11.3 rule). `copy` and `prepare` then stop before pass 2 and before the kill switch or `.maintenance` touch the site, exit 1, target untouched:
 
 `uncovered: 2 columns look personal and no rule covers them: wp_loyalty_members.email, wp_loyalty_members.phone. Add them under columns: (rhythm-roadie explain uncovered-column), or --allow-uncovered to copy and list them as findings. The target is untouched.`
 
@@ -635,7 +672,7 @@ Users are limited to the members of the chosen blogs and the main site (a `<pref
 
 ### Values
 
-- delete-row drops the row; fake, blank, null (blank when the column is NOT NULL), fixed and password replace the whole value. An empty value is never faked.
+- delete-row drops the row; fake, blank, null (blank when the column is NOT NULL), fixed and password replace the whole value. An empty value is never faked. Such a rule wins over path rules (`json:`, `serialized:`) of other where clauses that also match the row: the whole value is replaced, not only the leaves.
 - Every other string goes through the nested reader (serialized PHP and JSON): path rules per leaf, the free-text scrubber for text rules, then the URL rewrite and the live-key scan. A live key becomes `keys.test_keys` or is blanked (`keys.mode`).
 - A value shaped like serialized data that doesn't parse and holds personal-looking text is blanked with finding `data.unparseable` (medium); `on_unparseable: fail` stops: `data.unparseable: a value at wp_options widget_contact looks serialized, doesn't parse and holds personal-looking text; on_unparseable: fail stops here. Fix the value, or set on_unparseable: blank to blank such values.` (exit 3).
 - Kept users (`keep_users`): their users, usermeta and HPOS orders (with addresses, meta and operational data) stay as they were; finding `info.kept-users`: `1 kept users left as they are (keep_users)`. `--admin-password-env ROADIE_X` sets their password; errors: `--admin-password-env names ADMIN_PW; only ROADIE_ variables are read. Rename it ROADIE_ADMIN_PW.`, `--admin-password-env names ROADIE_X, which isn't set. Set it in the environment, or drop the flag.`, `--admin-password-env sets the password of kept users; keep_users names none.`
@@ -643,8 +680,8 @@ Users are limited to the members of the chosen blogs and the main site (a `<pref
 
 ## 5. `prepare`
 
-- Source and target are the staging. It needs a site or database: `prepare needs a staging site or database; staging.sql is a dump file. Use rhythm-roadie copy for dump files.` (exit 2).
-- Backup first, unless `--no-backup`; the result carries the backup path and the restore command for the screen. A failed backup stops: `backup of /var/www/staging: <why>. Fix it, or pass --no-backup to go on without one`.
+- Source and target are the staging; a `source:` in the config (or a `--from` the CLI passes) is never read, so `prepare` can't turn into a copy from production. It needs a site or database: `prepare needs a staging site or database; staging.sql is a dump file. Use rhythm-roadie copy for dump files.` (exit 2).
+- Backup first, unless `--no-backup`; the result carries the backup path and the restore command for the screen. A failed backup stops with the target untouched: `backup of /var/www/staging: <why>. Fix it, or pass --no-backup to go on without one`. Its code and exit are the cause's when the site returns a typed error (`ssh`, `wp-cli`, exit 3), otherwise `site-config`, exit 3; `data.error` carries them.
 - `.maintenance` around the import on WordPress (section 4).
 - `--production-url <url>` joins `production:` for the run.
 
@@ -679,13 +716,14 @@ Without `data`, `keys` and `urls`, only the tables the kill switch touches are e
 - `--basic-auth <user>` (or `basic_auth: true`, user `staging`): the snippets go to `.roadie/basic-auth/` (folder 0700, files 0600); the password is in the result for the screen only, never in a report.
 - `--no-verify`: no verify; the result has none. A copy to stdout can't be read back, so it has no verify either.
 - `plan` lists each step's planned edits; a step that can't plan shows `manual: couldn't plan this step (<why>)`.
-- Report fields: the ruleset, config and Echo connector SHA-256 (the connector only when the kill switch installs it on a WordPress site), the profile pack version, the remote commands every opened site ran, the output's SHA-256 for a dump file plus the Not covered section: PRD 19.1's sentence, `Run rhythm tuner scan <staging dir> for file-level leaks.` for a site target with files and `Add an X-Robots-Tag: noindex middleware; Roadie does not edit Laravel code.` for Laravel.
-- Standalone `verify`: the target is read once read-only to find its stack and profiles (a stdin target goes through the encrypted spool, which verify then reads). With `--from`, production is read once, read-only and never spooled, to fill the known-value set and its wp-config.php and .env pairs: exact mode.
+- Report fields: the ruleset, config and Echo connector SHA-256 (the connector only when the kill switch installs it on a WordPress site), the profile pack version, the remote commands every opened site ran, the output's SHA-256 for a dump file plus the Not covered section: PRD 19.1's sentence, `Run rhythm tuner scan <staging dir> for file-level leaks.` for a site target with files and `Add an X-Robots-Tag: noindex middleware; Roadie does not edit Laravel code.` for Laravel (also for `prepare --only noindex`, which reads no data: the stack is the site's own).
+- Standalone `verify`: the target is read once read-only to find its stack and profiles (a stdin target goes through the encrypted spool, which verify then reads). With `--from`, production is read once, read-only and never spooled, to fill the known-value set and its wp-config.php and .env pairs: exact mode. Every production host it finds counts as production (siteurl, home, every blog domain), also a blog domain `url_map` doesn't name: verify rewrites nothing, so it never stops on url-map. `verify - --from -`: `verify can't read both the copy and --from from stdin (-); name a file or a site for one of them` (exit 2).
 
 ## 8. `update` and the profile pack
 
 - `rhythm-roadie update` downloads `checksums.txt`, `checksums.txt.sigstore.json` and `rhythm-roadie_profiles.tar.gz` from the latest Roadie release, checks the signature the way the binary's is checked (the shared release workflow at refs/heads/master, this repository and the tag), checks the archive's SHA-256 against `checksums.txt` and stores the profiles in `<cache>/roadie/profiles/<version>/`. Older packs are removed.
-- The archive may hold only `*.yaml` files, flat or under `profile/builtin/`, each under 1 MiB, each a profile this binary can parse, at most 256. A link, another folder, a path outside the pack, another file type or a damaged archive refuses the whole pack and nothing is stored.
+- The archive may hold only `*.yaml` files, flat or under `profile/builtin/`, each under 1 MiB and 16 MiB in all, each a profile this binary can parse, at most 256. Past 16 MiB: `profile pack 1.0.1: rhythm-roadie_profiles.tar.gz holds over 16 MiB of profiles; nothing was installed`.
+- The release's version names the cache folder, so a release whose version isn't a plain release version is refused before anything is downloaded: `profile pack: the release's version "../x" isn't a release version, so nothing was installed`. A link, another folder, a path outside the pack, another file type or a damaged archive refuses the whole pack and nothing is stored.
 - Output: `Installed profile pack 1.0.1 (24 profiles).`; when the latest release isn't newer than the built-in profiles: `The built-in profiles (1.0.0) are the newest; nothing to download.`; a pinned older pack: `The built-in profiles (1.0.0) are newer, so Roadie keeps using them.`
 - Refusals: `profile pack 1.0.1: the signature over checksums.txt doesn't verify, so nothing was installed: <why>`, `profile pack 1.0.1: rhythm-roadie_profiles.tar.gz has SHA-256 <a> where checksums.txt says <b>; nothing was installed`, `profile pack 1.0.1: <file> doesn't parse (it may need a newer rhythm-roadie): <why>; nothing was installed`.
 - `update --pin profiles=1.0.1` (and `rhythm lock`) installs that release's pack.

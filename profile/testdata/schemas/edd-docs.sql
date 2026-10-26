@@ -122,6 +122,21 @@ CREATE TABLE `wp_edd_logs` (
   `uuid` varchar(100) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`)
 );
+-- The email log EDD 3.3 added (one row per mail sent); the columns are
+-- the ones the profile's rules need plus the usual ID and date columns.
+-- Confirm them with capture.sh, which installs EDD.
+CREATE TABLE `wp_edd_logs_emails` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `object_id` bigint(20) unsigned NOT NULL DEFAULT 0,
+  `object_type` varchar(20) DEFAULT NULL,
+  `email` varchar(100) NOT NULL DEFAULT '',
+  `email_id` varchar(32) NOT NULL DEFAULT '',
+  `subject` varchar(200) NOT NULL DEFAULT '',
+  `date_created` datetime NOT NULL,
+  `date_modified` datetime NOT NULL,
+  `uuid` varchar(100) NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`)
+);
 CREATE TABLE `wp_edd_logs_file_downloads` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `product_id` bigint(20) unsigned NOT NULL DEFAULT 0,

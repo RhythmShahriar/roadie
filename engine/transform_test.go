@@ -117,6 +117,89 @@ func TestTransformActions(t *testing.T) {
 	}
 }
 
+// A rule that replaces the whole value wins over a path rule of another
+// where clause on the same row (the path rule's exact where sorts first);
+// on a row only the path rule matches, the path rule still runs.
+func TestWholeRuleBeatsPathRule(t *testing.T) {
+	useFakes(t)
+	cfg := roadiecfg.Default()
+	cfg.Stack = "sql"
+	cfg.Columns = []roadiecfg.ColumnRule{
+		{Table: "t", Column: "j", Where: map[string]string{"kind": "row"}, Rule: "json:billing.email=email"},
+		{Table: "t", Column: "j", Where: map[string]string{"kind": "r*"}, Rule: "blank"},
+		{Table: "t", Column: "j", Where: map[string]string{"kind": "path"}, Rule: "json:billing.email=email"},
+	}
+	tables := func() []tableData {
+		tb := table("t", "id:int(11)", "kind", "j")
+		tb.PrimaryKey = []string{"id"}
+		js := `{"billing":{"email":"anna.lee@example.com"},"note":"x"}`
+		return []tableData{{tb, rows{{1, "row", js}, {2, "path", js}}}}
+	}
+	p, sink, _ := fixture(t, Copy, "", tables, cfg, Options{})
+	run(t, p)
+	if got, _ := valueOf(t, sink, "t", 0, "j"); got != "" {
+		t.Errorf("the blank rule lost to the path rule: %q", got)
+	}
+	email, _ := hashFaker{key: string(make([]byte, 32))}.Fake(core.KEmail, []byte("anna.lee@example.com"), core.FakeOpts{})
+	if got, _ := valueOf(t, sink, "t", 1, "j"); !strings.Contains(got, string(email)) || strings.Contains(got, "anna.lee") {
+		t.Errorf("the path rule alone: %q", got)
+	}
+}
+
+// The default fields of Contact Form 7 (your-name, your-email) and of
+// Fluent Forms (names, email, phone) get their own rules: the values are
+// faked rather than scrubbed; the names reach Known for the free text.
+func TestFormDefaultFields(t *testing.T) {
+	f := useFakes(t)
+	tables := func() []tableData {
+		pm := table("wp_postmeta", "meta_id:bigint(20)", "post_id:bigint(20)", "meta_key", "meta_value")
+		sub := table("wp_fluentform_submissions", "id:bigint(20)", "form_id:bigint(20)", "response")
+		det := table("wp_fluentform_entry_details", "id:bigint(20)", "submission_id:bigint(20)", "field_name", "sub_field_name", "field_value")
+		return []tableData{wpBase([]any{4, "wpcf7", "a:0:{}"}),
+			{pm, rows{{1, 9, "_field_your-name", "Anna Lee"}, {2, 9, "_field_your-email", "anna.lee@example.com"}, {3, 9, "_field_your-message", "hi"}}},
+			{sub, rows{{1, 1, `{"names":{"first_name":"Bea","last_name":"Stone"},"email":"bea@example.com","message":"x"}`}}},
+			{det, rows{{1, 1, "names", "first_name", "Bea"}, {2, 1, "email", nil, "bea@example.com"}, {3, 1, "message", nil, "x"}}},
+		}
+	}
+	p, sink, _ := fixture(t, Copy, "wp_", tables, nil, Options{})
+	out := run(t, p)
+	fake := func(k core.FakeKind, v string) string {
+		b, _ := hashFaker{key: string(make([]byte, 32))}.Fake(k, []byte(v), core.FakeOpts{})
+		return string(b)
+	}
+	for _, c := range []struct {
+		table string
+		row   int
+		col   string
+		want  string
+	}{
+		{"wp_postmeta", 0, "meta_value", fake(core.KFullName, "Anna Lee")},
+		{"wp_postmeta", 1, "meta_value", fake(core.KEmail, "anna.lee@example.com")},
+		{"wp_postmeta", 2, "meta_value", "hi"},
+		{"wp_fluentform_entry_details", 0, "field_value", fake(core.KFirstName, "Bea")},
+		{"wp_fluentform_entry_details", 1, "field_value", fake(core.KEmail, "bea@example.com")},
+		{"wp_fluentform_entry_details", 2, "field_value", "x"},
+	} {
+		if got, _ := valueOf(t, sink, c.table, c.row, c.col); got != c.want {
+			t.Errorf("%s row %d: %q, want %q", c.table, c.row, got, c.want)
+		}
+	}
+	got, _ := valueOf(t, sink, "wp_fluentform_submissions", 0, "response")
+	for _, w := range []string{fake(core.KFirstName, "Bea"), fake(core.KLastName, "Stone"), fake(core.KEmail, "bea@example.com"), `"message":"x"`} {
+		if !strings.Contains(got, w) {
+			t.Errorf("response %s lacks %s", got, w)
+		}
+	}
+	for _, name := range []string{"Anna Lee", "Bea", "Stone"} {
+		if _, _, ok := f.known.Contains([]byte(name)); !ok {
+			t.Errorf("%s isn't in Known", name)
+		}
+	}
+	if !slices.Contains(out.Result.Stack.Profiles, "fluent-forms") || !slices.Contains(out.Result.Stack.Profiles, "contact-form-7-flamingo") {
+		t.Errorf("profiles %v", out.Result.Stack.Profiles)
+	}
+}
+
 // wpBase is the options table every WordPress fixture needs.
 func wpBase(extra ...[]any) tableData {
 	rs := rows{{1, "siteurl", "https://shop.com"}, {2, "home", "https://shop.com"}, {3, "woocommerce_version", "9.8.0"}}

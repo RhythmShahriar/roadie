@@ -60,7 +60,8 @@ type streamInput struct {
 	o       dump.Options
 	onePass bool
 
-	sp spool
+	sp      spool
+	spooled bool // pass 1 read the stream to its end into sp
 }
 
 func (s *streamInput) open(ctx context.Context, pass int) (core.Source, error) {
@@ -79,10 +80,13 @@ func (s *streamInput) open(ctx context.Context, pass int) (core.Source, error) {
 			_ = w.Close()
 			return nil, err
 		}
-		return &spoolSource{Source: src, r: s.r, w: w}, nil
+		return &spoolSource{Source: src, r: s.r, w: w, done: &s.spooled}, nil
 	}
 	if s.sp == nil {
 		return nil, errors.New("engine: pass 2 before pass 1")
+	}
+	if !s.spooled {
+		return nil, errors.New("engine: pass 2 after a pass 1 that stopped early")
 	}
 	rc, err := s.sp.Reader()
 	if err != nil {
@@ -110,22 +114,41 @@ func (s *streamInput) close() error {
 	return err
 }
 
-// spoolSource is pass 1 over a stream: on Close it copies whatever the
-// parser didn't read (bytes after the last statement) to the spool too,
-// so pass 2 sees the same input byte for byte.
+// spoolSource is pass 1 over a stream: once the parser has reached the
+// end, Close copies whatever it didn't read (bytes after the last
+// statement) to the spool too, so pass 2 sees the same input byte for
+// byte. A pass that stopped early (a parse error, a canceled run) skips
+// the copy: no pass 2 follows. Reading the rest of an ssh export or
+// waiting for stdin to end would only delay the stop.
 type spoolSource struct {
 	core.Source
-	r io.Reader
-	w io.WriteCloser
+	r    io.Reader
+	w    io.WriteCloser
+	eof  bool
+	done *bool // set once the whole stream is in the spool
+}
+
+// Next reads a batch and notes when the parser reached the end.
+func (s *spoolSource) Next(ctx context.Context) (*core.Batch, error) {
+	b, err := s.Source.Next(ctx)
+	if errors.Is(err, io.EOF) {
+		s.eof = true
+	}
+	return b, err
 }
 
 func (s *spoolSource) Close() error {
 	err := s.Source.Close()
-	if _, cerr := io.Copy(s.w, s.r); err == nil {
-		err = cerr
+	if s.eof {
+		if _, cerr := io.Copy(s.w, s.r); err == nil {
+			err = cerr
+		}
 	}
 	if cerr := s.w.Close(); err == nil {
 		err = cerr
+	}
+	if s.eof && err == nil {
+		*s.done = true
 	}
 	return err
 }
@@ -300,6 +323,14 @@ type pipeline struct {
 	// result is filled in place when set, so the orchestration's fields
 	// stay; nil starts a new one.
 	result *core.Result
+	// beforeWrite runs once pass 1 has passed its checks and before pass
+	// 2 reads a batch: the orchestration applies the file-level kill
+	// switch, shows the maintenance page and opens the sink there, so a
+	// stop in pass 1 (an uncovered column, a url-map error) leaves the
+	// target untouched. nil keeps the sink set at the start.
+	beforeWrite func(ctx context.Context) error
+	// aborted is set once the sink was told to take its writes back.
+	aborted bool
 }
 
 // output is a run's result plus what verify and the orchestration need.
@@ -348,6 +379,13 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 			err = cerr
 		}
 	}()
+	// Any stop takes back what the sink holds, also one before the first
+	// write: a file sink may already have its temp file.
+	defer func() {
+		if err != nil {
+			p.abort(ctx, out)
+		}
+	}()
 	if limit := memoryLimit(p.opts.MaxMemory); limit > 0 {
 		prev := debug.SetMemoryLimit(limit)
 		defer debug.SetMemoryLimit(prev)
@@ -371,6 +409,9 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 	}
 	idx := newIndexer(ctx, p.cfg, p.defs, p.site, known)
 	idx.siteBlogs = p.opts.Sites
+	if p.opts.OnePass {
+		idx.entries = nil // Known is sealed before the field-type rules exist
+	}
 	var (
 		final  *profile.Compiled
 		schema *core.Schema
@@ -405,6 +446,11 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 		}
 	} else if !p.parts.noURLs {
 		if plan, err = buildURLPlan(urlSources{Production: p.cfg.Production}, p.opts.URL, p.cfg.URLMap); err != nil {
+			return out, err
+		}
+	}
+	if p.beforeWrite != nil {
+		if err := p.beforeWrite(ctx); err != nil {
 			return out, err
 		}
 	}
@@ -450,9 +496,10 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 
 // abort takes back what pass 2 wrote, as far as the sink can.
 func (p *pipeline) abort(ctx context.Context, out *output) {
-	if p.sink == nil {
+	if p.sink == nil || p.aborted {
 		return
 	}
+	p.aborted = true
 	_ = p.sink.Abort(context.WithoutCancel(ctx))
 	out.Result.TargetState = p.sink.State()
 }
@@ -502,7 +549,10 @@ func (p *pipeline) finalCompile(idx *indexer, schema *core.Schema) (*profile.Com
 	}
 	if rs := ft.Rules(); len(rs) > 0 {
 		c = c.WithRules(rs)
+		// Before Known is sealed: the entry values these rules cover.
+		idx.entries.addKnown(idx.known, rs)
 	}
+	idx.entries = nil
 	return p.join(c), nil
 }
 

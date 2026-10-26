@@ -5,6 +5,8 @@ package roadiecfg
 
 import (
 	"errors"
+	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -272,11 +274,71 @@ verify:
 	if err := c.Need("source", "url"); err != nil {
 		t.Errorf("Need of set values: %v", err)
 	}
+	// An unset variable in production: or verify.allow_emails is listed
+	// for config check, not refused by Load; a value written as it is
+	// still is.
+	c, err = Load(writeConfig(t, "production: [\"${ROADIE_PROD}\"]\nverify:\n  allow_emails: [\"${ROADIE_MAIL}\"]\n"), env)
+	if err != nil {
+		t.Fatalf("unset production or allow_emails: %v", err)
+	}
+	if c.Unset["production[0]"] != "ROADIE_PROD" || c.Unset["verify.allow_emails[0]"] != "ROADIE_MAIL" {
+		t.Errorf("unset %v", c.Unset)
+	}
+	if err := c.Need("production"); err == nil {
+		t.Error("Need(production) passed with ROADIE_PROD unset")
+	}
+	for _, bad := range []string{"production: [\"ftp://x\"]\n", "verify:\n  allow_emails: [\"shop.com\"]\n"} {
+		if _, err := Load(writeConfig(t, bad), env); err == nil {
+			t.Errorf("accepted %q", bad)
+		}
+	}
 	// A value that isn't a string is never interpolated: noindex takes a bool.
 	asked = nil
 	_, err = Load(writeConfig(t, "noindex: ${ROADIE_A}\n"), envOf(map[string]string{"ROADIE_A": "true"}, &asked))
 	if err == nil || len(asked) != 0 {
 		t.Errorf("bool interpolated: %v %v", err, asked)
+	}
+}
+
+// A message about a value read from the environment shows the ${NAME}
+// reference, never what the variable held: those values are secrets.
+func TestErrorsHideInterpolatedValues(t *testing.T) {
+	token := testutil.J("tok", "en-", "9f8e7d6c5b4a")
+	env := envOf(map[string]string{
+		"ROADIE_ECHO_TOKEN": token,
+		"ROADIE_URL":        "ftp://" + token + ".example",
+		"ROADIE_SITE":       "ftp://shop.com/" + token,
+		"ROADIE_LOCALE":     "xx",
+	}, nil)
+	cases := []struct{ name, body, want string }{
+		{"echo url", "side_effects:\n  echo: {url: \"http://echo.example.com:8025/?t=${ROADIE_ECHO_TOKEN}\"}\n",
+			".roadie/config.yaml line 2: side_effects.echo.url is http://echo.example.com:8025/?t=${ROADIE_ECHO_TOKEN} over plain http to a public host; use https or an address on this machine or a private network"},
+		{"whole value", "url: \"${ROADIE_URL}\"\n",
+			".roadie/config.yaml line 1: url is \"${ROADIE_URL}\", which isn't a URL like https://staging.shop.test"},
+		{"production entry", "production: [\"shop.com\", \"${ROADIE_SITE}\"]\n",
+			".roadie/config.yaml line 1: production[1] is \"${ROADIE_SITE}\", which isn't a site like shop.com, *.shop.com or https://shop.com/shop/"},
+		{"short value only where quoted", "pseudonymise:\n  locale: \"${ROADIE_LOCALE}\"\n",
+			".roadie/config.yaml line 2: pseudonymise.locale is \"${ROADIE_LOCALE}\"; it takes en, de, fr, es, nl or it."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Load(writeConfig(t, tc.body), env)
+			var ce *core.Error
+			if !errors.As(err, &ce) || ce.Exit != 2 || ce.Code != core.ErrConfig {
+				t.Fatalf("err = %v, want a config error", err)
+			}
+			if ce.Msg != tc.want {
+				t.Errorf("msg\n got %q\nwant %q", ce.Msg, tc.want)
+			}
+			if strings.Contains(ce.Msg, token) {
+				t.Errorf("message shows the variable's value: %q", ce.Msg)
+			}
+		})
+	}
+	// A value written in the file itself is shown as it is.
+	_, err := Load(writeConfig(t, "url: \"ftp://shop.example\"\n"), env)
+	if err == nil || !strings.Contains(err.Error(), `"ftp://shop.example"`) {
+		t.Errorf("literal value: %v", err)
 	}
 }
 
@@ -422,6 +484,60 @@ keys:
 	}
 }
 
+// A DSN password given as a query parameter (password, pass, pwd or
+// sslpassword, any case) is masked in config show, written in the file
+// or read from a ROADIE_ variable; other parameters stay readable.
+func TestShowQueryPassword(t *testing.T) {
+	pw := "hunter2" + "secret"
+	body := `source: "postgres://u@db.example/shop?sslmode=require&password=` + pw + `"
+target: "mysql://u@db.example/staging?PWD=` + pw + `&charset=utf8mb4"
+side_effects:
+  echo:
+    proxy: "http://127.0.0.1:33021/?Pass%77ord=${ROADIE_PROXY_PW}#x"
+`
+	p := writeConfig(t, body)
+	c, err := Load(p, envOf(map[string]string{"ROADIE_PROXY_PW": pw}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, asJSON := range []bool{false, true} {
+		b, err := c.Show(asJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := string(b)
+		if strings.Contains(out, pw) {
+			t.Fatalf("a query password reached config show:\n%s", out)
+		}
+		if !strings.Contains(out, "sslmode=require") || !strings.Contains(out, "password=•••") ||
+			!strings.Contains(out, "PWD=•••") || !strings.Contains(out, "charset=utf8mb4") {
+			t.Errorf("masked wrong:\n%s", out)
+		}
+	}
+	for in, want := range map[string]string{
+		"postgres://u:p1@h/db?sslpassword=x&a=b": "postgres://u:•••@h/db?sslpassword=•••&a=b",
+		"h/db?pass=x#frag":                       "h/db?pass=•••",
+		"h/db?a=b#frag":                          "h/db?a=b#frag",
+		"h/db?password":                          "h/db?password",
+		"h/db?passwords=x":                       "h/db?passwords=x",
+		"/var/www/staging":                       "/var/www/staging",
+		// An unencoded # or / in the password: url.Parse fails or reads
+		// it as a port and a path, so the raw text is masked.
+		"mysql://root:se#cret@db/shop":    "mysql://root:•••@db/shop",
+		"mysql://u:a/b@h/db":              "mysql://u:•••@h/db",
+		"mysql://u:1/b@h/db":              "mysql://u:•••@h/db",
+		"mysql://u:p?x@h/db":              "mysql://u:•••@h/db",
+		"mysql://root@db/shop":            "mysql://root@db/shop",
+		"mysql://db/shop":                 "mysql://db/shop",
+		"mysql://u:se#cret@h/db?pass=y#f": "mysql://u:•••@h/db?pass=•••",
+		"h/db?pass=se#cret&a=b":           "h/db?pass=•••&a=b",
+	} {
+		if got := stripPassword(in); got != want {
+			t.Errorf("stripPassword(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // FuzzLoad feeds random files to the loader: it never panics and every
 // failure is a *core.Error with exit 2.
 func FuzzLoad(f *testing.F) {
@@ -436,6 +552,62 @@ func FuzzLoad(f *testing.F) {
 		var ce *core.Error
 		if err != nil && (!errors.As(err, &ce) || ce.Exit != 2) {
 			t.Fatalf("error %v is not a config error", err)
+		}
+	})
+}
+
+// An Echo URL error never prints a password given as a query parameter.
+func TestEchoURLHidesQueryPassword(t *testing.T) {
+	pw := "hunter2" + "secret"
+	for _, raw := range []string{"http://8.8.8.8/?password=" + pw, "ftp://h/?pwd=" + pw} {
+		err := ValidateEchoURL(raw)
+		if err == nil || strings.Contains(err.Error(), pw) || !strings.Contains(err.Error(), "•••") {
+			t.Errorf("%s: %v", raw, err)
+		}
+	}
+	if err := ValidateEchoURL("https://echo.example/?password=" + pw); err != nil {
+		t.Errorf("https refused: %v", err)
+	}
+}
+
+// A source ParseEndpoint refuses is quoted without its password, even
+// when the error text quotes the raw URL or a part of it.
+func TestEndpointMsg(t *testing.T) {
+	pw := "se#" + "cret/77"
+	raw := "mysql://root:" + pw + "@db/shop"
+	_, perr := url.Parse(raw)
+	if perr == nil {
+		t.Fatal("url.Parse took the raw URL")
+	}
+	for _, in := range []string{raw, "mysql://h/db?password=" + pw} {
+		for _, err := range []error{perr, fmt.Errorf("bad port %q", ":se"), fmt.Errorf("can't read %s.", in)} {
+			got := endpointMsg(in, err)
+			if strings.Contains(got, "se") || strings.Contains(got, "cret") {
+				t.Errorf("endpointMsg(%q, %v) = %q, which shows the password", in, err, got)
+			}
+			if !strings.Contains(got, "•••") {
+				t.Errorf("endpointMsg(%q) = %q, want the masked value", in, got)
+			}
+		}
+	}
+	// No password: the message stays as ParseEndpoint wrote it.
+	for _, in := range []string{"ftp://shop.test/db", "mysql://root@db/shop", "/var/www/staging"} {
+		if got := endpointMsg(in, errors.New("ftp isn't a scheme Roadie reads.")); got != "ftp isn't a scheme Roadie reads" {
+			t.Errorf("endpointMsg(%q) = %q", in, got)
+		}
+	}
+}
+
+// FuzzStripPassword checks that a password url.Parse or the raw-text
+// fallback finds never survives masking.
+func FuzzStripPassword(f *testing.F) {
+	for _, s := range []string{"mysql://root:se#cret@db/shop", "mysql://u:a/b@h/db", "postgres://u:p1@h/db?sslpassword=x", "h/db?pass=x#f", "mysql://u:p?x@h/db"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, v string) {
+		got := stripPassword(v)
+		if start, end, ok := passwordSpan(v); ok && end-start >= 4 && !strings.Contains(v[:start], v[start:end]) && !strings.Contains(v[end:], v[start:end]) && strings.Contains(got, v[start:end]) {
+			t.Errorf("stripPassword(%q) = %q, which keeps %q", v, got, v[start:end])
 		}
 	})
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -172,15 +173,124 @@ func (c *Config) maskedValue(key, v string) string {
 	return v
 }
 
-// stripPassword replaces the password of a URL or DSN with •••.
+// passwordParams are the query parameters a DSN may carry its password
+// in, as the site lane reads them: password, pass, pwd and sslpassword.
+var passwordParams = []string{"password", "pass", "pwd", "sslpassword"}
+
+// stripPassword replaces the password of a URL or DSN with •••: the
+// user-info password and the value of every passwordParams query
+// parameter. It works on the raw text rather than url.Parse, which fails
+// on an unencoded '#' or '/' in a password or reads it as a port and a
+// path; the raw span always holds what url.Parse would call the
+// password.
 func stripPassword(v string) string {
-	u, err := url.Parse(v)
-	if err != nil || u.User == nil {
-		return v
+	v = maskQueryPasswords(v)
+	if start, end, ok := passwordSpan(v); ok {
+		return v[:start] + "•••" + v[end:]
 	}
-	if _, ok := u.User.Password(); !ok {
-		return v
+	return v
+}
+
+// passwordSpan finds the user-info password of a URL on its raw text:
+// from the first ':' after "://" to the last '@' before the query. It
+// errs on the side of masking: an '@' in a path after a port masks the
+// port and the path up to it.
+func passwordSpan(v string) (start, end int, ok bool) {
+	i := strings.Index(v, "://")
+	if i < 0 {
+		return 0, 0, false
 	}
-	u.User = url.UserPassword(u.User.Username(), "xxx")
-	return strings.Replace(u.String(), ":xxx@", ":•••@", 1)
+	base := i + len("://")
+	rest := v[base:]
+	limit := len(rest)
+	// A '?' inside the password leaves no '@' before it; then the last
+	// '@' of the whole text ends the password.
+	if q := strings.IndexByte(rest, '?'); q >= 0 && strings.Contains(rest[:q], "@") {
+		limit = q
+	}
+	at := strings.LastIndexByte(rest[:limit], '@')
+	if at < 0 {
+		return 0, 0, false
+	}
+	colon := strings.IndexByte(rest[:at], ':')
+	if colon < 0 {
+		return 0, 0, false
+	}
+	return base + colon + 1, base + at, true
+}
+
+// dsnSecrets returns the passwords v carries, as written and decoded:
+// the user-info password and every passwordParams query value. An error
+// message that quotes any of them must not be shown.
+func dsnSecrets(v string) []string {
+	var out []string
+	add := func(s string) {
+		if s == "" {
+			return
+		}
+		out = append(out, s)
+		if d, err := url.PathUnescape(s); err == nil && d != s && d != "" {
+			out = append(out, d)
+		}
+	}
+	if start, end, ok := passwordSpan(v); ok {
+		add(v[start:end])
+	}
+	if _, query, ok := strings.Cut(v, "?"); ok {
+		for _, pair := range strings.Split(query, "&") {
+			key, val, has := strings.Cut(pair, "=")
+			if !has {
+				continue
+			}
+			name, err := url.QueryUnescape(key)
+			if err != nil {
+				name = key
+			}
+			if slices.Contains(passwordParams, strings.ToLower(name)) {
+				add(val)
+			}
+		}
+	}
+	return out
+}
+
+// endpointMsg is the text of a source or target that site.ParseEndpoint
+// refused, without its password. url.Parse errors quote the URL or a
+// piece of it (an unencoded '#' in a password turns its first letters
+// into an "invalid port"), so for a value that carries a password the
+// parser's text is left out and only the masked value is shown.
+func endpointMsg(raw string, err error) string {
+	if len(dsnSecrets(raw)) > 0 {
+		return fmt.Sprintf("%q isn't a site path, ssh:// address, @alias, dump file or DSN Roadie can read", stripPassword(raw))
+	}
+	return strings.TrimSuffix(err.Error(), ".")
+}
+
+// maskQueryPasswords replaces the value of every passwordParams query
+// parameter with •••. It works on the raw text, so it still holds when
+// url.Parse fails. Each key is decoded and lowercased first: PASSWORD
+// and pass%77ord are read as password too. A password value runs to the
+// next '&': an unencoded '#' in it would otherwise start a fragment and
+// leave the rest of the password in view; a DSN has no use for a
+// fragment.
+func maskQueryPasswords(s string) string {
+	before, query, ok := strings.Cut(s, "?")
+	if !ok {
+		return s
+	}
+	pairs := strings.Split(query, "&")
+	for i, pair := range pairs {
+		key, _, has := strings.Cut(pair, "=")
+		if !has {
+			continue
+		}
+		name, err := url.QueryUnescape(key)
+		if err != nil {
+			name = key
+		}
+		if slices.Contains(passwordParams, strings.ToLower(name)) {
+			pairs[i] = key + "=•••"
+		}
+	}
+	return before + "?" + strings.Join(pairs, "&")
 }

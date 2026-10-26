@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
@@ -90,11 +91,52 @@ type loader struct {
 	present map[string]bool   // leaf keys the file sets
 	interp  map[string]string // dotted key -> ROADIE_ variable read into it
 	unset   map[string]string // dotted key -> ROADIE_ variable that isn't set
+	// read holds, per dotted key, the variables read into its value and
+	// what they held, so a message about the value shows ${NAME} instead
+	// of a secret the environment supplied.
+	read map[string][]readVar
 }
+
+// readVar is one ${ROADIE_*} reference and the value it was replaced by.
+type readVar struct{ name, value string }
 
 // errAt builds the *core.Error code config for a problem with key.
 func (l *loader) errAt(key, format string, a ...any) *core.Error {
-	return core.Errorf(core.ErrConfig, 2, "%s%s: %s", l.file, l.lineOf(key), fmt.Sprintf(format, a...))
+	return core.Errorf(core.ErrConfig, 2, "%s%s: %s", l.file, l.lineOf(key), l.redact(key, fmt.Sprintf(format, a...)))
+}
+
+// redact puts the ${NAME} reference back wherever msg shows a value read
+// from the environment into key or a key below it. Those values are
+// often secrets (a token in an Echo URL, a DSN password); an error
+// message reaches the terminal and CI logs. A value of three bytes or
+// less is only replaced where it stands quoted, so a short value can't
+// eat letters of the message around it.
+func (l *loader) redact(key, msg string) string {
+	var vars []readVar
+	for _, k := range sortedKeys(l.read) {
+		if k == key || strings.HasPrefix(k, key+".") || strings.HasPrefix(k, key+"[") {
+			vars = append(vars, l.read[k]...)
+		}
+	}
+	// Longest first, so a value that holds another is replaced whole.
+	slices.SortStableFunc(vars, func(a, b readVar) int { return len(b.value) - len(a.value) })
+	for _, v := range vars {
+		if v.value == "" {
+			continue
+		}
+		ref := "${" + v.name + "}"
+		q := strconv.Quote(v.value)
+		inner := q[1 : len(q)-1] // as %q writes it inside a quoted value
+		if len(v.value) <= 3 {
+			msg = strings.ReplaceAll(msg, q, `"`+ref+`"`)
+			continue
+		}
+		msg = strings.ReplaceAll(msg, inner, ref)
+		if inner != v.value {
+			msg = strings.ReplaceAll(msg, v.value, ref)
+		}
+	}
+	return msg
 }
 
 // lineOf returns " line N" for key, or for the nearest parent key the
@@ -356,6 +398,7 @@ func (l *loader) interpolate(n *yaml.Node, key string) error {
 	}
 	var bad error
 	var unset []string
+	var read []readVar
 	out := varRef.ReplaceAllStringFunc(n.Value, func(ref string) string {
 		name := ref[2 : len(ref)-1]
 		if !roadieName.MatchString(name) {
@@ -368,6 +411,7 @@ func (l *loader) interpolate(n *yaml.Node, key string) error {
 		}
 		l.interp[key] = name
 		if v, ok := l.lookup(name); ok {
+			read = append(read, readVar{name, v})
 			return v
 		}
 		unset = append(unset, name)
@@ -380,6 +424,10 @@ func (l *loader) interpolate(n *yaml.Node, key string) error {
 		l.unset[key] = strings.Join(unset, ", ")
 		return nil
 	}
+	if l.read == nil {
+		l.read = map[string][]readVar{}
+	}
+	l.read[key] = read
 	n.Value, n.Tag, n.Style = out, "!!str", yaml.DoubleQuotedStyle
 	return nil
 }

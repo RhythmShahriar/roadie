@@ -87,6 +87,10 @@ type runner struct {
 	samePlace bool
 	// maintenance is set while .maintenance is on the target.
 	maintenance bool
+	// stepped is set once a kill-switch or exposure step changed the
+	// target: a run that stops after it left the target mixed, not
+	// untouched.
+	stepped bool
 }
 
 // Run runs the job.
@@ -102,13 +106,16 @@ func Run(ctx context.Context, j Job) (*core.Result, error) {
 	for _, s := range r.opened {
 		_ = s.Close()
 	}
+	if err != nil && r.stepped && r.res.TargetState == core.Untouched {
+		r.res.TargetState = core.Mixed
+	}
 	r.res.Target.State = r.res.TargetState
 	r.res.Duration = r.now().Sub(r.res.Started)
 	if err != nil {
 		var ce *core.Error
 		if errors.As(err, &ce) {
 			cp := *ce
-			if cp.State == "" {
+			if cp.State == "" || r.res.TargetState == core.Mixed {
 				cp.State = r.res.TargetState
 			}
 			r.res.Err = &cp
@@ -129,6 +136,12 @@ func (r *runner) run(ctx context.Context) error {
 		r.opts.URL = cfg.URL
 	}
 	if err := r.endpoints(); err != nil {
+		return err
+	}
+	// Before the lock and before anything opens: a literal ${ROADIE_X}
+	// would otherwise be used as the value (a drop glob that matches
+	// nothing, a test key, a rewrite target).
+	if err := needConfig(cfg, r.j.Opts, r.j.From, r.j.To, r.mode == Prepare); err != nil {
 		return err
 	}
 	if r.mode == Prepare {
@@ -218,15 +231,29 @@ func (r *runner) run(ctx context.Context) error {
 	if r.mode != Plan && dataPass && r.mode == Prepare && !r.opts.NoBackup {
 		path, restore, err := r.to.Backup(ctx)
 		if err != nil {
-			return fmt.Errorf("backup of %s: %w. Fix it, or pass --no-backup to go on without one", r.j.To.Display, err)
+			return backupErr(r.j.To.Display, err)
 		}
 		r.res.Backup, r.res.Restore = path, restore
 	}
-	// 6. The file-level kill switch before anything is imported.
-	if r.mode != Plan {
+	// 6. The file-level kill switch, the maintenance page and the sink
+	// come once pass 1 has passed its checks: a stop there (an uncovered
+	// column, a url-map error) leaves the target as it was.
+	writeStart := func(ctx context.Context) error {
 		if err := r.apply(ctx, applied, "files"); err != nil {
 			return err
 		}
+		if !dataPass {
+			return nil
+		}
+		if err := r.startMaintenance(ctx, stack); err != nil {
+			return err
+		}
+		s, err := r.sink(ctx)
+		if err != nil {
+			return err
+		}
+		p.sink, p.importing = s, r.to != nil
+		return nil
 	}
 
 	var out *output
@@ -235,13 +262,7 @@ func (r *runner) run(ctx context.Context) error {
 			return err
 		}
 		if r.mode != Plan {
-			if err := r.startMaintenance(ctx, stack); err != nil {
-				return err
-			}
-			if p.sink, err = r.sink(ctx); err != nil {
-				return err
-			}
-			p.importing = r.to != nil
+			p.beforeWrite = writeStart
 		}
 		// 4, 7 and 8: both passes and the commit.
 		out, err = p.run(ctx)
@@ -253,8 +274,16 @@ func (r *runner) run(ctx context.Context) error {
 		if r.j.To.Kind == core.DumpFile && r.mode != Plan {
 			r.res.Output = fileFingerprint(r.j.To.Path)
 		}
+	} else if r.mode != Plan {
+		if err := writeStart(ctx); err != nil {
+			return err
+		}
 	}
 	r.fillEndpoints(ctx)
+	if r.res.Stack.Name == "" {
+		// No pass ran (prepare --only noindex): the site says its stack.
+		r.res.Stack.Name = stack
+	}
 	r.res.NotCovered = notCoveredLines(r.j.To, r.to != nil, r.res.Stack.Name)
 	if r.mode == Plan {
 		return nil
@@ -299,9 +328,10 @@ func (r *runner) endpoints() error {
 			return core.Errorf(core.ErrConfig, 2,
 				"prepare needs a staging site or database; %s is a %s. Use rhythm-roadie copy for dump files.", to.Display, kindName(to.Kind))
 		}
-		if from.Kind == "" {
-			r.j.From = to
-		}
+		// prepare reads and writes one staging: a source: in the config
+		// (production) is never read, so prepare can't become a copy
+		// from production.
+		r.j.From = to
 	default:
 		return core.Errorf(core.ErrConfig, 2, "engine: unknown mode %q", r.mode)
 	}
@@ -413,6 +443,51 @@ func effective(base *roadiecfg.Config, o Options) (*roadiecfg.Config, error) {
 		c.SideEffects.Echo.Proxy = o.EchoProxy
 	}
 	return &c, nil
+}
+
+// needConfig fails when a key the run uses reads a ${ROADIE_*} variable
+// that isn't set (roadiecfg.Config.Need, exit 2). A key a flag replaces
+// isn't used, so its unset variable doesn't stop the run; source: and
+// target: count only when the endpoint is the config's value. prepare
+// never reads source:.
+func needConfig(c *roadiecfg.Config, o Options, from, to core.Endpoint, prepare bool) error {
+	keys := make([]string, 0, len(c.Unset))
+	for k := range c.Unset {
+		if !flagReplaces(k, o) {
+			keys = append(keys, k)
+		}
+	}
+	slices.Sort(keys)
+	for _, k := range keys {
+		switch {
+		case k == "source" && (prepare || from.Raw != c.Source),
+			k == "target" && to.Raw != c.Target:
+			continue
+		}
+		if err := c.Need(k); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// flagReplaces reports whether a flag set in o replaces the config key k,
+// so the value read from the file is never used.
+func flagReplaces(k string, o Options) bool {
+	under := func(key string) bool {
+		return k == key || strings.HasPrefix(k, key+".") || strings.HasPrefix(k, key+"[")
+	}
+	switch {
+	case o.URL != "" && under("url"),
+		o.Stack != "" && under("stack"),
+		o.EmailDomain != "" && under("pseudonymise.email_domain"),
+		len(o.KeepUsers) > 0 && under("pseudonymise.keep_users"),
+		o.Keys != "" && under("keys.mode"),
+		o.EchoURL != "" && under("side_effects.echo.url"),
+		o.EchoProxy != "" && under("side_effects.echo.proxy"):
+		return true
+	}
+	return false
 }
 
 // stripData is the config of a prepare that leaves the data alone: no
@@ -660,15 +735,18 @@ func (r *runner) apply(ctx context.Context, steps []core.Step, phase string) err
 		if st.Phase() != phase {
 			continue
 		}
-		if err := st.Apply(ctx, r.to); err != nil {
-			var ce *core.Error
-			if errors.As(err, &ce) {
-				return err
-			}
-			return core.Errorf(core.ErrKillSwitch, 1,
-				"%s: couldn't turn it off on %s (%v). Fix that, then: rhythm-roadie prepare %s --only side-effects.",
-				st.ID(), r.j.To.Display, err, r.j.To.Display)
+		err := st.Apply(ctx, r.to)
+		if err == nil {
+			r.stepped = true
+			continue
 		}
+		var ce *core.Error
+		if errors.As(err, &ce) {
+			return err
+		}
+		return core.Errorf(core.ErrKillSwitch, 1,
+			"%s: couldn't turn it off on %s (%v). Fix that, then: rhythm-roadie prepare %s --only side-effects.",
+			st.ID(), r.j.To.Display, err, r.j.To.Display)
 	}
 	return nil
 }
@@ -1049,4 +1127,18 @@ func (r *runner) remoteCommands() []string {
 		}
 	}
 	return out
+}
+
+// backupErr is the stop for a prepare backup that failed: the target is
+// untouched. A typed cause (ssh, wp-cli) keeps its code and exit; any
+// other is site-config, exit 3, until PRD 17 gets a code of its own.
+func backupErr(target string, err error) *core.Error {
+	msg := fmt.Sprintf("backup of %s: %s. Fix it, or pass --no-backup to go on without one", target, strings.TrimSuffix(err.Error(), "."))
+	var ce *core.Error
+	if errors.As(err, &ce) && ce.Code != "" && ce.Code != core.ErrCodeNotBuilt {
+		out := *ce
+		out.Msg, out.State = msg, core.Untouched
+		return &out
+	}
+	return &core.Error{Code: core.ErrSiteConfig, Exit: 3, Msg: msg, State: core.Untouched}
 }

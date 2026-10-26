@@ -191,6 +191,98 @@ func TestPipelineSpoolRemovedOnSuccess(t *testing.T) {
 	}
 }
 
+// failingSource stops pass 1 with a parse error after one batch.
+type failingSource struct{ core.Source }
+
+func (s failingSource) Next(ctx context.Context) (*core.Batch, error) {
+	if _, err := s.Source.Next(ctx); err != nil {
+		return nil, err
+	}
+	return nil, core.Errorf(core.ErrDumpFormat, 2, "dump-format: line 3 isn't SQL.")
+}
+
+// countingReader is a long stream that counts what was read from it.
+type countingReader struct {
+	n    atomic.Int64
+	left int64
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	if r.left <= 0 {
+		return 0, io.EOF
+	}
+	n := min(int64(len(p)), r.left)
+	r.left -= n
+	r.n.Add(n)
+	return int(n), nil
+}
+
+// A pass 1 that stops early neither reads the rest of the stream nor
+// copies it into the spool; the spool is removed.
+func TestPipelineSpoolStopsEarly(t *testing.T) {
+	f := useFakes(t)
+	oldOpen := openDump
+	openDump = func(context.Context, io.Reader, dump.Options) (core.Source, error) {
+		return failingSource{newGenSource(10, 0)}, nil
+	}
+	t.Cleanup(func() { openDump = oldOpen })
+	defs, _ := profile.Builtin()
+	r := &countingReader{left: 64 << 20}
+	in := &streamInput{r: r, dir: t.TempDir()}
+	p := &pipeline{mode: Copy, cfg: sqlConfig("email"), defs: defs, sink: testutil.FakeSink(), in: in}
+	_, err := p.run(context.Background())
+	var ce *core.Error
+	if !errors.As(err, &ce) || ce.Code != core.ErrDumpFormat {
+		t.Fatalf("err %v", err)
+	}
+	if got := r.n.Load(); got != 0 {
+		t.Errorf("read %d bytes of the stream after the error", got)
+	}
+	f.spool.mu.Lock()
+	spooled := f.spool.buf.Len()
+	f.spool.mu.Unlock()
+	if spooled != 0 || !f.spool.Removed() || in.spooled {
+		t.Errorf("spooled %d bytes, removed %v, complete %v", spooled, f.spool.Removed(), in.spooled)
+	}
+	if _, err := in.open(context.Background(), 2); err == nil {
+		t.Error("pass 2 opened a spool pass 1 didn't finish")
+	}
+}
+
+// A pass 1 that reached the end copies the rest of the stream, so pass
+// 2 reads the input byte for byte (the positive side of the above).
+func TestPipelineSpoolDrainsAtEOF(t *testing.T) {
+	f := useFakes(t)
+	oldOpen := openDump
+	openDump = func(context.Context, io.Reader, dump.Options) (core.Source, error) { return newGenSource(3, 0), nil }
+	t.Cleanup(func() { openDump = oldOpen })
+	r := &countingReader{left: 1 << 20}
+	in := &streamInput{r: r, dir: t.TempDir()}
+	src, err := in.open(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if _, err := src.Next(context.Background()); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := src.Close(); err != nil {
+		t.Fatal(err)
+	}
+	f.spool.mu.Lock()
+	spooled := f.spool.buf.Len()
+	f.spool.mu.Unlock()
+	if spooled != 1<<20 || !in.spooled {
+		t.Errorf("spooled %d bytes, complete %v", spooled, in.spooled)
+	}
+	if _, err := in.open(context.Background(), 2); err != nil {
+		t.Error(err)
+	}
+}
+
 // 1,000 batches of 4 MiB through 8 workers stay under 300 MiB of heap:
 // the window, not the input, bounds memory.
 func TestPipelineMemory(t *testing.T) {
@@ -501,12 +593,22 @@ func TestBuildURLPlan(t *testing.T) {
 
 // loyalty is a WordPress fixture with a plugin table no profile knows.
 func loyalty(n int) func() []tableData {
+	return loyaltyCols(n, "id:int(11)", "email", "phone")
+}
+
+// loyaltyUntyped is loyalty as a data-only dump reads it: the INSERT
+// names the columns and nothing types them.
+func loyaltyUntyped(n int) func() []tableData {
+	return loyaltyCols(n, "id:", "email:", "phone:")
+}
+
+func loyaltyCols(n int, cols ...string) func() []tableData {
 	return func() []tableData {
 		var rs rows
 		for i := range n {
 			rs = append(rs, []any{i, fmt.Sprintf("m%d@example.com", i), ""})
 		}
-		return append(wpUsers(), tableData{table("wp_loyalty_members", "id:int(11)", "email", "phone"), rs})
+		return append(wpUsers(), tableData{table("wp_loyalty_members", cols...), rs})
 	}
 }
 
@@ -545,6 +647,32 @@ func TestPipelineUncovered(t *testing.T) {
 	p.sink = nil
 	if _, err := p.run(context.Background()); err != nil {
 		t.Errorf("plan stopped: %v", err)
+	}
+}
+
+// An untyped personal column, as a data-only dump gives it, stops copy
+// the same way: its values are sampled and detect sees it.
+func TestPipelineUncoveredUntyped(t *testing.T) {
+	useFakes(t)
+	calls := fakeUncovered(t)
+	p, sink, _ := fixture(t, Copy, "wp_", loyaltyUntyped(30), nil, Options{})
+	_, err := p.run(context.Background())
+	var ce *core.Error
+	if !errors.As(err, &ce) || ce.Code != core.ErrUncovered || ce.Exit != 1 ||
+		!strings.Contains(ce.Msg, "wp_loyalty_members.email, wp_loyalty_members.phone") {
+		t.Fatalf("err %v", err)
+	}
+	if len(sink.Batches()) != 0 || sink.Committed() {
+		t.Errorf("wrote %d batches", len(sink.Batches()))
+	}
+	saw := false
+	for _, c := range *calls {
+		if c.table == "wp_loyalty_members" {
+			saw = len(c.samples["email"]) == 30
+		}
+	}
+	if !saw {
+		t.Error("the untyped email column wasn't sampled for detect")
 	}
 }
 

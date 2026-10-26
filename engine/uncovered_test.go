@@ -165,6 +165,34 @@ func TestScanUncovered(t *testing.T) {
 	}
 }
 
+// A data-only dump gives columns a name and no type. They may hold
+// anything, so they are sampled and reach detect like text columns; an
+// untyped number column the name rule doesn't match stays quiet.
+func TestScanUncoveredUntyped(t *testing.T) {
+	calls := fakeUncovered(t)
+	s := &core.Schema{Dialect: core.MySQL, Prefix: "wp_", Tables: []*core.Table{
+		table("wp_loyalty_members", "id:", "email:", "phone:"),
+		table("wp_counts", "id:", "total:"),
+	}}
+	c := mustCompile(t, s, nil)
+	sm := newSamples()
+	for i := range 20 {
+		sm.add("wp_loyalty_members", "email", []byte(fmt.Sprintf("m%d@example.com", i)))
+	}
+	res := scanUncovered(s, c, sm)
+	var tables []string
+	for _, call := range *calls {
+		tables = append(tables, call.table)
+	}
+	if !slices.Equal(tables, []string{"wp_counts", "wp_loyalty_members"}) {
+		t.Errorf("detect saw %v", tables)
+	}
+	want := []core.Uncovered{{Table: "wp_loyalty_members", Column: "email", Rate: 100}, {Table: "wp_loyalty_members", Column: "phone", Rate: 0}}
+	if !slices.Equal(res.Uncovered, want) {
+		t.Errorf("uncovered %v", res.Uncovered)
+	}
+}
+
 // The PRD 17 uncovered message, for one column and for two.
 func TestUncoveredError(t *testing.T) {
 	two := uncoveredError([]core.Uncovered{{Table: "wp_loyalty_members", Column: "email"}, {Table: "wp_loyalty_members", Column: "phone"}})
@@ -191,13 +219,16 @@ func TestUncoveredError(t *testing.T) {
 
 func TestTextColumn(t *testing.T) {
 	for typ, want := range map[string]bool{"varchar(100)": true, "char(32)": true, "longtext": true, "text": true, "json": true,
-		"character varying(20)": true, "int(11)": false, "bigint unsigned": false, "datetime": false, "textual": false, "blob": false} {
+		"character varying(20)": true, "int(11)": false, "bigint unsigned": false, "datetime": false, "textual": false, "blob": false, "": true, "  ": true} {
 		if got := textColumn(core.Column{Type: typ}); got != want {
 			t.Errorf("%s: %v", typ, got)
 		}
 	}
 	if textColumn(core.Column{Type: "varchar(10)", Binary: true}) {
 		t.Error("binary varchar counted as text")
+	}
+	if textColumn(core.Column{Binary: true}) || textColumn(core.Column{Generated: true}) {
+		t.Error("an untyped binary or generated column counted as text")
 	}
 	if thousands(1000) != "1,000" || thousands(12) != "12" || thousands(1234567) != "1,234,567" {
 		t.Error("thousands")

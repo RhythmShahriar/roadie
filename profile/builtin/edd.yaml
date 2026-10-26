@@ -37,5 +37,7 @@ rules:
   - {table: "{prefix}{site}edd_logs_file_downloads", column: ip, rule: ip, explain: "the IP address of a file download"}
   - {table: "{prefix}{site}edd_logs_file_downloads", column: user_agent, rule: user_agent, explain: "the browser of a file download"}
   - {table: "{prefix}{site}edd_notes", column: content, rule: text, explain: "notes on orders and customers"}
+  - {table: "{prefix}{site}edd_logs_emails", column: email, rule: email, explain: "the recipient of a mail EDD sent (the email log of EDD 3.3)"}
+  - {table: "{prefix}{site}edd_logs_emails", column: subject, rule: text, explain: "the subject of a mail EDD sent, which can name the customer"}
 truncate:
   - "{prefix}{site}edd_logs_api_requests" # API keys, tokens and IP addresses of REST calls

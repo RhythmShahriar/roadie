@@ -229,7 +229,10 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 		return true, nil
 	}
 	orig := v.Raw
-	if whole != nil && len(paths) == 0 {
+	if whole != nil {
+		// A rule that replaces the whole value wins over path rules of
+		// other where clauses on the same row: they would change leaves
+		// of a value the whole rule says must not survive at all.
 		switch whole.Action {
 		case core.Blank, core.SetNull, core.Fixed, core.Fake, core.ResetPassword:
 			nv, null, changed, err := t.apply(*whole, orig, col)
@@ -245,6 +248,9 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 			setValue(v, nv, null)
 			return false, nil
 		case core.RewriteURL:
+			if len(paths) > 0 {
+				break // the leaves get the URL pass below
+			}
 			if strings.EqualFold(col.Name, "path") && t.sh.urls != nil && isMultisiteTable(rc.table, t.prefix) {
 				if nv, ok := stagingBlogPath(t.sh.stagingPath, orig); ok {
 					cnt.changed(whole, 1)

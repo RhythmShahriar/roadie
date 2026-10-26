@@ -76,9 +76,12 @@ func newKey() (pseudo.Key, error) {
 // per-run and no keepKey it is a new key each time, never saved; stable
 // is false so the report shows no fingerprint. With stable or keepKey it
 // is LoadKey's key; a new one is saved to .roadie/key so the next copy
-// gets the same fakes.
+// gets the same fakes. A nil c means the defaults, so per-run.
 func RunKey(dir string, c *Config, keepKey bool, env func(string) (string, bool)) (k pseudo.Key, source string, stable bool, err error) {
-	if c != nil && c.Pseudonymise.Consistency != "stable" && !keepKey {
+	if c == nil {
+		c = Default()
+	}
+	if c.Pseudonymise.Consistency != "stable" && !keepKey {
 		k, err = newKey()
 		return k, KeyFromNew, false, err
 	}
