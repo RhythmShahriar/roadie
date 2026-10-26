@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,31 +52,41 @@ func (s *countSink) State() core.TargetState {
 	return core.Untouched
 }
 
-// hashKnown is a Known shaped like pseudo's: 8-byte hashes of the
-// values, so a benchmark's memory is the engine's, not a fake's map of
-// strings.
+// hashKnown is a Known shaped like pseudo's (PRD 10.1: keyed 8-byte
+// hashes, about 16 MB for 2 million tokens): a sorted slice, so a
+// benchmark's memory is the engine's, not a fake's map of strings.
 type hashKnown struct {
-	mu   sync.Mutex
-	seed maphash.Seed
-	set  map[uint64]struct{}
+	mu     sync.Mutex
+	seed   maphash.Seed
+	hashes []uint64
 }
 
-func newHashKnown() *hashKnown {
-	return &hashKnown{seed: maphash.MakeSeed(), set: map[uint64]struct{}{}}
+func newHashKnown() *hashKnown { return &hashKnown{seed: maphash.MakeSeed()} }
+
+func (k *hashKnown) sum(v []byte) uint64 {
+	return maphash.Bytes(k.seed, bytes.ToLower(bytes.TrimSpace(v)))
 }
 
 func (k *hashKnown) Add(_ core.FakeKind, v []byte) {
-	h := maphash.Bytes(k.seed, bytes.ToLower(bytes.TrimSpace(v)))
+	h := k.sum(v)
 	k.mu.Lock()
-	k.set[h] = struct{}{}
+	k.hashes = append(k.hashes, h)
 	k.mu.Unlock()
 }
-func (k *hashKnown) Seal() {}
+
+func (k *hashKnown) Seal() {
+	k.mu.Lock()
+	slices.Sort(k.hashes)
+	k.hashes = slices.Clip(slices.Compact(k.hashes))
+	k.mu.Unlock()
+}
+
 func (k *hashKnown) Contains(t []byte) (core.FakeKind, string, bool) {
-	_, ok := k.set[maphash.Bytes(k.seed, bytes.ToLower(bytes.TrimSpace(t)))]
+	_, ok := slices.BinarySearch(k.hashes, k.sum(t))
 	return "", "raw", ok
 }
-func (k *hashKnown) Len() int { return len(k.set) }
+
+func (k *hashKnown) Len() int { return len(k.hashes) }
 
 // timing is a Progress that times each pass.
 type timing struct {
