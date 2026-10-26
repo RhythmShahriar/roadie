@@ -336,6 +336,29 @@ func TestConfigFillsDefaults(t *testing.T) {
 	if j, _ := mustParse(t, "copy").buildJob(engine.Copy, cfg, io.Discard); !j.Opts.NoIndex {
 		t.Error("noindex: false should turn noindex off")
 	}
+
+	// --production adds to production: on copy, prepare and plan, once each.
+	for _, cmd := range []struct {
+		name string
+		mode engine.Mode
+		args []string
+	}{
+		{"copy", engine.Copy, nil},
+		{"prepare", engine.Prepare, []string{"/var/www/staging"}},
+		{"plan", engine.Plan, nil},
+	} {
+		args := append(slices.Clone(cmd.args), "--production", "*.shop.com,shop.com")
+		j, err := mustParse(t, cmd.name, args...).buildJob(cmd.mode, cfg, io.Discard)
+		if err != nil {
+			t.Fatalf("%s: %v", cmd.name, err)
+		}
+		if !slices.Equal(j.Opts.Production, []string{"shop.com", "*.shop.com"}) {
+			t.Errorf("%s --production: %v, want the config's shop.com then *.shop.com", cmd.name, j.Opts.Production)
+		}
+	}
+	if j, _ := mustParse(t, "copy").buildJob(engine.Copy, cfg, io.Discard); !slices.Equal(j.Opts.Production, []string{"shop.com"}) {
+		t.Errorf("without --production: %v, want the config's list only", j.Opts.Production)
+	}
 }
 
 func TestFailOnValues(t *testing.T) {

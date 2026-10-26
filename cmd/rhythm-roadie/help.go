@@ -113,6 +113,8 @@ const keysHelp = `Keys and side effects:
 `
 
 const safetyHelp = `Target safety:
+      --production <list>    production hosts or URLs, e.g. shop.com,*.shop.com (adds to
+                             production: in the config); a target that matches is refused
       --confirm-target <host>
                              the target's host or database name, typed out; needed when
                              the target is a site or database and there's no terminal

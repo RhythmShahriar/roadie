@@ -309,6 +309,7 @@ func (f *runFlags) flagSet(cmd string) *flag.FlagSet {
 			value(&f.noindex, "noindex", "noindex the copy")
 			str(&f.basicAuth, "basic-auth", "basic-auth user")
 		case groupSafety:
+			value(&f.production, "production", "production hosts")
 			str(&f.confirmTarget, "confirm-target", "the target's host, typed out")
 			str(&f.targetIsStaging, "target-is-staging", "the target's host when it says production")
 			boolean(&f.yes, "y", "don't ask")
@@ -742,6 +743,11 @@ func (p *parsed) engineOptions(cfg *roadiecfg.Config, mode engine.Mode, env envF
 		if o.ProductionURL == "" && mode == engine.Prepare && len(cfg.Production) == 1 && strings.Contains(cfg.Production[0], "://") {
 			o.ProductionURL = cfg.Production[0]
 		}
+	}
+	// --production adds to the config's list, as on verify: a CI job can
+	// name production without a config file.
+	if len(f.production) > 0 {
+		o.Production = dedupe(append(o.Production, f.production...))
 	}
 
 	if o.EmailDomain == "" {
