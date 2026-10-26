@@ -96,6 +96,12 @@ rules:
   "woocommerce.postmeta.meta_value._wcpay_*customer*":
     positive: {table: wp_postmeta, row: {meta_value: "x", meta_key: "_wcpay_xcustomerx"}}
     negative: {table: wp_postmeta, row: {meta_value: "x", meta_key: "x_wcpay_xcustomerx"}}
+  "woocommerce.usermeta.meta_value.*_stripe_customer_id*":
+    positive: {table: wp_usermeta, row: {meta_value: "cus_x", meta_key: "wp__stripe_customer_id"}}
+    negative: {table: wp_usermeta, row: {meta_value: "cus_x", meta_key: "_stripe_customer_name"}}
+  "woocommerce.usermeta.meta_value.*_wcpay_customer_id*":
+    positive: {table: wp_usermeta, row: {meta_value: "cus_x", meta_key: "_wcpay_customer_id_live"}}
+    negative: {table: wp_usermeta, row: {meta_value: "cus_x", meta_key: "_wcpay_customer_name"}}
   "woocommerce.posts.post_excerpt.shop_order*":
     positive: {table: wp_2_posts, row: {post_excerpt: "Leave it with Anna Lee, +44 7700 900123", post_type: "shop_order"}}
     negative: {table: wp_2_posts, row: {post_excerpt: "Leave it with Anna Lee, +44 7700 900123", post_type: "post"}}
