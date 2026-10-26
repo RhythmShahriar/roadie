@@ -22,7 +22,7 @@ func ipColumn(sc core.ScanContext) bool {
 	if sc.ColumnKind == core.KIP {
 		return true
 	}
-	return anyName(sc, func(name string, tokens []string) bool {
+	return anyNameTest(sc, testIP, func(name string, tokens []string) bool {
 		return hasToken(tokens, "ip", "ipaddress", "ipv4", "ipv6") || name == "remote_addr"
 	})
 }

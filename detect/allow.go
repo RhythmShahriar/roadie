@@ -21,8 +21,13 @@ type allowed struct {
 func (w allowed) ID() string { return w.d.ID() }
 
 // Scan skips the rows of kept users and drops hits on allowed values.
+// A name or street on a row whose email is allow-listed is the business's
+// own (its admin account, its store address), so it is dropped too.
 func (w allowed) Scan(v []byte, sc core.ScanContext, emit func(core.Hit)) {
 	if w.a.keptRow(sc) {
+		return
+	}
+	if (w.d.ID() == core.FindingPIIName || w.d.ID() == core.FindingPIIAddress) && w.a.businessRow(sc) {
 		return
 	}
 	w.d.Scan(v, sc, func(h core.Hit) {
@@ -50,6 +55,14 @@ func (a Allow) keptRow(sc core.ScanContext) bool {
 		}
 	}
 	return false
+}
+
+// businessRow reports whether an email on the row is on the allow list.
+func (a Allow) businessRow(sc core.ScanContext) bool {
+	if len(a.Emails) == 0 {
+		return false
+	}
+	return slices.ContainsFunc(rowEmails(sc), func(e string) bool { return globAny(a.Emails, e) })
 }
 
 // kept reports whether email is a kept user's.

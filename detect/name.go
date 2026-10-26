@@ -56,6 +56,29 @@ func usersTable(table string) bool {
 	return false
 }
 
+// systemAuthors are the names WordPress and WooCommerce sign their own
+// comments and order notes with; they name software, not people.
+var systemAuthors = map[string]bool{
+	"woocommerce": true, "wordpress": true, "action scheduler": true, "actionscheduler": true,
+	"system": true, "wp-cli": true, "cron": true,
+}
+
+// businessTokens mark a settings name that holds the business's own
+// details (woocommerce_store_address, company_address), not a customer's.
+var businessTokens = []string{"store", "company", "business", "shop", "merchant", "seller"}
+
+// settingsTable reports whether table holds site settings by name and
+// value (options, sitemeta, settings).
+func settingsTable(table string) bool {
+	return hasSuffixFold(table, "options") || hasSuffixFold(table, "sitemeta") || hasSuffixFold(table, "settings")
+}
+
+// hasSuffixFold is strings.HasSuffix ignoring ASCII case, without the
+// copy strings.ToLower makes of a name with capitals.
+func hasSuffixFold(s, suffix string) bool {
+	return len(s) >= len(suffix) && strings.EqualFold(s[len(s)-len(suffix):], suffix)
+}
+
 // addressColumns are the street address columns and meta keys.
 var addressColumns = []string{"address_1", "address_2", "street", "address", "billing_address_1", "shipping_address_1"}
 
@@ -69,17 +92,31 @@ func addressColumn(sc core.ScanContext) bool {
 	case core.KStreet, core.KAddress:
 		return true
 	}
-	return anyName(sc, func(name string, tokens []string) bool {
-		if hasToken(tokens, notStreetTokens...) {
+	business := settingsTable(sc.Table)
+	return eachName(sc, func(ni *nameInfo) bool {
+		if business && ni.test(testBusiness, businessName) {
 			return false
 		}
-		for _, c := range addressColumns {
-			if name == c || strings.HasSuffix(name, "_"+c) {
-				return true
-			}
-		}
-		return false
+		return ni.test(testAddress, streetName)
 	})
+}
+
+// businessName reports whether a settings name is about the business.
+func businessName(_ string, tokens []string) bool {
+	return hasToken(tokens, businessTokens...)
+}
+
+// streetName reports whether a column name or key names a street address.
+func streetName(name string, tokens []string) bool {
+	if hasToken(tokens, notStreetTokens...) {
+		return false
+	}
+	for _, c := range addressColumns {
+		if name == c || strings.HasSuffix(name, "_"+c) {
+			return true
+		}
+	}
+	return false
 }
 
 // sampleRow reports whether the row's email is reserved or a Roadie fake,
@@ -123,7 +160,7 @@ func (nameDetector) Scan(v []byte, sc core.ScanContext, emit func(core.Hit)) {
 		return
 	}
 	start, end, ok := personValue(v)
-	if !ok || sampleRow(sc) || pseudo.IsFake(kind, v[start:end]) {
+	if !ok || sampleRow(sc) || systemAuthors[strings.ToLower(string(v[start:end]))] || pseudo.IsFake(kind, v[start:end]) {
 		return
 	}
 	emit(core.Hit{ID: core.FindingPIIName, Severity: core.SeverityMedium, Start: start, End: end,

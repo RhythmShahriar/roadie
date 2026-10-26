@@ -87,7 +87,8 @@ func TestPersonalName(t *testing.T) {
 			t.Errorf("%s is personal", n)
 		}
 	}
-	for _, n := range []string{"description", "id", "status", "zipper_color", "option_value", "telemetry", "shipping_method"} {
+	for _, n := range []string{"description", "id", "status", "zipper_color", "option_value", "telemetry", "shipping_method",
+		"address_type", "email_verified_at", "billing_address_id", "phone_status", "MAIL_DRIVER", "mail_host"} {
 		if PersonalName(n) {
 			t.Errorf("%s is not personal", n)
 		}

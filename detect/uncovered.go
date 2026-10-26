@@ -28,14 +28,30 @@ var personalWords = map[string]bool{
 	"iban": true, "passport": true,
 }
 
+// aboutWords end a column name that describes a personal value without
+// holding it: its type, state, time, count or the mail settings.
+var aboutWords = map[string]bool{
+	"type": true, "kind": true, "status": true, "format": true, "verified": true, "at": true,
+	"id": true, "ids": true, "count": true, "enabled": true, "sent": true, "opened": true,
+	"confirmed": true, "optin": true, "optout": true, "preference": true, "preferences": true,
+	"flag": true, "template": true, "subject": true, "provider": true, "mailer": true,
+	"driver": true, "host": true, "port": true, "encryption": true,
+}
+
 // PersonalName reports whether a column name matches the PRD 11.3 list:
 // email, e_mail, mail, phone, tel, mobile, fax, first_name, last_name,
 // surname, full_name, address, street, city, postcode, zip, ip,
 // ip_address, dob, birth, ssn, iban or passport. The name is split at _,
 // -, . and camelCase so "description" holds no ip; a part that contains
-// email, phone or birth (billingphone, dateofbirth) counts too.
+// email, phone or birth (billingphone, dateofbirth) counts too. A name
+// that ends in a word about the value rather than the person
+// (address_type, email_verified_at, phone_status, mail_driver) holds no
+// personal data and doesn't count; its content is still sampled.
 func PersonalName(column string) bool {
 	parts := columnParts(column)
+	if len(parts) > 1 && aboutWords[parts[len(parts)-1]] {
+		return false
+	}
 	for i, p := range parts {
 		if personalWords[p] || strings.Contains(p, "email") || strings.Contains(p, "phone") || strings.Contains(p, "birth") {
 			return true

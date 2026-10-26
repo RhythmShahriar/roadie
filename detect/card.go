@@ -16,7 +16,7 @@ const KCard core.FakeKind = "card"
 // cardColumn reports whether the value sits in a card column: a name part
 // that contains "card" or equals pan or cc.
 func cardColumn(sc core.ScanContext) bool {
-	return anyName(sc, func(_ string, tokens []string) bool {
+	return anyNameTest(sc, testCard, func(_ string, tokens []string) bool {
 		for _, t := range tokens {
 			if t == "pan" || t == "cc" || strings.Contains(t, "card") {
 				return true

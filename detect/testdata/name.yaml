@@ -32,7 +32,29 @@ positive:
   - value: "Ada Kowalczyk"
     kind: full_name
     column: holder
+  - value: "Woo Kowalczyk"
+    table: wp_comments
+    column: comment_author
+    note: only the exact system names are skipped
+  - value: "Ada Kowalczyk"
+    table: wp_users
+    column: display_name
+    row: {user_email: ada.kowalczyk@gmail.com}
+    allow:
+      emails: [info@millstreet-bakery-demo.co.uk]
+    note: allowing the business mailbox leaves other rows flagged
 negative:
+  - value: "WooCommerce"
+    table: wp_comments
+    column: comment_author
+    note: the author of WooCommerce order notes
+  - value: "Mill Street Bakery"
+    table: wp_users
+    column: display_name
+    row: {user_email: info@millstreet-bakery-demo.co.uk}
+    allow:
+      emails: [info@millstreet-bakery-demo.co.uk]
+    note: the business's own account
   - value: "Ada Kowalczyk"
     table: wp_users
     column: display_name

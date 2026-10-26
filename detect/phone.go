@@ -37,7 +37,7 @@ func phoneColumn(sc core.ScanContext) bool {
 	if sc.ColumnKind == core.KPhone {
 		return true
 	}
-	return anyName(sc, func(_ string, tokens []string) bool {
+	return anyNameTest(sc, testPhone, func(_ string, tokens []string) bool {
 		for _, t := range tokens {
 			if strings.Contains(t, "phone") {
 				return true
@@ -50,7 +50,7 @@ func phoneColumn(sc core.ScanContext) bool {
 // notPhoneColumn reports whether the column holds codes or amounts. A
 // column that also names a phone is a phone column: the name wins.
 func notPhoneColumn(sc core.ScanContext) bool {
-	return anyName(sc, func(_ string, tokens []string) bool { return hasToken(tokens, notPhoneTokens...) })
+	return anyNameTest(sc, testNotPhone, func(_ string, tokens []string) bool { return hasToken(tokens, notPhoneTokens...) })
 }
 
 // phoneMatch is one number found.

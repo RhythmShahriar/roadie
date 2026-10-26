@@ -5,6 +5,8 @@ package detect
 
 import (
 	"strings"
+	"sync"
+	"sync/atomic"
 	"unicode"
 	"unicode/utf8"
 
@@ -95,26 +97,140 @@ var valueColumns = map[string]string{
 	"value":        "key",
 }
 
-// columnNames returns the lower-cased names a value is known by: its
-// column and, for the value column of a key/value table, the key on the
-// same row, so wp_postmeta.meta_value with meta_key _billing_phone reads
-// as a phone column.
-func columnNames(sc core.ScanContext) []string {
-	col := strings.ToLower(sc.Column)
-	names := []string{col}
-	if key, ok := valueColumns[col]; ok && sc.Row != nil {
-		if k, ok := sc.Row(key); ok && len(k) > 0 && len(k) <= 191 {
-			names = append(names, strings.ToLower(string(k)))
-		}
-	}
-	return names
+// nameInfo is a column name or row key, lower-cased and split, with the
+// answers of the column tests asked about it so far.
+type nameInfo struct {
+	lower  string
+	tokens []string
+	// memo holds two bits per test: asked, then the answer. Workers share
+	// a nameInfo, so the bits are set atomically; two workers asking at
+	// once both compute the same answer.
+	memo atomic.Uint64
 }
 
-// anyName reports whether fn holds for one of the names a value is known by.
+// The column tests memoised on a nameInfo. Each must depend only on the
+// name and its tokens.
+const (
+	testPhone = iota
+	testNotPhone
+	testCard
+	testIP
+	testAddress
+	testBusiness
+)
+
+// test returns fn(ni.lower, ni.tokens), computing it once per name.
+func (ni *nameInfo) test(which int, fn func(name string, tokens []string) bool) bool {
+	asked, yes := uint64(1)<<(2*which), uint64(1)<<(2*which+1)
+	if m := ni.memo.Load(); m&asked != 0 {
+		return m&yes != 0
+	}
+	v := fn(ni.lower, ni.tokens)
+	bits := asked
+	if v {
+		bits |= yes
+	}
+	ni.memo.Or(bits)
+	return v
+}
+
+// anyNameTest is anyName with fn memoised as test which.
+func anyNameTest(sc core.ScanContext, which int, fn func(name string, tokens []string) bool) bool {
+	return eachName(sc, func(ni *nameInfo) bool { return ni.test(which, fn) })
+}
+
+// maxNames caps the name cache. Option names are unique per row, so a
+// big options table could fill it; the names past the cap are split on
+// each use.
+const maxNames = 8192
+
+// The name cache holds nameInfo by the name as written. Every detector
+// asks about the column of every value, so the split runs once per name
+// rather than once per value. Readers look in an immutable snapshot
+// without a lock; a new name goes to fresh under namesMu and is published
+// in a new snapshot once fresh holds an eighth as many names as the
+// snapshot, so copying stays linear in the number of names.
+var (
+	snapshot atomic.Pointer[map[string]*nameInfo]
+	namesMu  sync.Mutex
+	fresh    = map[string]*nameInfo{}
+)
+
+// cached returns the snapshot's nameInfo of name; m[string(b)] doesn't
+// allocate.
+func cached(b []byte) (*nameInfo, bool) {
+	if m := snapshot.Load(); m != nil {
+		ni, ok := (*m)[string(b)]
+		return ni, ok
+	}
+	return nil, false
+}
+
+// infoOf returns the cached nameInfo of name, adding it on a miss.
+func infoOf(b []byte) *nameInfo {
+	if ni, ok := cached(b); ok {
+		return ni
+	}
+	namesMu.Lock()
+	defer namesMu.Unlock()
+	if ni, ok := fresh[string(b)]; ok {
+		return ni
+	}
+	lower := strings.ToLower(string(b))
+	ni := &nameInfo{lower: lower, tokens: nameTokens(lower)}
+	old := snapshot.Load()
+	n := 0
+	if old != nil {
+		n = len(*old)
+	}
+	if n+len(fresh) >= maxNames {
+		return ni
+	}
+	fresh[string(b)] = ni
+	if len(fresh) > n/8 {
+		next := make(map[string]*nameInfo, n+len(fresh))
+		if old != nil {
+			for k, v := range *old {
+				next[k] = v
+			}
+		}
+		for k, v := range fresh {
+			next[k] = v
+		}
+		snapshot.Store(&next)
+		fresh = map[string]*nameInfo{}
+	}
+	return ni
+}
+
+// infoOfString is infoOf for a string.
+func infoOfString(s string) *nameInfo {
+	if m := snapshot.Load(); m != nil {
+		if ni, ok := (*m)[s]; ok {
+			return ni
+		}
+	}
+	return infoOf([]byte(s))
+}
+
+// anyName reports whether fn holds for one of the lower-cased names a
+// value is known by: its column and, for the value column of a key/value
+// table, the key on the same row, so wp_postmeta.meta_value with meta_key
+// _billing_phone reads as a phone column.
 func anyName(sc core.ScanContext, fn func(name string, tokens []string) bool) bool {
-	for _, n := range columnNames(sc) {
-		if fn(n, nameTokens(n)) {
-			return true
+	return eachName(sc, func(ni *nameInfo) bool { return fn(ni.lower, ni.tokens) })
+}
+
+// eachName reports whether fn holds for the column or the row key, as
+// anyName reads them.
+func eachName(sc core.ScanContext, fn func(ni *nameInfo) bool) bool {
+	col := infoOfString(sc.Column)
+	if fn(col) {
+		return true
+	}
+	if key, ok := valueColumns[col.lower]; ok && sc.Row != nil {
+		if k, ok := sc.Row(key); ok && len(k) > 0 && len(k) <= 191 {
+			return fn(infoOf(k))
 		}
 	}
 	return false
