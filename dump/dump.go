@@ -54,6 +54,11 @@ func open(ctx context.Context, r io.Reader, o Options) (core.Source, error) {
 		_ = cr.Close()
 		return nil, err
 	}
+	if bytes.HasPrefix(ph, utf8BOM) {
+		// The readers start after the mark, as the mysql client does.
+		_, _ = plain.Discard(len(utf8BOM))
+		ph = ph[len(utf8BOM):]
+	}
 	ends := newEndCheck(ph)
 	s := &source{name: name, cr: cr, ends: ends, progress: o.Progress}
 	switch dialect {

@@ -30,6 +30,17 @@ const (
 	isBinary   = "an unknown binary file (.wpress, Duplicator or another backup format)"
 )
 
+// utf8BOM is the byte order mark some Windows tools write before UTF-8
+// text (PowerShell 5's Out-File -Encoding utf8, Notepad). The mysql
+// client skips it and so does Roadie.
+var utf8BOM = []byte{0xef, 0xbb, 0xbf}
+
+// utf16Error refuses a UTF-16 dump, which is what Windows PowerShell 5
+// writes for "mysqldump ... > dump.sql".
+func utf16Error(name string) *core.Error {
+	return core.Errorf(core.ErrDumpFormat, 2, "dump-format: %s is UTF-16 text, which Windows PowerShell writes for '>'. Export again with mysqldump --result-file=dump.sql (or mariadb-dump --result-file), which writes the file itself in UTF-8. %s", name, plainSQL)
+}
+
 // formatError is the dump-format refusal of PRD 17 for name, which is what.
 func formatError(name, what string) *core.Error {
 	return core.Errorf(core.ErrDumpFormat, 2, "dump-format: %s is %s. %s", name, what, plainSQL)
@@ -66,6 +77,10 @@ func sniffPlain(name string, plain []byte) (core.Dialect, string, error) {
 	if what := archive(plain); what != "" {
 		return "", "", formatError(name, what)
 	}
+	if bytes.HasPrefix(plain, []byte{0xff, 0xfe}) || bytes.HasPrefix(plain, []byte{0xfe, 0xff}) {
+		return "", "", utf16Error(name)
+	}
+	plain = bytes.TrimPrefix(plain, utf8BOM)
 	if binary(plain[:min(len(plain), binaryWindow)]) {
 		return "", "", formatError(name, isBinary)
 	}
