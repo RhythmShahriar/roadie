@@ -1,0 +1,7 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# g01: the shop's own role address may stay real.
+production: ["shop.example.com"]
+verify:
+  allow_emails: ["info@beanandleaf-roasters.co.uk"]

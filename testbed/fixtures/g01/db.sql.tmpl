@@ -1,0 +1,22 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+g01: clean, with every number and string a careless detector trips on. */ -}}
+{{template "head"}}
+{{- template "clean_wp" (dict "n" 40 "gw" "test" "webhook" false)}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (20,'woocommerce_email_from_address','info@beanandleaf-roasters.co.uk','on'),(21,'woocommerce_store_address','1 Example Street','on'),(22,'testbed_last_sync','1790000000','off');
+UNLOCK TABLES;
+{{template "wp_posts" "wp_"}}
+LOCK TABLES `wp_posts` WRITE;
+INSERT INTO `wp_posts` VALUES {{range $p := seq 40}}{{if gt $p 1}},{{end}}({{$p}},1,'2026-03-01 09:00:00','{{sql "<p>Built with <a href=\"https://wordpress.org/plugins/woocommerce/\">WooCommerce</a>, source on <a href=\"https://github.com/woocommerce/woocommerce\">GitHub</a>. Batch 2026-" $p ", 250 g, roasted at 1790000" (add 100 $p) ". Version 9.8." $p ".</p>"}}','Single origin {{$p}}','','publish','origin-{{$p}}',0,'https://staging.shop.test/?p={{$p}}','product',''){{end}};
+UNLOCK TABLES;
+{{template "wp_postmeta" "wp_"}}
+LOCK TABLES `wp_postmeta` WRITE;
+INSERT INTO `wp_postmeta` VALUES {{range $p := seq 40}}{{$m := mul $p 5}}{{if gt $p 1}},{{end}}({{$m}},{{$p}},'_sku','BL-{{printf "%05d" (mul $p 37)}}'),({{add $m 1}},{{$p}},'_global_unique_id','50{{printf "%011d" (mul $p 7919)}}'),({{add $m 2}},{{$p}},'_price','{{add 10 $p}}.95'),({{add $m 3}},{{$p}},'_testbed_uuid','{{printf "%08x" (mul $p 2654435)}}-1f2e-4d3c-9b8a-{{printf "%012x" (mul $p 99991)}}'),({{add $m 4}},{{$p}},'_tracking_number','JD0146000{{printf "%011d" (mul $p 1234567)}}'){{end}};
+UNLOCK TABLES;
+{{template "wp_wc_orders" "wp_"}}
+LOCK TABLES `wp_wc_orders` WRITE;
+INSERT INTO `wp_wc_orders` VALUES {{range $o := seq 60}}{{if gt $o 1}},{{end}}({{add $o 1000}},'wc-completed','GBP','shop_order',{{add 10 $o}}.95000000,{{add (mod $o 40) 2}},'u{{printf "%016x" (add (mod $o 40) 1)}}@example.invalid','2026-07-01 11:00:00',0,'stripe','ch_testbed{{$o}}','{{index (list "192.0.2" "198.51.100" "203.0.113") (mod $o 3)}}.{{add 10 $o}}','Mozilla/5.0 (X11; Linux x86_64) Firefox/141.0','Order {{add $o 1000}}, total £{{add 10 $o}}.95, ref {{add 1790000000 $o}}'){{end}};
+UNLOCK TABLES;
+{{template "tail"}}
