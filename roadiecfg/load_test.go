@@ -280,6 +280,48 @@ verify:
 	}
 }
 
+// A message about a value read from the environment shows the ${NAME}
+// reference, never what the variable held: those values are secrets.
+func TestErrorsHideInterpolatedValues(t *testing.T) {
+	token := testutil.J("tok", "en-", "9f8e7d6c5b4a")
+	env := envOf(map[string]string{
+		"ROADIE_ECHO_TOKEN": token,
+		"ROADIE_URL":        "ftp://" + token + ".example",
+		"ROADIE_SITE":       "ftp://shop.com/" + token,
+		"ROADIE_LOCALE":     "xx",
+	}, nil)
+	cases := []struct{ name, body, want string }{
+		{"echo url", "side_effects:\n  echo: {url: \"http://echo.example.com:8025/?t=${ROADIE_ECHO_TOKEN}\"}\n",
+			".roadie/config.yaml line 2: side_effects.echo.url is http://echo.example.com:8025/?t=${ROADIE_ECHO_TOKEN} over plain http to a public host; use https or an address on this machine or a private network"},
+		{"whole value", "url: \"${ROADIE_URL}\"\n",
+			".roadie/config.yaml line 1: url is \"${ROADIE_URL}\", which isn't a URL like https://staging.shop.test"},
+		{"production entry", "production: [\"shop.com\", \"${ROADIE_SITE}\"]\n",
+			".roadie/config.yaml line 1: production[1] is \"${ROADIE_SITE}\", which isn't a site like shop.com, *.shop.com or https://shop.com/shop/"},
+		{"short value only where quoted", "pseudonymise:\n  locale: \"${ROADIE_LOCALE}\"\n",
+			".roadie/config.yaml line 2: pseudonymise.locale is \"${ROADIE_LOCALE}\"; it takes en, de, fr, es, nl or it."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Load(writeConfig(t, tc.body), env)
+			var ce *core.Error
+			if !errors.As(err, &ce) || ce.Exit != 2 || ce.Code != core.ErrConfig {
+				t.Fatalf("err = %v, want a config error", err)
+			}
+			if ce.Msg != tc.want {
+				t.Errorf("msg\n got %q\nwant %q", ce.Msg, tc.want)
+			}
+			if strings.Contains(ce.Msg, token) {
+				t.Errorf("message shows the variable's value: %q", ce.Msg)
+			}
+		})
+	}
+	// A value written in the file itself is shown as it is.
+	_, err := Load(writeConfig(t, "url: \"ftp://shop.example\"\n"), env)
+	if err == nil || !strings.Contains(err.Error(), `"ftp://shop.example"`) {
+		t.Errorf("literal value: %v", err)
+	}
+}
+
 func TestEndpointsCheckedWithSite(t *testing.T) {
 	if _, err := site.ParseEndpoint("prod.sql.gz"); errors.Is(err, core.ErrNotBuilt) {
 		t.Skip("needs the site lane")

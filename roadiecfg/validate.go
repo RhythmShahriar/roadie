@@ -294,7 +294,7 @@ func (l *loader) validateKeys(c *Config) error {
 		var ce *core.Error
 		if errors.As(err, &ce) {
 			out := *ce
-			out.Msg = l.file + l.lineOf(key) + ": " + ce.Msg
+			out.Msg = l.file + l.lineOf(key) + ": " + l.redact(key, ce.Msg)
 			return &out
 		}
 		return l.errAt(key, "%s: %v", key, err)
