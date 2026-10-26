@@ -159,7 +159,7 @@ func (r *runner) productionIndex(ctx context.Context, from core.Endpoint, defs [
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	known.Seal()
+	// The final rules first: they add the form entry values to Known.
 	var found []string
 	if c, err := p.finalCompile(idx, schema); err == nil {
 		if plan, err := p.urlPlan(ctx, idx, c); err == nil {
@@ -168,5 +168,6 @@ func (r *runner) productionIndex(ctx context.Context, from core.Endpoint, defs [
 	} else if !errors.Is(err, profile.ErrNoStack) {
 		return nil, nil, nil, err
 	}
+	known.Seal()
 	return known, found, productionPairs(ctx, s, r.cfg), nil
 }

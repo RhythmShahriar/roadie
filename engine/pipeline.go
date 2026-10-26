@@ -370,6 +370,9 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 	}
 	idx := newIndexer(ctx, p.cfg, p.defs, p.site, known)
 	idx.siteBlogs = p.opts.Sites
+	if p.opts.OnePass {
+		idx.entries = nil // Known is sealed before the field-type rules exist
+	}
 	var (
 		final  *profile.Compiled
 		schema *core.Schema
@@ -501,7 +504,10 @@ func (p *pipeline) finalCompile(idx *indexer, schema *core.Schema) (*profile.Com
 	}
 	if rs := ft.Rules(); len(rs) > 0 {
 		c = c.WithRules(rs)
+		// Before Known is sealed: the entry values these rules cover.
+		idx.entries.addKnown(idx.known, rs)
 	}
+	idx.entries = nil
 	return p.join(c), nil
 }
 
