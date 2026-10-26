@@ -101,6 +101,23 @@ func (f *Filter) Add(b *core.Batch, m mysql.Mode) (*core.Batch, error) {
 	return b, nil
 }
 
+// Head judges the head of a row batch that a dump reader read as rows,
+// such as PostgreSQL's COPY ... FROM stdin, which the reader only takes
+// as rows in its safe form. Anything but Keep is refused: a head can't
+// be dropped without its rows.
+func (f *Filter) Head(st core.Statement) error {
+	o := f.o
+	o.Mode = f.mode
+	d, err := Check(st, o)
+	if err != nil {
+		return err
+	}
+	if d.Verdict != Keep {
+		return refusal(st, o, refuse(d.Kind, whyUnknown))
+	}
+	return nil
+}
+
 // note counts a plan line.
 func (f *Filter) note(d Decision, line int64, each bool) {
 	key := d.Note

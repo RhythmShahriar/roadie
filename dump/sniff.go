@@ -140,6 +140,7 @@ var (
 	reServer   = regexp.MustCompile(`(?m)^-- Server version:?\s+(\S+)`)
 	reAdminer  = regexp.MustCompile(`(?m)^-- Adminer \S+ (?:MySQL|MariaDB) (\S+) dump`)
 	reMariaVer = regexp.MustCompile(`(?:^|-)(\d+\.\d+\.\d+)-MariaDB`)
+	rePGServer = regexp.MustCompile(`(?m)^-- Dumped from database version (\d[\w.]*)`)
 )
 
 // dialectOf reads the dialect and server version from the comment lines
@@ -151,6 +152,8 @@ func dialectOf(head []byte) (core.Dialect, string) {
 	if m := reServer.FindSubmatch(head); m != nil {
 		server = string(m[1])
 	} else if m := reAdminer.FindSubmatch(head); m != nil {
+		server = string(m[1])
+	} else if m := rePGServer.FindSubmatch(head); m != nil {
 		server = string(m[1])
 	}
 	maria := bytes.Contains([]byte(server), []byte("MariaDB"))

@@ -19,6 +19,7 @@ import (
 	"github.com/RhythmShahriar/roadie/dump/compress"
 	"github.com/RhythmShahriar/roadie/dump/internal/size"
 	"github.com/RhythmShahriar/roadie/dump/mysql"
+	"github.com/RhythmShahriar/roadie/dump/pgsql"
 )
 
 // checkEvery is how often, in bytes written, a file sink checks the free
@@ -37,6 +38,26 @@ func diskFull(need, free int64, dir string) *core.Error {
 		size.Human(need), size.Human(free), dir)
 }
 
+// dialectNames are the dialects as messages name them.
+var dialectNames = map[core.Dialect]string{
+	core.MySQL: "MySQL", core.MariaDB: "MariaDB", core.Postgres: "PostgreSQL", core.SQLite: "SQLite",
+}
+
+// checkDialect is CheckDialect.
+func checkDialect(name string, from, to core.Dialect, db bool) error {
+	pg := func(d core.Dialect) bool { return d == core.Postgres }
+	if from == "" || to == "" || pg(from) == pg(to) {
+		return nil
+	}
+	what := "dump"
+	if db {
+		what = "database"
+	}
+	return core.Errorf(core.ErrDialectMismatch, 2,
+		"dialect-mismatch: %s is a %s dump and --to is a %s %s. Roadie copies MySQL to MySQL or MariaDB and PostgreSQL to PostgreSQL.",
+		name, dialectNames[from], dialectNames[to], what)
+}
+
 // encoder is the dialect writer under a sink.
 type encoder interface {
 	Write(b *core.Batch) error
@@ -44,9 +65,14 @@ type encoder interface {
 }
 
 func newEncoder(w io.Writer, o WriterOptions) (encoder, error) {
+	if o.Source != "" {
+		if err := CheckDialect("the dump", o.Source, o.Target, false); err != nil {
+			return nil, err
+		}
+	}
 	switch o.Target {
 	case core.Postgres:
-		return nil, core.ErrNotBuilt // the PostgreSQL writer lands with dump/pgsql
+		return pgsql.NewWriter(w), nil
 	case core.SQLite:
 		return nil, core.Errorf(core.ErrDialectMismatch, 2, "dialect-mismatch: Roadie writes MySQL, MariaDB and PostgreSQL dumps, not SQLite ones.")
 	}

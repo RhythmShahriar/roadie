@@ -132,14 +132,6 @@ func TestOpenCutGzip(t *testing.T) {
 	}
 }
 
-// PostgreSQL dumps wait for the pgsql reader.
-func TestOpenPostgresNotYet(t *testing.T) {
-	_, err := Open(context.Background(), strings.NewReader("--\n-- PostgreSQL database dump\n--\n"), Options{})
-	if !errors.Is(err, core.ErrNotBuilt) {
-		t.Fatalf("err = %v", err)
-	}
-}
-
 func TestOpenCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

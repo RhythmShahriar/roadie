@@ -280,12 +280,21 @@ func TestStreamSink(t *testing.T) {
 }
 
 func TestSinkTargets(t *testing.T) {
-	if _, err := NewFileSink(filepath.Join(t.TempDir(), "x.sql"), WriterOptions{Target: core.Postgres}); !errors.Is(err, core.ErrNotBuilt) {
+	pg, err := NewFileSink(filepath.Join(t.TempDir(), "x.sql"), WriterOptions{Target: core.Postgres, Source: core.Postgres})
+	if err != nil {
 		t.Errorf("postgres: %v", err)
+	} else {
+		_ = pg.Abort(context.Background())
 	}
 	dir := t.TempDir()
-	_, err := NewFileSink(filepath.Join(dir, "x.sql"), WriterOptions{Target: core.SQLite})
 	var ce *core.Error
+	for _, o := range []WriterOptions{{Target: core.MySQL, Source: core.Postgres}, {Target: core.Postgres, Source: core.MariaDB}} {
+		_, err = NewFileSink(filepath.Join(dir, "x.sql"), o)
+		if !errors.As(err, &ce) || ce.Code != core.ErrDialectMismatch || ce.Exit != 2 || len(tempFiles(t, dir)) != 0 {
+			t.Errorf("%s to %s: %v", o.Source, o.Target, err)
+		}
+	}
+	_, err = NewFileSink(filepath.Join(dir, "x.sql"), WriterOptions{Target: core.SQLite})
 	if !errors.As(err, &ce) || ce.Code != core.ErrDialectMismatch || len(tempFiles(t, dir)) != 0 {
 		t.Errorf("sqlite: %v", err)
 	}
