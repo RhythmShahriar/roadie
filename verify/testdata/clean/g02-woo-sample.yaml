@@ -1,0 +1,67 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# g02: WooCommerce sample data and WP-CLI generated users at example.com and
+# .test. Every person is reserved test material, so verify reports nothing.
+name: g02
+stack: wordpress
+production: [shop-demo.example]
+rules:
+  - {table: wp_users, column: user_email, fake: email}
+  - {table: wp_wc_orders, column: billing_email, fake: email}
+  - {table: wp_wc_orders, column: ip_address, fake: ip}
+  - {table: wp_wc_order_addresses, column: first_name, fake: first_name}
+  - {table: wp_wc_order_addresses, column: last_name, fake: last_name}
+  - {table: wp_wc_order_addresses, column: address_1, fake: street}
+  - {table: wp_wc_order_addresses, column: city, fake: city}
+  - {table: wp_wc_order_addresses, column: postcode, fake: postcode}
+  - {table: wp_wc_order_addresses, column: email, fake: email}
+  - {table: wp_wc_order_addresses, column: phone, fake: phone}
+tables:
+  - name: wp_posts
+    columns: [ID, post_title, post_content, post_excerpt, post_name]
+    rows:
+      - [20, Hoodie with Logo, "This is a simple product.", "Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas.", hoodie-with-logo]
+      - [21, V-Neck T-Shirt, "This is a variable product.", "Vestibulum tortor quam, feugiat vitae, ultricies eget, tempor sit amet, ante.", v-neck-t-shirt]
+      - [22, Beanie with Logo, "This is a simple product.", "", beanie-with-logo]
+      - [23, Album, "This is a simple, virtual product.", "", album]
+  - name: wp_postmeta
+    columns: [meta_id, post_id, meta_key, meta_value]
+    rows:
+      - [1, 20, _sku, woo-hoodie-with-logo]
+      - [2, 20, _regular_price, "45"]
+      - [3, 21, _sku, woo-vneck-tee]
+      - [4, 22, _sku, Woo-beanie-logo]
+      - [5, 22, _sale_price, "18"]
+      - [6, 23, _sku, woo-album]
+      - [7, 23, _downloadable_files, {json: {"a1b2c3d4-0000-4000-8000-000000000001": {name: Single, file: "https://woocommercecore.mystagingwebsite.com/wp-content/uploads/2017/08/single.jpg"}}}]
+      - [8, 21, _product_attributes, {php: [name, Color, value, "Blue | Green | Red", position, "0"]}]
+  - name: wp_users
+    columns: [ID, user_login, user_email, display_name, user_url]
+    rows:
+      - [1, admin, admin@example.com, admin, ""]
+      - [2, wp_user_2, user2@example.com, Ciaran Byrne, "https://example.net/"]
+      - [3, wp_user_3, user3@shop.test, Mei Tanaka, ""]
+      - [4, wp_user_4, user4@example.org, Oluwaseun Adeyemi, ""]
+  - name: wp_usermeta
+    columns: [umeta_id, user_id, meta_key, meta_value]
+    rows:
+      - [1, 2, first_name, "{{fake:first_name}}"]
+      - [2, 2, last_name, "{{fake:last_name}}"]
+      - [3, 2, billing_email, user2@example.com]
+      - [4, 2, billing_phone, "(212) 555-0199"]
+      - [5, 2, billing_address_1, "{{fake:street}}"]
+      - [6, 3, billing_email, user3@shop.test]
+      - [7, 3, billing_phone, "+1 212 555 0123"]
+      # WordPress keeps a sha256 of each session token, never the token.
+      - [8, 1, session_tokens, {php: [3b8f6c1d9e2a4f70b5c8d1e6a9f2b4c7d0e3f6a9b2c5d8e1f4a7b0c3d6e9f2a5, {php: [expiration, "1730000000", ip, 127.0.0.1, ua, "Mozilla/5.0 (X11; Linux x86_64)", login, "1729900000"]}]}]
+  - name: wp_wc_orders
+    columns: [id, status, currency, total_amount, billing_email, ip_address, transaction_id]
+    rows:
+      - [101, wc-completed, USD, "63.00", user2@example.com, 10.0.0.12, ""]
+      - [102, wc-processing, USD, "18.00", user3@shop.test, "2001:db8::17", ""]
+  - name: wp_wc_order_addresses
+    columns: [id, order_id, address_type, first_name, last_name, address_1, city, postcode, email, phone]
+    rows:
+      - [1, 101, billing, Ciaran, Byrne, 1 Infinite Loop, Cupertino, "95014", user2@example.com, "(212) 555-0199"]
+      - [2, 102, billing, Mei, Tanaka, 3 Sample Way, Springfield, "62704", user3@shop.test, "+1 212 555 0123"]

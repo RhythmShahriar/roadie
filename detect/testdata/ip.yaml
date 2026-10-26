@@ -1,0 +1,67 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Fixtures for the IP detector (PRD 15.2, qa.md 3.5).
+detector: pii.ip
+positive:
+  - value: "81.2.69.160"
+    column: comment_author_IP
+  - value: "81.2.69.160"
+    column: ip_address
+  - value: "2a00:1450:4009:81f::200e"
+    column: user_ip_address
+  - value: "81.2.69.160"
+    table: wp_postmeta
+    column: meta_value
+    row: {meta_key: _customer_ip_address}
+  - value: "10.0.0.1, 81.2.69.160"
+    column: forwarded_ip
+    match: "81.2.69.160"
+    note: a list keeps its public entry
+  - value: "81.2.69.160"
+    kind: ip
+    column: meta_value
+    note: a leaf under an ip key, as verify passes it
+  - value: "[2a00:1450:4009:81f::200e]:443"
+    column: remote_addr
+  - value: "::ffff:81.2.69.160"
+    column: ip
+negative:
+  - value: "127.0.0.1"
+    column: ip
+  - value: "::1"
+    column: ip
+  - value: "10.1.2.3"
+    column: ip
+  - value: "172.16.5.4"
+    column: ip
+  - value: "192.168.1.20"
+    column: ip
+  - value: "169.254.10.1"
+    column: ip
+  - value: "fe80::1"
+    column: ip
+  - value: "fd12:3456::1"
+    column: ip
+  - value: "100.64.1.1"
+    column: ip
+    note: CGNAT
+  - value: "192.0.2.10"
+    column: ip
+  - value: "198.51.100.7"
+    column: ip
+  - value: "203.0.113.99"
+    column: ip
+  - value: "2001:db8::42"
+    column: ip
+  - value: "0.0.0.0"
+    column: ip
+  - value: "224.0.0.1"
+    column: ip
+  - value: "Tested with WordPress 6.4.2.1 on 81.2.69.160"
+    column: post_content
+    note: dotted numbers in free text
+  - value: "81.2.69.160"
+    column: version
+  - value: "unknown"
+    column: ip

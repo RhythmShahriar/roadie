@@ -1,0 +1,80 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# g01: a clean small business shop on WooCommerce. Its own info@ mailbox is
+# on the allow list; everything else that looks like data is business data
+# or reserved test material. verify must report nothing at or above low.
+name: g01
+stack: wordpress
+production: [millstreet-bakery-demo.co.uk]
+allow_emails: [info@millstreet-bakery-demo.co.uk]
+rules:
+  - {table: wp_users, column: user_email, fake: email}
+  - {table: wp_comments, column: comment_author_email, fake: email}
+  - {table: wp_comments, column: comment_author_IP, fake: ip}
+  - {table: wp_posts, column: post_content, fake: text}
+files:
+  wp-config.php: |
+    <?php
+    define('DB_NAME', 'staging_bakery');
+    define('DB_USER', 'staging');
+    define('DB_PASSWORD', '');
+    define('DB_HOST', 'localhost');
+    define('WP_ENVIRONMENT_TYPE', 'staging');
+    define('DISABLE_WP_CRON', true);
+    define('WP_HOME', 'https://staging.millstreet.test');
+    define('WP_SITEURL', 'https://staging.millstreet.test');
+    define('STRIPE_TEST_SECRET', '{{stripe_test_secret}}');
+tables:
+  - name: wp_options
+    columns: [option_id, option_name, option_value]
+    rows:
+      - [1, siteurl, https://staging.millstreet.test]
+      - [2, home, https://staging.millstreet.test]
+      - [3, blogname, Mill Street Bakery]
+      - [4, admin_email, info@millstreet-bakery-demo.co.uk]
+      - [5, woocommerce_email_from_address, info@millstreet-bakery-demo.co.uk]
+      - [6, woocommerce_store_address, 12 Mill Street]
+      - [7, woocommerce_store_postcode, "SW1A 1AA"]
+      - [8, woocommerce_currency, GBP]
+      - [9, woocommerce_stripe_settings, {php: [enabled, "yes", testmode, "yes", test_publishable_key, "{{stripe_test_publishable}}", test_secret_key, "{{stripe_test_secret}}", publishable_key, "", secret_key, ""]}]
+      - [10, _site_transient_update_plugins, {php: [slug, cookie-banner-lite, author, "Plugin Works <support@pluginworks-demo.com>", author_email, dev@pluginworks-demo.com, homepage, "https://wordpress.org/plugins/cookie-banner-lite/", version, "2.4.1"]}]
+      - [11, _transient_plugin_slugs, {php: [a, "cookie-banner-lite/cookie-banner-lite.php", b, "woocommerce/woocommerce.php"]}]
+      - [12, recently_activated, "a:0:{}"]
+      - [13, woocommerce_db_version, "9.3.3"]
+      - [14, _transient_timeout_wc_count_comments, "1729900000"]
+      - [15, woocommerce_placeholder_image, "48"]
+      - [16, wc_stripe_wh_test_monitor_began_at, "1729900000"]
+  - name: wp_posts
+    columns: [ID, post_author, post_title, post_content, guid, post_date]
+    rows:
+      - [10, 1, Our story, "We bake every morning. Built on WordPress (https://wordpress.org/) with code from https://github.com/woocommerce/woocommerce. Contact us at info@millstreet-bakery-demo.co.uk.", "https://staging.millstreet.test/?page_id=10", "2026-10-01 07:30:00"]
+      - [11, 1, Sourdough loaf, "SKU: MSB-SOUR-800. EAN 5012345678900. 800 g, £4.50. Batch 20261001-07.", "https://staging.millstreet.test/?product=11", "2026-10-01 07:31:00"]
+      - [12, 1, Order 1047, "Order #1047 total £1,234.56 paid 2026-10-01T07:45:00Z, ref 3f2504e0-4f89-11d3-9a0c-0305e82c3301, tracked with 1Z999AA10123456784.", "", "2026-10-01 07:45:00"]
+      - [13, 1, Shipping notes, "Royal Mail tracking JD000000000GB. Parcel 0012 4400 7781 2203. Version 1.2.3.4 of the label printer.", "", "2026-10-02 09:00:00"]
+  - name: wp_postmeta
+    columns: [meta_id, post_id, meta_key, meta_value]
+    rows:
+      - [1, 11, _sku, MSB-SOUR-800]
+      - [2, 11, _global_unique_id, "5012345678900"]
+      - [3, 11, _price, "4.50"]
+      - [4, 12, _order_total, "1234.56"]
+      - [5, 12, _tracking_number, 1Z999AA10123456784]
+      - [6, 12, _customer_ip_address, 198.51.100.7]
+      - [7, 12, _date_paid, "1729900000"]
+      - [8, 12, _transaction_id, "{{stripe_test_charge}}"]
+      - [9, 12, _billing_email, buyer.one@example.com]
+      - [10, 12, _billing_phone, "+44 7700 900123"]
+      - [11, 12, _billing_first_name, "{{fake:first_name}}"]
+      - [12, 12, _order_key, wc_order_4cK9pQ2mR7xYz]
+      - [13, 12, _wc_order_attribution_session_entry, "https://staging.millstreet.test/shop/"]
+  - name: wp_users
+    columns: [ID, user_login, user_email, display_name, user_registered]
+    rows:
+      - [1, bakery, info@millstreet-bakery-demo.co.uk, Mill Street Bakery, "2026-01-05 10:00:00"]
+      - [2, buyer1, buyer.one@example.com, Ada Kowalczyk, "2026-10-01 07:40:00"]
+  - name: wp_comments
+    columns: [comment_ID, comment_author, comment_author_email, comment_author_IP, comment_content]
+    rows:
+      - [1, Buyer One, buyer.one@example.com, 192.0.2.10, "Lovely bread, order 1047 arrived 01/10/2026."]
+      - [2, WooCommerce, "", 203.0.113.5, "Status changed from Pending payment to Processing."]

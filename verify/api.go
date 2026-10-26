@@ -5,8 +5,8 @@
 // and side effects left on. It returns the findings, checks and coverage
 // a pass or fail verdict rests on.
 //
-// The exported names in this file are the frozen cross-lane API; the
-// detect lane replaces the bodies, which return core.ErrNotBuilt until then.
+// The exported names in this file are the cross-lane API other lanes
+// build on; new fields are only ever added.
 package verify
 
 import (
@@ -41,10 +41,14 @@ type Options struct {
 	InsecureTLS string
 	EchoURL     string
 	Echo        bool
-	Baseline    string
-	Ignore      []Ignore
-	Jobs        int
-	Clock       core.Clock
+	// EchoSince is when the copy started: verify --echo counts the
+	// messages Echo let through from then on. Zero means unknown: the
+	// count starts when verify does, which the check's detail says.
+	EchoSince time.Time
+	Baseline  string
+	Ignore    []Ignore
+	Jobs      int
+	Clock     core.Clock
 }
 
 // Ignore hides a finding by ID and location until a date.
@@ -53,12 +57,14 @@ type Ignore struct {
 	Until                time.Time
 }
 
-// Run scans the copy.
-func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
-	return nil, core.ErrNotBuilt
-}
-
 // Soundcheck runs rhythm-soundcheck against url when it is installed.
+//
+// It runs "rhythm-soundcheck run <url> --json" (with --echo=<echoURL>
+// when given) for at most 10 minutes and records the exit code and the
+// schema and summary counts of its JSON. When Soundcheck is not on PATH
+// the result has Ran false and the note "Soundcheck not run: install it
+// with rhythm install soundcheck", never a finding. SoundcheckFinding
+// turns an exit 1 into soundcheck.failed.
 func Soundcheck(ctx context.Context, url, echoURL string) *core.SoundcheckResult {
-	return nil
+	return soundcheck(ctx, url, echoURL)
 }

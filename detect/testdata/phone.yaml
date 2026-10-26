@@ -1,0 +1,136 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Fixtures for the phone detector (PRD 15.2, qa.md 3.5). {dN} becomes N
+# digits at test time, so no real-looking number is committed. Each
+# prefix sits outside every fictional range, so the fill never lands in one.
+detector: pii.phone
+positive:
+  # E.164 in free text, twelve countries
+  - value: "Call +1 415 26{d1} {d4} after five"
+    note: United States
+  - value: "+1 (604) 25{d1}-{d4}"
+    note: Canada
+  - value: "Customer phone +44 7911 {d6}"
+    note: United Kingdom
+  - value: "+44 (0)161 49{d1} {d4}"
+    note: United Kingdom with the (0) trunk
+  - value: "+49 151 {d8}"
+    note: Germany
+  - value: "+33 6 12 {d2} {d2} {d2}"
+    note: France
+  - value: "+34 612 {d3} {d3}"
+    note: Spain
+  - value: "+39 347 {d7}"
+    note: Italy
+  - value: "+31 6 {d8}"
+    note: Netherlands
+  - value: "+61 412 {d3} {d3}"
+    note: Australia
+  - value: "+91 98{d3} {d5}"
+    note: India
+  - value: "+55 11 9{d4}-{d4}"
+    note: Brazil
+  - value: "+353 87 {d3} {d4}"
+    note: Ireland
+  - value: "+64 21 {d3} {d4}"
+    note: New Zealand
+  # tel: links
+  - value: '<a href="tel:+4479{d8}">Call us</a>'
+  - value: '<a href="tel:0161-49{d1}-{d4}">'
+  # National formats with separators
+  - value: "Phone (415) 26{d1}-{d4} please"
+  - value: "Ring 415-26{d1}-{d4}"
+  - value: "Mobile 07911 {d6}"
+  - value: "Tel. 0161 49{d1} {d4}"
+  - value: "Tel 030 {d8}"
+  - value: "Tél 06 12 {d2} {d2} {d2}"
+  - value: "móvil 612 {d3} {d3}"
+  - value: "cell 347 {d3} {d4}"
+  - value: "bel 06-{d8}"
+  - value: "mob 0412 {d3} {d3}"
+  - value: "ph 98{d3} {d5}"
+  - value: "cel (11) 9{d4}-{d4}"
+  - value: "mob 087 {d3} {d4}"
+  - value: "txt 021 {d3} {d4}"
+  - value: "Call +٤٤ ٧٩١١ ١٢٣٤٥٦ now"
+    note: Arabic-Indic digits of a real-range number
+  # Phone columns take any 7 to 15 digits
+  - value: "07911{d6}"
+    column: billing_phone
+  - value: "26{d5}"
+    column: phone
+    note: seven digits
+  - value: "+4479{d8}"
+    table: wp_postmeta
+    column: meta_value
+    row: {meta_key: _billing_phone}
+  - value: "79{d8}"
+    kind: phone
+    column: contact
+  - value: "1700000000"
+    column: mobile
+    note: in a phone column ten digits are a phone, never a timestamp
+negative:
+  # The six harmless strings of qa.md and their kin
+  - value: "Order total 1234567.89"
+  - value: "1234567.89"
+    column: billing_phone
+    note: an amount even in a phone column
+  - value: "created 1700000000"
+    note: Unix timestamp
+  - value: "1700000000"
+    column: meta_value
+    note: Unix timestamp outside a phone column
+  - value: "EAN 4006381333931"
+  - value: "ISBN 978-3-16-148410-0"
+  - value: "UPS 1Z999AA10123456784"
+  - value: "Ref GB82WEST12345698765432"
+  - value: "Ref DE00ORDR1234567890123"
+  - value: "+44 7911 {d6}"
+    column: sku
+  - value: "07911{d6}"
+    column: order_total
+  - value: "07911{d6}"
+    table: wp_postmeta
+    column: meta_value
+    row: {meta_key: _order_total}
+  - value: "4006381333931"
+    column: ean
+  - value: "+44 7911 {d6}"
+    column: tracking_number
+  # Fiction ranges
+  - value: "+44 7700 900123"
+  - value: "07700 900123"
+    column: billing_phone
+  - value: "+1 212 555 0123"
+  - value: "(212) 555-0199"
+  - value: "555-0123"
+    column: phone
+  - value: "+49 30 23125 456"
+  - value: "+1 555 010 2345"
+    note: Roadie's echo style fake
+  - value: "Call +٤٤ ٧٧٠٠ ٩٠٠١٢٣ now"
+    note: Arabic-Indic digits of a fiction number
+  # Codes, versions, hashes
+  - value: "uuid 550e8400-e29b-41d4-a716-446655440000"
+  - value: "550e8400-e29b-41d4-a716-446655440000"
+    column: phone
+  - value: "sha 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+  - value: "version 1.12.3456"
+  - value: "v10.4.12.1234"
+    column: phone
+  - value: "SKU-415-26{d1}-{d4}"
+  - value: "margin: 0 10px 0 10px; z-index: 2147483647"
+  - value: "$ 1234567890"
+    column: phone
+    note: next to a currency sign
+  - value: "Total 4152612345"
+    note: an ungrouped digit run in free text
+  - value: "1 234 567"
+    note: grouped digits that match no national format
+  - value: "+12345"
+    note: too short after the +
+  - value: "+44 7911 {d6}"
+    allow:
+      phones: ["+44 7911 *"]

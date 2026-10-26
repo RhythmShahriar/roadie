@@ -1,0 +1,50 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# g04: a clean Laravel app with test keys, MAIL_MAILER=log and
+# APP_ENV=staging.
+name: g04
+stack: laravel
+production: [app-demo.example]
+rules:
+  - {table: users, column: name, fake: full_name}
+  - {table: users, column: email, fake: email}
+files:
+  .env: |
+    APP_NAME=Ledger
+    APP_ENV=staging
+    APP_DEBUG=false
+    APP_URL=https://staging.ledger.test
+    DB_CONNECTION=mysql
+    DB_HOST=127.0.0.1
+    DB_DATABASE=ledger_staging
+    DB_USERNAME=ledger
+    DB_PASSWORD=
+    MAIL_MAILER=log
+    MAIL_HOST=127.0.0.1
+    QUEUE_CONNECTION=sync
+    STRIPE_KEY={{stripe_test_publishable}}
+    STRIPE_SECRET={{stripe_test_secret}}
+tables:
+  - name: users
+    columns: [id, name, email, created_at, remember_token]
+    rows:
+      - [1, Test User, test@example.com, "2026-10-01 09:00:00", ""]
+      - [2, Grace Hopper, grace@ledger.test, "2026-10-02 09:00:00", ""]
+  - name: invoices
+    columns: [id, user_id, number, total, currency, stripe_id, uuid, issued_at]
+    rows:
+      - [1, 1, INV-2026-0001, "1499", eur, "{{stripe_test_charge}}", 9b2f6d1e-3c4a-4f5b-8e7d-1a2b3c4d5e6f, "1729900000"]
+      - [2, 2, INV-2026-0002, "250000", eur, "", 0d9c8b7a-6f5e-4d3c-b2a1-0f1e2d3c4b5a, "1729990000"]
+  - name: jobs
+    columns: [id, queue, payload, attempts]
+    rows: []
+  - name: migrations
+    columns: [id, migration, batch]
+    rows:
+      - [1, 2014_10_12_000000_create_users_table, 1]
+      - [2, 2019_08_19_000000_create_failed_jobs_table, 1]
+  - name: personal_access_tokens
+    columns: [id, tokenable_type, name, abilities]
+    rows:
+      - [1, App\Models\User, ci, '["*"]']
