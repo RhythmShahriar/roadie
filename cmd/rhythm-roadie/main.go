@@ -27,7 +27,8 @@ func main() { os.Exit(entry(os.Args[1:], os.Stdout, os.Stderr)) }
 
 // entry answers what kit's cli.Main can't say Roadie's way, then hands
 // over: no arguments on a terminal open the picker; the top help is PRD 6.1's text rather than kit's generic one;
-// update --clear drops the cached profile pack. Everything else (commands,
+// update --clear drops the cached profile pack and update offline reports
+// the pack in use without a download. Everything else (commands,
 // help <command>, version, update, __complete, Ctrl-C and the update
 // prompt) is cli.Main's.
 func entry(args []string, stdout, stderr io.Writer) int {
@@ -43,6 +44,8 @@ func entry(args []string, stdout, stderr io.Writer) int {
 		return cli.ExitOK
 	case args[0] == "update" && cli.HasFlag(args[1:], "clear"):
 		return clearProfiles(stdout, stderr)
+	case args[0] == "update" && !helpAsked(args[1:]) && offlineUpdate(args[1:]):
+		return updateOffline(args[1:], stdout, stderr)
 	}
 	return cli.Main(tool())
 }
