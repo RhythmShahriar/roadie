@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 # Roadie's sealed testbed (see docker-compose.yml). Needs Docker with
-# Compose v2 and Go. Ports: the gate publishes 127.0.0.1:18920-18939 only
-# (nginx.conf lists them); Go test listeners use 127.0.0.1:23240-23259.
+# Compose v2 and Go. Ports: the gate publishes 127.0.0.1:18920-18929 only
+# (nginx.conf lists them; 18930-18939 are reserved and not published); Go
+# test listeners use 127.0.0.1:23240-23259.
 #
 #   make up                build, start, install the sites, seed the canaries and keys
 #   make down              stop and delete everything, volumes included
@@ -179,8 +180,11 @@ oracle: ## judge an output: make oracle ID=r01 DUMP=out.sql [TREE=dir]
 # each copy and prepare (5m for the published numbers). BASELINE is an
 # earlier results.json: r17 then fails on a 20% throughput drop. A run of
 # every scenario also writes docs/benchmark.md (the generated page).
-DRILL ?= 5m
-BENCH := cd $(ROOT) && $(GO) run -tags testbed ./testbed/bench -bin testbed/$(RUNTIME)/bin/rhythm-roadie -php "$(PHP)" -seed $(SEED) -drill-for $(DRILL) -greenmask $(GREENMASK_VERSION)
+# STRICT fails the run when Roadie answers not-built anywhere or the
+# control pass checks nothing; STRICT= turns that off while lanes land.
+DRILL  ?= 5m
+STRICT ?= -strict
+BENCH  := cd $(ROOT) && $(GO) run -tags testbed ./testbed/bench -bin testbed/$(RUNTIME)/bin/rhythm-roadie -php "$(PHP)" -seed $(SEED) -drill-for $(DRILL) -greenmask $(GREENMASK_VERSION) $(STRICT)
 
 roadie-bin:
 	@mkdir -p $(RUNTIME)/bin

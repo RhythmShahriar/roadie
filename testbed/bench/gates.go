@@ -113,6 +113,9 @@ func (h *Harness) checkOutputs(ctx context.Context, cr *caseRun) {
 			cr.res.add("oracle", false, "%s", err)
 			return
 		}
+		if len(rep.Links) > 0 {
+			cr.run.Notes = append(cr.run.Notes, fmt.Sprintf("oracle: %d link(s) in the tree not followed: %s", len(rep.Links), strings.Join(rep.Links, ", ")))
+		}
 		h.oracleGates(cr, rep, input)
 	}
 	for _, j := range cr.st.s.Joins {
@@ -174,8 +177,12 @@ func (h *Harness) outputs(ctx context.Context, cr *caseRun) (dump, tree string, 
 	case "":
 	case manifest.OutStagingWP, manifest.OutLaravelApp:
 		tree = filepath.Join(cr.work, "out-tree")
-		if err := h.collectTree(ctx, out.Tree, tree); err != nil {
+		links, err := h.collectTree(ctx, out.Tree, tree)
+		if err != nil {
 			return "", "", err
+		}
+		if len(links) > 0 {
+			cr.run.Notes = append(cr.run.Notes, fmt.Sprintf("output tree: %d link(s) not copied or read: %s", len(links), strings.Join(links, ", ")))
 		}
 	default:
 		if tree, err = manifest.Expand(out.Tree, cr.local); err != nil {
@@ -187,8 +194,9 @@ func (h *Harness) outputs(ctx context.Context, cr *caseRun) (dump, tree string, 
 
 // collectTree copies a site out of its container: the staging docroot
 // without WordPress core and the plugins (third-party code the copy
-// never touches), or the Laravel site.
-func (h *Harness) collectTree(ctx context.Context, service, dst string) error {
+// never touches), or the Laravel site. It returns the links in the site,
+// which aren't copied.
+func (h *Harness) collectTree(ctx context.Context, service, dst string) ([]string, error) {
 	var ctr string
 	var args []string
 	switch service {
@@ -199,14 +207,14 @@ func (h *Harness) collectTree(ctx context.Context, service, dst string) error {
 		ctr = ctrLaravel
 		args = []string{"tar", "-C", ctrRoot + "/site", "-cf", "-", "."}
 	default:
-		return fmt.Errorf("no site in %s", service)
+		return nil, fmt.Errorf("no site in %s", service)
 	}
 	b, err := h.Ex.Exec(ctx, ctr, "root", nil, nil, args...)
 	if err != nil {
-		return fmt.Errorf("copying the site out of %s: %w", ctr, errDetail(err))
+		return nil, fmt.Errorf("copying the site out of %s: %w", ctr, errDetail(err))
 	}
 	if err := os.RemoveAll(dst); err != nil {
-		return err
+		return nil, err
 	}
 	return untar(bytes.NewReader(b), dst)
 }
@@ -376,10 +384,9 @@ func (h *Harness) boot(ctx context.Context, cr *caseRun) {
 	type page struct{ host, path string }
 	var pages []page
 	paths, _ := stagingPages(ctx, h.Ex)
+	paths = bootPaths(paths)
 	for _, p := range paths {
-		if !strings.HasPrefix(p, "/wp-admin") && !strings.HasPrefix(p, "/wp-cron") {
-			pages = append(pages, page{stagingHost, p})
-		}
+		pages = append(pages, page{stagingHost, p})
 	}
 	if cr.st.s.Multisite != "" {
 		out, err := wpCLI(ctx, h.Ex, "site", "list", "--field=url")
@@ -413,6 +420,8 @@ func (h *Harness) boot(ctx context.Context, cr *caseRun) {
 		}
 	}
 	cr.res.add("boot", len(bad) == 0 && len(pages) > 0, "%d pages; %s", len(pages), orDash(strings.Join(bad, ", ")))
+	sc := Soundcheck{Bin: h.soundcheck, Base: gateStaging}
+	cr.run.Notes = append(cr.run.Notes, sc.Health(ctx, filepath.Join(cr.work, "soundcheck"), paths))
 }
 
 // splitURL splits "http://fr.staging-wp/blog/" into host and path.
@@ -516,8 +525,12 @@ func (h *Harness) checkGate3(ctx context.Context, cr *caseRun) {
 	}
 	cr.res.Gate3, cr.run.Gate3 = &g, &g
 	cr.run.Notes = append(cr.run.Notes, g.Notes...)
-	cr.res.add("sinkhole", g.Pass(), "%d connections, %d stub calls with a live key, %d captures to real recipients",
+	detail := fmt.Sprintf("%d connections, %d stub calls with a live key, %d captures to real recipients",
 		g.Sinkhole, g.StubLive, g.EchoRealRecips)
+	if g.EchoUnread {
+		detail += "; Echo's captures couldn't be read"
+	}
+	cr.res.add("sinkhole", g.Pass(), "%s", detail)
 	if cr.c.Action.Name == manifest.ActionEgress {
 		cr.res.add("egress", len(g.Egress) == 0, "reached the sinkhole: %s", orDash(strings.Join(g.Egress, ", ")))
 	}

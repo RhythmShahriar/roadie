@@ -437,14 +437,48 @@ func TestUntarStaysInside(t *testing.T) {
 	var buf bytes.Buffer
 	newTar(&buf, map[string]string{"ok/a.txt": "a", "../escape.txt": "x", "/abs.txt": "y"})
 	dir := t.TempDir()
-	if err := untar(&buf, filepath.Join(dir, "x")); err != nil {
-		t.Fatal(err)
+	links, err := untar(&buf, filepath.Join(dir, "x"))
+	if err != nil || len(links) != 0 {
+		t.Fatal(links, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "x", "ok", "a.txt")); err != nil {
 		t.Error(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "escape.txt")); err == nil {
 		t.Error("a name climbing out was extracted")
+	}
+}
+
+// Links in a collected tree are skipped and named, never written.
+func TestUntarNamesLinks(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	for _, h := range []*tar.Header{
+		{Name: "wp-content/uploads/backup.sql", Typeflag: tar.TypeSymlink, Linkname: "/var/backups/prod.sql"},
+		{Name: "wp-content/hard", Typeflag: tar.TypeLink, Linkname: "wp-content/a.txt"},
+		{Name: "wp-content/a.txt", Typeflag: tar.TypeReg, Size: 1, Mode: 0o600},
+	} {
+		if err := tw.WriteHeader(h); err != nil {
+			t.Fatal(err)
+		}
+		if h.Size > 0 {
+			_, _ = tw.Write([]byte("a"))
+		}
+	}
+	_ = tw.Close()
+	dir := t.TempDir()
+	links, err := untar(&buf, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"wp-content/uploads/backup.sql", "wp-content/hard"}; !slices.Equal(links, want) {
+		t.Errorf("links %q, want %q", links, want)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "wp-content", "uploads", "backup.sql")); err == nil {
+		t.Error("a link was written")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "wp-content", "a.txt")); err != nil {
+		t.Error(err)
 	}
 }
 

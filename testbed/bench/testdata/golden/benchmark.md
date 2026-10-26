@@ -172,7 +172,7 @@ Pending: the Laravel framework isn't installed in the fixture app.
 Docker with Compose v2 and Go. From a clean checkout:
 
 ```sh
-make -C testbed up          # build and start the sealed testbed, seed the canaries (127.0.0.1:18920-18939)
+make -C testbed up          # build and start the sealed testbed, seed the canaries (127.0.0.1:18920-18929)
 make -C testbed seal        # prove no container reaches a public address
 make -C testbed bench       # every scenario, the control pass and the other tools; writes docs/benchmark.md
 make -C testbed reproduce   # run it twice and fail if the score differs

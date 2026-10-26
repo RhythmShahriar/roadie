@@ -70,6 +70,8 @@ type Harness struct {
 	manifest map[string]manifest.Scenario
 	perf     *Perf
 	dockerUp bool
+	// soundcheck is rhythm-soundcheck on PATH, or "" (Soundcheck).
+	soundcheck string
 }
 
 // keptOutput is an r-scenario's output dump g05 verifies again.
@@ -121,6 +123,11 @@ func (h *Harness) Init(ctx context.Context) error {
 		return fmt.Errorf("the testbed isn't set up (run make -C testbed up): %w", err)
 	}
 	h.echoTok = env["RHYTHM_ECHO_TOKEN"]
+	// Gate 3 counts Echo's captures: a run where Echo can't be read would
+	// pass mail to real people unseen.
+	if err := (Echo{Base: gateEcho, Token: h.echoTok}).Wait(ctx, 10*time.Second); err != nil {
+		return fmt.Errorf("echo doesn't answer on %s (make -C testbed up): %w", gateEcho, err)
+	}
 	out, err := docker(ctx, nil, "inspect", "-f", "{{.State.Running}}", container(stagingHost))
 	if err != nil || strings.TrimSpace(string(out)) != "true" {
 		return errors.New("the testbed isn't running: make -C testbed up")
@@ -128,6 +135,7 @@ func (h *Harness) Init(ctx context.Context) error {
 	if h.sshPath, err = exec.LookPath("ssh"); err != nil {
 		h.sshPath = ""
 	}
+	h.soundcheck = findSoundcheck()
 	h.dockerUp = true
 	return nil
 }
@@ -212,7 +220,6 @@ func (h *Harness) runScenario(ctx context.Context, s manifest.Scenario) (Scenari
 	if err == nil {
 		err = h.setupScenario(ctx, st)
 	}
-	defer h.teardown(st)
 	for _, c := range s.AllCases() {
 		var cr CaseResult
 		var crun CaseRun
@@ -224,6 +231,10 @@ func (h *Harness) runScenario(ctx context.Context, s manifest.Scenario) (Scenari
 		cr.score()
 		sr.Cases = append(sr.Cases, cr)
 		run.Cases[cmpOr(c.Name, "-")] = crun
+	}
+	if terr := h.teardown(st); terr != nil {
+		h.logf("%s teardown: %s", s.ID, terr)
+		run.Notes = append(run.Notes, "teardown: "+terr.Error())
 	}
 	scoreScenario(&sr)
 	return sr, run

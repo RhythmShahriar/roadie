@@ -8,7 +8,7 @@
 // judges the other tools on the same inputs (testbed/tools, -tools) and
 // writes testbed/bench/work/results.json and docs/benchmark.md:
 //
-//	go run -tags testbed ./testbed/bench [-bin bin/rhythm-roadie] [-only r01,v01] [-tools all|none|wp-cli,...]
+//	go run -tags testbed ./testbed/bench [-bin bin/rhythm-roadie] [-strict] [-only r01,v01] [-tools all|none|wp-cli,...]
 //	go run -tags testbed ./testbed/bench -diff first/results.json second/results.json
 //	go run -tags testbed ./testbed/bench -render testbed/bench/work/results.json [-doc docs/benchmark.md]
 //	go run -tags testbed ./testbed/bench -drill [-for 5m]
@@ -16,7 +16,8 @@
 // It needs the testbed up (make -C testbed up) and prints canary IDs and
 // masked keys only, never a value. Exit codes: 0 every scenario that ran
 // was caught and the control pass had no false alarm, 1 something was
-// missed (or -diff found a difference), 2 usage, 3 the testbed or the
+// missed (or -diff found a difference, or -strict found a case Roadie
+// answered not-built or a control pass with no check), 2 usage, 3 the testbed or the
 // binary couldn't be used.
 package main
 
@@ -60,6 +61,7 @@ type options struct {
 	perRun                                        bool
 	baseline                                      string
 	tools, greenmask, doc, render                 string
+	strict                                        bool
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -82,6 +84,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fl.StringVar(&o.greenmask, "greenmask", "0.2.26", "the Greenmask release judged (testbed/Makefile pins it)")
 	fl.StringVar(&o.doc, "doc", "", "where to write the benchmark page (default: docs/benchmark.md for a run of every scenario or -render, none with -only); none for no page")
 	fl.StringVar(&o.render, "render", "", "write the benchmark page from this results.json without running anything")
+	fl.BoolVar(&o.strict, "strict", false, "also fail when Roadie answers not-built for a case or the control pass checks nothing")
 	diff := fl.Bool("diff", false, "compare the scored parts of two results.json files (the arguments)")
 	drill := fl.Bool("drill", false, "run only the side-effect drill on the running staging and print gate 3")
 	fl.DurationVar(&o.drillFor, "for", 5*time.Minute, "with -drill: how long the drill runs")
@@ -200,7 +203,14 @@ func runBench(ctx context.Context, o options, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintln(stdout, "page:", doc)
 	}
-	if s.Outcomes[Missed] > 0 || s.Outcomes[Errored] > 0 || s.FalseAlarms > 0 || res.Run.Perf != nil && !res.Run.Perf.Pass {
+	fail := s.Outcomes[Missed] > 0 || s.Outcomes[Errored] > 0 || s.FalseAlarms > 0 || res.Run.Perf != nil && !res.Run.Perf.Pass
+	if o.strict {
+		for _, p := range StrictProblems(res.Scored, h.manifest) {
+			fmt.Fprintln(stdout, "strict:", p)
+			fail = true
+		}
+	}
+	if fail {
 		return 1
 	}
 	return 0

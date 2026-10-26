@@ -583,7 +583,7 @@ func unpackBinary(release, dir, name string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s isn't a .tar.gz: %w", filepath.Base(release), err)
 	}
-	if err := untar(zr, dir); err != nil {
+	if _, err := untar(zr, dir); err != nil {
 		return "", err
 	}
 	var found string

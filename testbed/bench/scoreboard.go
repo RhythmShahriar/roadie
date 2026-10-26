@@ -310,7 +310,7 @@ func WriteDoc(w io.Writer, r Results, f *manifest.File) error {
 	b.line("Docker with Compose v2 and Go. From a clean checkout:")
 	b.line("")
 	b.line("```sh")
-	b.line("make -C testbed up          # build and start the sealed testbed, seed the canaries (127.0.0.1:18920-18939)")
+	b.line("make -C testbed up          # build and start the sealed testbed, seed the canaries (127.0.0.1:18920-18929)")
 	b.line("make -C testbed seal        # prove no container reaches a public address")
 	b.line("make -C testbed bench       # every scenario, the control pass and the other tools; writes docs/benchmark.md")
 	b.line("make -C testbed reproduce   # run it twice and fail if the score differs")

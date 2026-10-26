@@ -70,6 +70,9 @@ type Summary struct {
 	VerifyBad         int            `json:"verify_bad"`
 	FalseAlarms       int            `json:"false_alarms"`
 	ControlChecks     int            `json:"control_checks"`
+	// NotBuilt counts cases Roadie answered with not-built (pending
+	// without the manifest saying so); -strict fails on any.
+	NotBuilt int `json:"not_built,omitempty"`
 }
 
 // ScenarioResult is one scenario's score.
@@ -88,6 +91,9 @@ type CaseResult struct {
 	Name    string `json:"name,omitempty"`
 	Outcome string `json:"outcome"`
 	Pending string `json:"pending,omitempty"`
+	// NotBuilt is set when the case is pending because Roadie answered
+	// not-built, not because the manifest marks it pending.
+	NotBuilt bool `json:"not_built,omitempty"`
 	// Detail says why the harness couldn't run the case (Errored).
 	Detail string `json:"detail,omitempty"`
 	Gates  []Gate `json:"gates"`
@@ -136,6 +142,8 @@ type RunInfo struct {
 type ScenarioRun struct {
 	WallMS int64              `json:"wall_ms"`
 	Cases  map[string]CaseRun `json:"cases,omitempty"`
+	// Notes are problems after the cases ran (Echo not coming back).
+	Notes []string `json:"notes,omitempty"`
 }
 
 // CaseRun is what one case's Roadie run took and what the drill did.
@@ -220,6 +228,9 @@ func summarize(sc *Scored, kinds map[string]manifest.Scenario) {
 			}
 		}
 		for _, c := range r.Cases {
+			if c.NotBuilt {
+				s.NotBuilt++
+			}
 			s.Canaries += c.Canaries
 			s.LiveKeys += c.LiveKeys
 			if o := c.Oracle; o != nil {
@@ -382,5 +393,26 @@ func scoredLines(s Scored) map[string]string {
 	out["~summary"] = string(b)
 	b, _ = json.Marshal(s.Control)
 	out["~control"] = string(b)
+	return out
+}
+
+// StrictProblems lists why a run fails under -strict on top of the
+// usual outcome checks: a case Roadie left pending with not-built or
+// a control pass that checked nothing although a good scenario ran.
+// Scenarios the manifest marks pending don't count.
+func StrictProblems(sc Scored, kinds map[string]manifest.Scenario) []string {
+	var out []string
+	if n := sc.Summary.NotBuilt; n > 0 {
+		out = append(out, fmt.Sprintf("%d case(s) stopped at not-built", n))
+	}
+	good := false
+	for _, r := range sc.Scenarios {
+		if kinds[r.ID].Good && r.Pending == "" {
+			good = true
+		}
+	}
+	if good && sc.Control.Checks == 0 {
+		out = append(out, "the control pass checked nothing")
+	}
 	return out
 }

@@ -346,8 +346,9 @@ func TestWindow(t *testing.T) {
 		t.Errorf("deletes %d, gate %+v", deletes, g)
 	}
 
-	// Echo down (r22) is a note, not an error.
-	w = &Window{Logs: l, Echo: Echo{Base: "http://127.0.0.1:33139", Token: token}}
+	// Echo stopped on purpose (r22) is a note, not an error.
+	down := Echo{Base: "http://127.0.0.1:33139", Token: token}
+	w = &Window{Logs: l, Echo: down, EchoDown: true}
 	if err := w.Start(context.Background(), Traffic{}, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -355,8 +356,56 @@ func TestWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(g.Notes) != 2 || !g.Pass() {
-		t.Errorf("Echo down: %+v", g)
+	if len(g.Notes) != 2 || g.EchoUnread || !g.Pass() {
+		t.Errorf("Echo down on purpose: %+v", g)
+	}
+
+	// Anywhere else Echo not answering fails the gate: its captures
+	// would go uncounted.
+	w = &Window{Logs: l, Echo: down}
+	if err := w.Start(context.Background(), Traffic{}, 0); err != nil {
+		t.Fatal(err)
+	}
+	g, err = w.Judge(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g.Notes) != 2 || !g.EchoUnread || g.Pass() {
+		t.Errorf("Echo unreachable: %+v", g)
+	}
+
+	// A wrong token is the same failure.
+	w = &Window{Logs: l, Echo: Echo{Base: "http://" + portEcho, Token: "wrong"}}
+	if err := w.Start(context.Background(), Traffic{}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if g, err = w.Judge(context.Background()); err != nil || !g.EchoUnread || g.Pass() {
+		t.Errorf("wrong token: %+v %v", g, err)
+	}
+
+	// Wait returns once Echo answers; it returns the last error when it never does.
+	if err := (Echo{Base: "http://" + portEcho, Token: token}).Wait(context.Background(), time.Second); err != nil {
+		t.Errorf("Wait on a running Echo: %v", err)
+	}
+	if err := down.Wait(context.Background(), 600*time.Millisecond); err == nil {
+		t.Error("Wait on a stopped Echo returned nil")
+	}
+}
+
+func TestGate3Pass(t *testing.T) {
+	for _, c := range []struct {
+		g    Gate3
+		pass bool
+	}{
+		{Gate3{DNS: 3, StubCalls: 2, EchoCaptures: 4}, true},
+		{Gate3{Sinkhole: 1}, false},
+		{Gate3{StubLive: 1}, false},
+		{Gate3{EchoRealRecips: 1}, false},
+		{Gate3{EchoUnread: true}, false},
+	} {
+		if c.g.Pass() != c.pass {
+			t.Errorf("%+v: Pass %v, want %v", c.g, !c.pass, c.pass)
+		}
 	}
 }
 

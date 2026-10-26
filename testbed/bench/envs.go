@@ -231,7 +231,8 @@ func (c *containerEnv) Collect(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("%s: reading %s: %w", c.ctr, ctrWork, err)
 	}
-	return untar(bytes.NewReader(out), c.work)
+	_, err = untar(bytes.NewReader(out), c.work)
+	return err
 }
 
 func (c *containerEnv) Absent(ctx context.Context, globs []string) ([]string, error) {
@@ -311,15 +312,17 @@ func (r *runnerEnv) Absent(context.Context, []string) ([]string, error) { return
 
 // untar extracts a tar stream into dir. Names that climb out of dir and
 // links are skipped: the stream comes from a container Roadie wrote to.
-func untar(r io.Reader, dir string) error {
+// It returns the links it skipped, by name, so a caller judging the tree
+// can say what went unread.
+func untar(r io.Reader, dir string) (links []string, err error) {
 	tr := tar.NewReader(r)
 	for {
 		h, err := tr.Next()
 		if errors.Is(err, io.EOF) {
-			return nil
+			return links, nil
 		}
 		if err != nil {
-			return err
+			return links, err
 		}
 		name := filepath.Clean(filepath.FromSlash(h.Name))
 		if name == "." || filepath.IsAbs(name) || name == ".." || strings.HasPrefix(name, ".."+string(filepath.Separator)) {
@@ -327,24 +330,26 @@ func untar(r io.Reader, dir string) error {
 		}
 		dst := filepath.Join(dir, name)
 		switch h.Typeflag {
+		case tar.TypeSymlink, tar.TypeLink:
+			links = append(links, filepath.ToSlash(name))
 		case tar.TypeDir:
 			if err := os.MkdirAll(dst, 0o700); err != nil {
-				return err
+				return links, err
 			}
 		case tar.TypeReg:
 			if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
-				return err
+				return links, err
 			}
 			f, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) // #nosec G304 -- dst is inside dir (checked above)
 			if err != nil {
-				return err
+				return links, err
 			}
 			_, err = io.Copy(f, io.LimitReader(tr, 16<<30))
 			if cerr := f.Close(); err == nil {
 				err = cerr
 			}
 			if err != nil {
-				return err
+				return links, err
 			}
 		}
 	}

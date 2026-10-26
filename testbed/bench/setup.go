@@ -134,20 +134,27 @@ func (h *Harness) setupScenario(ctx context.Context, st *scenarioState) error {
 	return nil
 }
 
-// teardown undoes what setup started for the whole scenario.
-func (h *Harness) teardown(st *scenarioState) {
-	if slices.Contains(st.s.Setup, manifest.SetupEchoDown) {
-		_, _ = docker(context.Background(), nil, "start", container("echo"))
-		// Wait until Echo answers again, so the next scenario's window
-		// can clear it.
-		e := Echo{Base: gateEcho, Token: h.echoTok}
-		for i := 0; i < 60; i++ {
-			if _, err := e.Messages(context.Background()); err == nil {
-				break
-			}
-			time.Sleep(500 * time.Millisecond)
-		}
+// teardown undoes what setup started for the whole scenario or one of
+// its cases. It fails when Echo doesn't answer again within 30 s: every
+// later gate 3 window would then miss Echo's captures.
+func (h *Harness) teardown(st *scenarioState) error {
+	down := slices.Contains(st.s.Setup, manifest.SetupEchoDown)
+	for _, c := range st.s.AllCases() {
+		down = down || slices.Contains(c.Setup, manifest.SetupEchoDown)
 	}
+	if !down {
+		return nil
+	}
+	ctx := context.Background()
+	if _, err := docker(ctx, nil, "start", container("echo")); err != nil {
+		return fmt.Errorf("starting Echo again: %w", errDetail(err))
+	}
+	// Wait until Echo answers again, so the next scenario's window can
+	// clear it.
+	if err := (Echo{Base: gateEcho, Token: h.echoTok}).Wait(ctx, 30*time.Second); err != nil {
+		return fmt.Errorf("echo didn't answer again after the scenario: %w", err)
+	}
+	return nil
 }
 
 func (h *Harness) setupStep(ctx context.Context, st *scenarioState, step, work string) error {

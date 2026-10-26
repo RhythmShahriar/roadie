@@ -388,14 +388,19 @@ type Gate3 struct {
 	Leaks          []Leak `json:"leaks"`
 	// Egress lists the r23 paths whose marker reached the sinkhole.
 	Egress []string `json:"egress,omitempty"`
+	// EchoUnread is set when Echo's captures couldn't be cleared or read
+	// in a window where Echo should be up: mail it caught for a real
+	// person would go uncounted, so the gate can't pass.
+	EchoUnread bool `json:"echo_unread,omitempty"`
 	// Notes are reasons a part could not be read (Echo down, say).
 	Notes []string `json:"notes,omitempty"`
 }
 
 // Pass reports whether nothing got out: zero sinkhole connections, zero
-// stub calls with a live key and zero captures to real recipients.
+// stub calls with a live key, zero captures to real recipients and
+// Echo's captures read.
 func (g Gate3) Pass() bool {
-	return g.Sinkhole == 0 && g.StubLive == 0 && g.EchoRealRecips == 0
+	return g.Sinkhole == 0 && g.StubLive == 0 && g.EchoRealRecips == 0 && !g.EchoUnread
 }
 
 // egressMarker is what r23's plugin puts in the first bytes of each path.
@@ -501,6 +506,23 @@ func (e Echo) Messages(ctx context.Context) ([]EchoMessage, error) {
 	return ms, err
 }
 
+// Wait asks Echo for its captures until it answers or wait runs out.
+// It returns the last error.
+func (e Echo) Wait(ctx context.Context, wait time.Duration) error {
+	deadline := time.Now().Add(wait)
+	for {
+		_, err := e.Messages(ctx)
+		if err == nil || !time.Now().Before(deadline) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+}
+
 // Clear deletes every capture, so the next window starts empty.
 func (e Echo) Clear(ctx context.Context) error {
 	return e.do(ctx, http.MethodDelete, "/v1/messages", nil)
@@ -533,9 +555,13 @@ type Window struct {
 	Logs Logs
 	Echo Echo
 	Real map[string]bool
+	// EchoDown says the scenario stopped Echo on purpose (r22): Echo
+	// not answering is then a note. Otherwise it fails the gate.
+	EchoDown bool
 
 	mark     Mark
 	notes    []string
+	unread   bool
 	cancel   context.CancelFunc
 	done     chan TrafficStats
 	stopCron func()
@@ -547,10 +573,12 @@ type Window struct {
 func (w *Window) Start(ctx context.Context, t Traffic, cron time.Duration) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.notes = nil
+	w.notes, w.unread = nil, false
 	if err := w.Echo.Clear(ctx); err != nil {
 		// Echo down is a scenario of its own (r22): note it and go on.
+		// Anywhere else old captures would be counted, or new ones lost.
 		w.notes = append(w.notes, "Echo's captures couldn't be cleared: "+err.Error())
+		w.unread = !w.EchoDown
 	}
 	w.mark = w.Logs.Mark()
 	w.stopCron = func() {}
@@ -585,11 +613,14 @@ func (w *Window) Stop() TrafficStats {
 // Judge reads everything since Start.
 func (w *Window) Judge(ctx context.Context) (Gate3, error) {
 	notes := slices.Clone(w.notes)
+	unread := w.unread
 	ms, err := w.Echo.Messages(ctx)
 	if err != nil {
 		notes = append(notes, "Echo's captures couldn't be read: "+err.Error())
+		unread = unread || !w.EchoDown
 	}
 	g, err := Judge(w.Logs, w.mark, ms, w.Real)
 	g.Notes = append(g.Notes, notes...)
+	g.EchoUnread = unread
 	return g, err
 }

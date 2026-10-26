@@ -60,7 +60,8 @@ func (h *Harness) runCase(ctx context.Context, st *scenarioState, c manifest.Cas
 
 	// Gate 3's window opens before the run when traffic runs during it.
 	if st.traffic || st.cron || st.s.Drill && c.Expect.Sinkhole != nil {
-		st.window = &Window{Logs: h.logs(), Echo: Echo{Base: gateEcho, Token: h.echoTok}, Real: st.real}
+		st.window = &Window{Logs: h.logs(), Echo: Echo{Base: gateEcho, Token: h.echoTok}, Real: st.real,
+			EchoDown: slices.Contains(slices.Concat(st.s.Setup, c.Setup), manifest.SetupEchoDown)}
 		t := Traffic{}
 		if st.traffic {
 			paths, cookies := stagingPages(ctx, h.Ex)
@@ -92,6 +93,7 @@ func (h *Harness) runCase(ctx context.Context, st *scenarioState, c manifest.Cas
 	env, perr := ParseEnvelope(run.Stdout)
 	if env.NotBuilt() {
 		cr.res.Pending = "rhythm-roadie stopped at a part another lane hasn't built yet (not-built)"
+		cr.res.NotBuilt = true
 		return cr.res, cr.run
 	}
 	if err := cr.env.Collect(ctx); err != nil {
@@ -139,7 +141,7 @@ func (h *Harness) prepareCase(ctx context.Context, cr *caseRun) error {
 		if err := h.overlay(ctx, ctrLaravel, ctrRoot+"/site", filepath.Join(cr.st.in, "files"), h.dbValues(true, true)); err != nil {
 			return err
 		}
-		if err := h.collectTree(ctx, manifest.OutLaravelApp, filepath.Join(cr.work, "input-site")); err != nil {
+		if _, err := h.collectTree(ctx, manifest.OutLaravelApp, filepath.Join(cr.work, "input-site")); err != nil {
 			return err
 		}
 	}
