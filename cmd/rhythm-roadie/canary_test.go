@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -180,8 +181,9 @@ func canaryDump(c map[core.FakeKind][]string, key string) string {
 }
 
 // TestCanaries runs copy, verify (FAIL on the untouched input) and plan
-// on a dump full of canaries with every output and asserts that no
-// canary reaches stdout, stderr, a report, an -o file or the copy. It
+// on a dump full of canaries with every output, then plan and verify on
+// a site whose wp-config.php holds secrets. It asserts that no canary
+// reaches stdout, stderr, a report, an -o file or the copy. It
 // turns on once the io, values, site, detect and engine lanes merge.
 func TestCanaries(t *testing.T) {
 	requireLanes(t, "io", "values", "site", "detect", "engine")
@@ -239,8 +241,72 @@ func TestCanaries(t *testing.T) {
 			scan.scan(t, where+" stderr", errOut)
 		}
 	}
+	// A WordPress site whose wp-config.php holds the database password, a
+	// salt and live keys: plan reads it as a target and verify checks it.
+	// Its database is a loopback port nothing listens on, so both stop
+	// with an error; the error paths must not leak either.
+	secrets := siteSecrets(canaries)
+	siteScan := newLeakScanner(canaries, append([]string{key}, secrets...)...)
+	site, wpConfig := canarySite(t, dir, canaries, key, secrets)
+	for _, args := range [][]string{
+		{"plan", "--from", input, "--to", site, "--url", "https://staging.canary-shop.example", "--production-url", "https://canary-shop.example",
+			"--offline", "--no-config", "--debug", "--json", "-o", filepath.Join(dir, "out", "site-plan.md")},
+		{"verify", site, "--production", "canary-shop.example", "--offline", "--no-config", "--debug", "--md",
+			"-o", filepath.Join(dir, "out", "site-verify.json"), "-o", filepath.Join(dir, "out", "site-verify.sarif")},
+	} {
+		out, errOut, code := runCmd(t, args[0], args[1:]...)
+		where := args[0] + " on a site"
+		t.Logf("%s: exit %d", where, code)
+		siteScan.scan(t, where+" stdout", out)
+		siteScan.scan(t, where+" stderr", errOut)
+	}
 	// Every file the runs wrote: the copies, -o files, saved reports.
-	scan.scanDir(t, dir, input)
+	siteScan.scanDir(t, dir, input, wpConfig)
+}
+
+// siteSecrets are the values a wp-config.php fixture holds besides the
+// live key: the database password, a salt and a SendGrid key, made at
+// run time so no literal secret is committed.
+func siteSecrets(c map[core.FakeKind][]string) []string {
+	last := strings.ToLower(c[core.KLastName][3])
+	return []string{
+		testutil.J("Cnry-", last, "-pw-", c[core.KPostcode][2][:2], "9q"),
+		testutil.J("k#", c[core.KFirstName][4], "|", last, "~salt+", c[core.KIP][4]),
+		testutil.J("SG.", "Cnry", last, "Qx7.", "Tz", strings.ToUpper(last), "w0rLd8VbN3mKp2"),
+	}
+}
+
+// canarySite writes a WordPress folder under dir whose wp-config.php
+// holds secrets and key and returns the folder and the file, which the
+// leak scan skips: it is the input.
+func canarySite(t *testing.T, dir string, c map[core.FakeKind][]string, key string, secrets []string) (string, string) {
+	t.Helper()
+	site := filepath.Join(dir, "staging-site")
+	for _, d := range []string{"wp-content/plugins", "wp-includes"} {
+		if err := os.MkdirAll(filepath.Join(site, d), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	php := func(name, value string) string {
+		return fmt.Sprintf("define( '%s', '%s' );\n", name, strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(value))
+	}
+	conf := "<?php\n" + php("DB_NAME", "shop") + php("DB_USER", c[core.KUsername][4]) + php("DB_PASSWORD", secrets[0]) +
+		// 33101 is in this lane's test port range and nothing listens on it.
+		php("DB_HOST", "127.0.0.1:33101") + php("DB_CHARSET", "utf8mb4") + php("AUTH_KEY", secrets[1]) +
+		php("STRIPE_SECRET_KEY", key) + php("SENDGRID_API_KEY", secrets[2]) + php("WP_ENVIRONMENT_TYPE", "staging") +
+		php("WP_HOME", "https://staging.canary-shop.example") + php("ADMIN_EMAIL_NOTE", c[core.KEmail][4]) +
+		"$table_prefix = 'wp_';\nif ( ! defined( 'ABSPATH' ) ) {\n\tdefine( 'ABSPATH', __DIR__ . '/' );\n}\nrequire_once ABSPATH . 'wp-settings.php';\n"
+	files := map[string]string{
+		"wp-config.php":           conf,
+		"wp-settings.php":         "<?php\n",
+		"wp-includes/version.php": "<?php\n$wp_version = '6.6.2';\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(site, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return site, filepath.Join(site, "wp-config.php")
 }
 
 // canaryFindings puts canaries into findings the way the engine reports
@@ -338,6 +404,27 @@ func TestCanaryViews(t *testing.T) {
 		}
 	}
 	scan.scanDir(t, dir)
+}
+
+// The wp-config.php fixture holds every secret and canary it claims to,
+// so the site part of TestCanaries checks something once it turns on.
+func TestCanarySiteFixture(t *testing.T) {
+	c := testutil.Canaries(5)
+	key := testutil.J("sk_", "live_", "51St", "Zx0aTq2wN8eLm3VbQr")
+	secrets := siteSecrets(c)
+	_, wpConfig := canarySite(t, t.TempDir(), c, key, secrets)
+	b, err := os.ReadFile(wpConfig) // #nosec G304 -- the test's own fixture
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range append([]string{key, c[core.KUsername][4], c[core.KEmail][4]}, secrets...) {
+		if s := newLeakScanner(nil, v); len(s.find(string(b))) == 0 {
+			t.Errorf("wp-config.php lacks one of its secrets")
+		}
+	}
+	if fi, err := os.Stat(wpConfig); err != nil || fi.Mode().Perm()&0o077 != 0 && runtime.GOOS != "windows" {
+		t.Errorf("wp-config.php mode: %v %v", fi, err)
+	}
 }
 
 // The leak scanner itself finds every form of a canary, so a passing
