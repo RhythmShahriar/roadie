@@ -86,10 +86,11 @@ func (r *run) configFile(ctx context.Context, s core.Site, name string) {
 		r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, core.Skipped{Table: name, Reason: "not parsed: " + err.Error()})
 		return
 	}
+	r.countConfig()
 	if !r.skip.skips("key.") {
 		for _, h := range keys.ScanPairs(name, pairs) {
 			var hits []core.KeyHit
-			addKeyHit(h, &r.agg, &hits)
+			addKeyHit(h, r.sink(), &hits)
 			for _, k := range hits {
 				r.addKey(k)
 			}
@@ -103,7 +104,7 @@ func (r *run) configFile(ctx context.Context, s core.Site, name string) {
 	for _, p := range pairs {
 		at := core.Location{File: name, Line: p.Line}
 		if slices.Contains(siteURLNames, p.Name) && !r.skip.skips(core.FindingURLProductionSiteURL) && matchHost(hosts, hostOf(p.Value)) {
-			r.agg.Add(core.Finding{ID: core.FindingURLProductionSiteURL, Severity: core.SeverityCritical,
+			r.add(core.Finding{ID: core.FindingURLProductionSiteURL, Severity: core.SeverityCritical,
 				Title: p.Name + " is still production's", Fix: fixes[core.FindingURLProductionSiteURL],
 				Locations: []core.LocationCount{{Location: at}}})
 		}
@@ -112,14 +113,32 @@ func (r *run) configFile(ctx context.Context, s core.Site, name string) {
 		}
 		pv, inProd := prod[p.Name]
 		if slices.Contains(saltNames, p.Name) && inProd && strings.TrimSpace(pv) != "" && strings.TrimSpace(pv) == strings.TrimSpace(p.Value) {
-			r.agg.Add(core.Finding{ID: core.FindingConfigSalts, Severity: core.SeverityMedium,
+			r.add(core.Finding{ID: core.FindingConfigSalts, Severity: core.SeverityMedium,
 				Title: titles[core.FindingConfigSalts], Detail: p.Name, Fix: fixes[core.FindingConfigSalts],
 				Locations: []core.LocationCount{{Location: at}}})
 		}
 		if slices.Contains(productionNames, p.Name) && pointsAtProduction(p, pv, inProd, hosts) {
-			r.agg.Add(core.Finding{ID: core.FindingConfigPointsAtProduction, Severity: core.SeverityCritical,
+			r.add(core.Finding{ID: core.FindingConfigPointsAtProduction, Severity: core.SeverityCritical,
 				Title: p.Name + " points at production", Detail: p.Name, Fix: fixes[core.FindingConfigPointsAtProduction],
 				Locations: []core.LocationCount{{Location: at}}})
+		}
+	}
+}
+
+// countConfig counts one parsed config file for the checks that read it.
+func (r *run) countConfig() {
+	if !r.skip.skips("key.") {
+		for _, id := range []string{CheckKeyLive, core.FindingKeyGeneric, core.FindingKeyUnknownEnv} {
+			r.count(id, 1)
+		}
+	}
+	if !r.skip.skips(core.FindingURLProductionSiteURL) && len(productionHosts(r.j.Production)) > 0 {
+		r.count(core.FindingURLProductionSiteURL, 1)
+	}
+	if !r.skip.skips("config.") {
+		r.count(core.FindingConfigPointsAtProduction, 1)
+		if len(r.j.ProductionPairs) > 0 {
+			r.count(core.FindingConfigSalts, 1)
 		}
 	}
 }
@@ -268,6 +287,7 @@ func (r *run) codeFiles(ctx context.Context, s core.Site) {
 			if err != nil {
 				continue
 			}
+			r.count(CheckKeyLive, 1)
 			r.codeFile(f.Rel, b)
 		}
 	}
@@ -291,9 +311,10 @@ func (r *run) codeFile(rel string, b []byte) {
 				continue
 			}
 			h.Action = "manual"
-			r.agg.Add(core.Finding{ID: h.ID, Severity: h.Severity, Title: keyTitle(h), Fix: keyManualMessage(h),
-				Locations: []core.LocationCount{{Location: h.At}}, Examples: examples(h.Masked)})
-			r.addKey(h)
+			if r.add(core.Finding{ID: h.ID, Severity: h.Severity, Title: keyTitle(h), Fix: keyManualMessage(h),
+				Locations: []core.LocationCount{{Location: h.At}}, Examples: examples(h.Masked)}) {
+				r.addKey(h)
+			}
 		}
 	}
 }
@@ -317,7 +338,7 @@ var uploadRules = []uploadRule{
 // uploads lists the PRD 15.1 paths by name and size, never reading them.
 func (r *run) uploads(ctx context.Context, s core.Site) {
 	add := func(rel, what string, sev core.Severity, n int64) {
-		r.agg.Add(core.Finding{ID: core.FindingUploadsPersonal, Severity: sev, Count: n,
+		r.add(core.Finding{ID: core.FindingUploadsPersonal, Severity: sev, Count: n,
 			Title: "The staging copy holds " + what, Fix: fixes[core.FindingUploadsPersonal],
 			Locations: []core.LocationCount{{Location: core.Location{File: rel}, Count: n}}})
 	}
@@ -327,6 +348,7 @@ func (r *run) uploads(ctx context.Context, s core.Site) {
 			if err != nil {
 				continue
 			}
+			r.count(core.FindingUploadsPersonal, 1)
 			for _, f := range list {
 				if f.Rel == u.file && !f.Dir && f.Size > 0 {
 					add(u.file, u.what, u.severity, 1)
@@ -338,6 +360,7 @@ func (r *run) uploads(ctx context.Context, s core.Site) {
 		if err != nil {
 			continue
 		}
+		r.count(core.FindingUploadsPersonal, 1)
 		var n int64
 		for _, f := range list {
 			if !f.Dir && f.Size > 0 && path.Base(f.Rel) != "index.php" && path.Base(f.Rel) != ".htaccess" && path.Base(f.Rel) != "index.html" {
@@ -353,6 +376,7 @@ func (r *run) uploads(ctx context.Context, s core.Site) {
 		if err != nil {
 			continue
 		}
+		r.count(core.FindingUploadsPersonal, 1)
 		for _, f := range list {
 			name := strings.ToLower(path.Base(f.Rel))
 			dump := strings.HasSuffix(name, ".sql") || strings.HasSuffix(name, ".sql.gz") || strings.HasSuffix(name, ".zip")
@@ -367,9 +391,11 @@ func (r *run) uploads(ctx context.Context, s core.Site) {
 // steps runs each Step's check and records its side effect and findings.
 func (r *run) steps(ctx context.Context, s core.Site) {
 	for _, st := range r.j.Steps {
-		if r.skip.skips(st.ID()) {
+		if why := r.skipReason(st.ID()); why != "" {
+			r.skipCheck(st.ID(), why)
 			continue
 		}
+		r.count(st.ID(), 1)
 		se, found, err := st.Check(ctx, s)
 		if err != nil {
 			se = core.SideEffect{ID: st.ID(), Status: "unknown", How: "the check failed: " + err.Error()}
@@ -379,7 +405,7 @@ func (r *run) steps(ctx context.Context, s core.Site) {
 		}
 		r.res.SideEffects = append(r.res.SideEffects, se)
 		for _, f := range found {
-			r.agg.Add(f)
+			r.add(f)
 		}
 	}
 }

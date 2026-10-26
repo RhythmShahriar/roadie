@@ -21,6 +21,7 @@ type scanner struct {
 	survivors core.Detector
 	skip      skipper
 	findURL   func([]byte) []core.Span
+	filter    *filter
 }
 
 // detectorSkip names the --skip entry of each PII detector.
@@ -30,8 +31,8 @@ var detectorSkip = map[string]string{
 	core.FindingPIIIBAN: "cards",
 }
 
-func newScanner(j Job, skip skipper) *scanner {
-	s := &scanner{skip: skip}
+func newScanner(j Job, skip skipper, f *filter) *scanner {
+	s := &scanner{skip: skip, filter: f}
 	for _, d := range detect.All() {
 		if skip[detectorSkip[d.ID()]] {
 			continue
@@ -53,6 +54,7 @@ func (s *scanner) batch(w work) result {
 	b := w.b
 	t := b.Table
 	var acc core.Aggregator
+	out := filtered{agg: &acc, f: s.filter, hidden: &res.hidden}
 	for _, ri := range w.rows {
 		row := &b.Rows[ri]
 		res.rows++
@@ -70,7 +72,7 @@ func (s *scanner) batch(w work) result {
 			at := base
 			at.Column = c.Name
 			sc := core.ScanContext{Table: t.Name, Column: c.Name, ColumnKind: w.kinds[c.Name], Row: get}
-			s.value(v.Raw, sc, at, &acc, &res.keys)
+			s.value(v.Raw, sc, at, out, &res.keys)
 		}
 	}
 	res.findings = acc.Findings()
@@ -129,13 +131,13 @@ var ipKeys = map[string]bool{"ip": true, "ip_address": true, "ipaddress": true, 
 
 // value scans one field: the gateway and encryption checks on the whole
 // value, then the detectors, key rules and URL matcher on every leaf.
-func (s *scanner) value(v []byte, sc core.ScanContext, at core.Location, acc *core.Aggregator, hits *[]core.KeyHit) {
+func (s *scanner) value(v []byte, sc core.ScanContext, at core.Location, acc sink, hits *[]core.KeyHit) {
 	settings := settingsOf(v)
 	if !s.skip.skips(core.FindingKeyLiveMode) {
 		s.liveMode(v, settings, sc, at, acc)
 	}
 	if encrypted(v) {
-		acc.Add(core.Finding{ID: core.FindingDataEncrypted, Severity: core.SeverityInfo, Title: titles[core.FindingDataEncrypted],
+		acc.add(core.Finding{ID: core.FindingDataEncrypted, Severity: core.SeverityInfo, Title: titles[core.FindingDataEncrypted],
 			Locations: []core.LocationCount{{Location: at}}})
 	}
 	sibs := map[string]map[string]string{}
@@ -151,7 +153,7 @@ func (s *scanner) value(v []byte, sc core.ScanContext, at core.Location, acc *co
 			}
 		}
 		emit := func(h core.Hit) {
-			acc.Add(core.Finding{ID: h.ID, Severity: h.Severity, Title: titles[h.ID], Fix: fixes[h.ID],
+			acc.add(core.Finding{ID: h.ID, Severity: h.Severity, Title: titles[h.ID], Fix: fixes[h.ID],
 				Locations: []core.LocationCount{{Location: lat}}, Examples: examples(h.Masked), Detail: encodingDetail(h)})
 		}
 		for _, d := range s.detectors {
@@ -179,7 +181,7 @@ func (s *scanner) value(v []byte, sc core.ScanContext, at core.Location, acc *co
 				if siteURLOption(sc) {
 					id = core.FindingURLProductionSiteURL
 				}
-				acc.Add(core.Finding{ID: id, Severity: urlSeverity(id), Title: titles[id], Fix: fixes[id],
+				acc.add(core.Finding{ID: id, Severity: urlSeverity(id), Title: titles[id], Fix: fixes[id],
 					Locations: []core.LocationCount{{Location: lat}}})
 			}
 		}
@@ -194,8 +196,9 @@ func (s *scanner) value(v []byte, sc core.ScanContext, at core.Location, acc *co
 }
 
 // addKeyHit turns a key hit into a finding: live keys by their own ID,
-// unknown ones as key.unknown-env. Test keys are no finding.
-func addKeyHit(h core.KeyHit, acc *core.Aggregator, hits *[]core.KeyHit) {
+// unknown ones as key.unknown-env. Test keys are no finding. A hit whose
+// finding is hidden is left out of hits too.
+func addKeyHit(h core.KeyHit, acc sink, hits *[]core.KeyHit) {
 	if h.Env == keys.EnvTest {
 		return
 	}
@@ -203,9 +206,10 @@ func addKeyHit(h core.KeyHit, acc *core.Aggregator, hits *[]core.KeyHit) {
 	if h.Env == keys.EnvUnknown {
 		id = core.FindingKeyUnknownEnv
 	}
-	acc.Add(core.Finding{ID: id, Severity: h.Severity, Title: keyTitle(h), Fix: fixes[id],
-		Locations: []core.LocationCount{{Location: h.At}}, Examples: examples(h.Masked)})
-	*hits = append(*hits, h)
+	if acc.add(core.Finding{ID: id, Severity: h.Severity, Title: keyTitle(h), Fix: fixes[id],
+		Locations: []core.LocationCount{{Location: h.At}}, Examples: examples(h.Masked)}) {
+		*hits = append(*hits, h)
+	}
 }
 
 func examples(masked string) []string {
@@ -266,7 +270,7 @@ func parentOf(p string) string {
 
 // liveMode flags a known gateway left in live mode (key.live-mode, PRD
 // 15.2), even with blank secrets.
-func (s *scanner) liveMode(v []byte, settings map[string]string, sc core.ScanContext, at core.Location, acc *core.Aggregator) {
+func (s *scanner) liveMode(v []byte, settings map[string]string, sc core.ScanContext, at core.Location, acc sink) {
 	if !strings.HasSuffix(sc.Table, "options") || !strings.EqualFold(sc.Column, "option_value") || sc.Row == nil {
 		return
 	}
@@ -288,7 +292,7 @@ func (s *scanner) liveMode(v []byte, settings map[string]string, sc core.ScanCon
 	if g.ModePath != "" {
 		lat.Path = "serialized:" + g.ModePath
 	}
-	acc.Add(core.Finding{ID: core.FindingKeyLiveMode, Severity: core.SeverityHigh,
+	acc.add(core.Finding{ID: core.FindingKeyLiveMode, Severity: core.SeverityHigh,
 		Title: g.Name + " is in live mode", Fix: fixes[core.FindingKeyLiveMode],
 		Locations: []core.LocationCount{{Location: lat}}})
 }

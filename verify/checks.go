@@ -205,12 +205,20 @@ func (r *run) siteHTTP(ctx context.Context) {
 	home, err := fetch(ctx, c, target, "/")
 	if err != nil {
 		r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, core.Skipped{Table: "--site /", Reason: fetchReason(err)})
+		r.skipCheck(core.FindingSearchIndexable, "the home page couldn't be fetched")
+		r.skipCheck(core.FindingAuthNone, "the home page couldn't be fetched")
 		return
 	}
 	robots, err := fetch(ctx, c, target, "/robots.txt")
 	if err != nil {
 		r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, core.Skipped{Table: "--site /robots.txt", Reason: fetchReason(err)})
 	}
+	pages := int64(1)
+	if robots != nil {
+		pages++
+	}
+	r.count(core.FindingSearchIndexable, pages)
+	r.count(core.FindingAuthNone, pages)
 	at := core.Location{File: target.Scheme + "://" + target.Host + "/"}
 	if home.status == http.StatusUnauthorized && home.header.Get("WWW-Authenticate") != "" {
 		// Behind basic auth the pages can't be read, which is the point.
@@ -224,14 +232,14 @@ func (r *run) siteHTTP(ctx context.Context) {
 			if noindex {
 				why = "robots.txt lets every crawler in"
 			}
-			r.agg.Add(core.Finding{ID: core.FindingSearchIndexable, Severity: core.SeverityMedium,
+			r.add(core.Finding{ID: core.FindingSearchIndexable, Severity: core.SeverityMedium,
 				Title:     "Search engines can index the staging site: " + why,
 				Fix:       "Run rhythm-roadie prepare --only exposure, or serve X-Robots-Tag: noindex.",
 				Locations: []core.LocationCount{{Location: at}}})
 		}
 	}
 	if home.status >= 200 && home.status < 300 {
-		r.agg.Add(core.Finding{ID: core.FindingAuthNone, Severity: core.SeverityLow,
+		r.add(core.Finding{ID: core.FindingAuthNone, Severity: core.SeverityLow,
 			Title:     "The staging site answers without a password",
 			Fix:       "Put it behind basic auth: rhythm-roadie prepare --basic-auth <user> writes the snippets.",
 			Locations: []core.LocationCount{{Location: at}}})
@@ -372,9 +380,10 @@ func (r *run) echo(ctx context.Context) {
 	}
 	c := client.New(u.String(), "")
 	c.HTTP = &http.Client{Timeout: echoTimeout}
+	r.count(core.FindingSideEffectMail, 1)
 	at := core.Location{File: u.Redacted()}
 	mail := func(title, fix string) {
-		r.agg.Add(core.Finding{ID: core.FindingSideEffectMail, Severity: core.SeverityCritical, Title: title, Fix: fix,
+		r.add(core.Finding{ID: core.FindingSideEffectMail, Severity: core.SeverityCritical, Title: title, Fix: fix,
 			Locations: []core.LocationCount{{Location: at}}})
 	}
 	h, err := c.Health(ctx)

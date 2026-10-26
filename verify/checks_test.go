@@ -95,6 +95,12 @@ func TestSiteNoindexAndAuth(t *testing.T) {
 	if find(res, core.FindingAuthNone) == nil || find(res, core.FindingAuthNone).Severity != core.SeverityLow {
 		t.Errorf("no auth: %v", ids(res))
 	}
+	if c := checkByID(res, core.FindingSearchIndexable); c.Status != "pass" || c.Checked != 2 {
+		t.Errorf("search.indexable check %+v", c)
+	}
+	if c := checkByID(res, core.FindingAuthNone); c.Status != "fail" {
+		t.Errorf("auth.none check %+v", c)
+	}
 
 	meta := &siteHandler{body: `<html><head><META name="robots" content='noindex,follow'></head></html>`, robots: "User-agent: *\nDisallow: /"}
 	if res := siteRun(t, Options{SiteURL: serve(t, meta, false).URL}); find(res, core.FindingSearchIndexable) != nil {

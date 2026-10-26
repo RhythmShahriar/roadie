@@ -183,6 +183,16 @@ func runJob(t *testing.T, j Job) *core.VerifyResult {
 	return res
 }
 
+// checkByID returns the check id of res, or a zero Check.
+func checkByID(res *core.VerifyResult, id string) core.Check {
+	for _, c := range res.Checks {
+		if c.ID == id {
+			return c
+		}
+	}
+	return core.Check{}
+}
+
 func find(res *core.VerifyResult, id string) *core.Finding {
 	for i := range res.Findings {
 		if res.Findings[i].ID == id {
@@ -589,9 +599,21 @@ func TestRunSteps(t *testing.T) {
 	if find(res, core.FindingSideEffectCron) == nil {
 		t.Errorf("findings %v", ids(res))
 	}
+	if c := checkByID(res, core.FindingSideEffectCron); c.Status != "fail" || c.Checked != 1 {
+		t.Errorf("cron check %+v", c)
+	}
+	if c := checkByID(res, core.FindingSideEffectWebhooks); c.Status != "pass" || c.Checked != 1 {
+		t.Errorf("webhooks check %+v", c)
+	}
+	if c := checkByID(res, core.FindingUploadsPersonal); c.Status != "pass" || c.Checked == 0 {
+		t.Errorf("uploads check on a site %+v", c)
+	}
 	res = runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"})), Steps: steps, Opts: Options{Skip: []string{"side-effects"}}})
 	if len(res.SideEffects) != 0 {
 		t.Errorf("skip side-effects: %+v", res.SideEffects)
+	}
+	if c := checkByID(res, core.FindingSideEffectCron); c.Status != "skip" || c.Detail != "left out with --skip side-effects" {
+		t.Errorf("skipped cron check %+v", c)
 	}
 }
 

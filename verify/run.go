@@ -68,6 +68,21 @@ type run struct {
 	// keySeen dedupes Keys by finding ID and location without the row.
 	keySeen map[string]bool
 	start   time.Time // when the run began, by Options.Clock
+	filter  *filter   // the baseline and ignore entries in force; nil hides nothing
+	urls    bool      // the production URL matcher ran
+	// checked is what each check looked at; why is why a check didn't run.
+	checked map[string]int64
+	why     map[string]string
+}
+
+// add records a finding unless the baseline or an ignore entry hides it.
+func (r *run) add(f core.Finding) bool {
+	return r.sink().add(f)
+}
+
+// sink is the run's aggregator behind its filter.
+func (r *run) sink() sink {
+	return filtered{agg: &r.agg, f: r.filter, hidden: &r.res.Hidden}
 }
 
 // Run scans the copy.
@@ -78,10 +93,23 @@ type run struct {
 // survivors detector in exact mode, the key rules and the production URL
 // matcher over every string leaf, then checks the site's config files,
 // code files and uploads and runs the Steps' checks. Findings are grouped
-// by core.Aggregator. A run that read no rows returns *core.Error
-// nothing-scanned (exit 3).
+// by core.Aggregator. Findings already in Options.Baseline and those an
+// Options.Ignore entry in force names are hidden and counted in
+// VerifyResult.Hidden; an entry past its date hides nothing and adds
+// info.ignore-expired. VerifyResult.Checks lists every check with its
+// outcome. A bad baseline or ignore entry returns *core.Error config
+// (exit 2); a run that read no rows returns *core.Error nothing-scanned
+// (exit 3).
 func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 	if err := checkOptions(j); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	if j.Opts.Clock != nil {
+		now = j.Opts.Clock()
+	}
+	filt, expired, err := newFilter(j.Opts, now)
+	if err != nil {
 		return nil, err
 	}
 	src, st, closeAll, err := openTarget(ctx, j)
@@ -89,10 +117,12 @@ func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 		return nil, err
 	}
 	defer closeAll()
-	r := &run{j: j, skip: newSkipper(j.Opts.Skip), site: st, keySeen: map[string]bool{}, start: time.Now()}
+	r := &run{j: j, skip: newSkipper(j.Opts.Skip), site: st, keySeen: map[string]bool{}, start: time.Now(),
+		checked: map[string]int64{}, why: map[string]string{}}
 	if j.Opts.Clock != nil {
 		r.start = j.Opts.Clock()
 	}
+	r.filter = filt
 	r.res = &core.VerifyResult{Mode: "heuristic"}
 	if j.Known != nil {
 		r.res.Mode = "exact"
@@ -113,7 +143,9 @@ func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 	if r.res.Coverage.RowsScanned == 0 {
 		return nil, nothingScanned(j, r.res.Coverage)
 	}
-	r.res.Findings = r.agg.Findings()
+	r.res.Findings = append(r.agg.Findings(), expiredFindings(expired)...)
+	sortFindings(r.res.Findings)
+	r.res.Checks = r.checks()
 	return r.res, nil
 }
 
@@ -214,6 +246,7 @@ type result struct {
 	idx      int
 	findings []core.Finding
 	keys     []core.KeyHit
+	hidden   int64
 	rows     int64
 	bytes    int64
 }
@@ -225,7 +258,8 @@ func (r *run) stream(ctx context.Context, src core.Source) (map[string]map[strin
 	if jobs <= 0 {
 		jobs = runtime.GOMAXPROCS(0)
 	}
-	sc := newScanner(r.j, r.skip)
+	sc := newScanner(r.j, r.skip, r.filter)
+	r.urls = sc.findURL != nil
 	in := make(chan work, jobs*2)
 	out := make(chan result, jobs*2)
 	var wg sync.WaitGroup
@@ -350,6 +384,7 @@ func (r *run) stream(ctx context.Context, src core.Source) (map[string]map[strin
 func (r *run) merge(res result) {
 	r.res.Coverage.RowsScanned += res.rows
 	r.res.Coverage.BytesScanned += res.bytes
+	r.res.Hidden += res.hidden
 	for _, f := range res.findings {
 		r.agg.Add(f)
 	}
@@ -431,16 +466,19 @@ func columnAt(b *core.Batch, pos int) *core.Column {
 
 // uncovered lists the uncovered columns of every table (PRD 11.3).
 func (r *run) uncovered(tables []*core.Table, samples map[string]map[string][][]byte) {
+	r.count(core.FindingUncoveredColumn, int64(len(tables)))
 	for _, t := range tables {
 		_, covered := columnKinds(t, r.j.Rules)
 		for _, u := range detect.Uncovered(t, covered, samples[t.Name]) {
-			r.res.Uncovered = append(r.res.Uncovered, u)
-			r.agg.Add(core.Finding{
+			kept := r.add(core.Finding{
 				ID: core.FindingUncoveredColumn, Severity: core.SeverityMedium,
 				Title:     detect.UncoveredTitle(u, samples[t.Name][u.Column]),
 				Locations: []core.LocationCount{{Location: core.Location{Table: u.Table, Column: u.Column}}},
 				Fix:       "Add the column under columns: in .roadie/config.yaml (rhythm-roadie explain uncovered-column).",
 			})
+			if kept {
+				r.res.Uncovered = append(r.res.Uncovered, u)
+			}
 		}
 	}
 }
