@@ -266,12 +266,12 @@ func (c dbConfig) endpoint(root string) core.Endpoint {
 		u.RawQuery = url.Values{"socket": {c.socket}}.Encode()
 	}
 	e := core.Endpoint{Kind: core.DSN, Driver: c.driver, Host: c.host, Port: port, User: c.user, Path: c.name, DSN: u.String(), Password: c.password}
-	e.Display = u.String()
-	if c.password != "" {
-		masked := u
-		masked.User = url.UserPassword(c.user, "x")
-		e.Display = strings.Replace(masked.String(), ":x@", ":•••@", 1)
-	}
+	// Display leaves the user out with the password: both come from the
+	// site's own config, not from what the user typed, and on shared
+	// hosting the database user is often the account holder's name.
+	shown := u
+	shown.User = nil
+	e.Display = shown.String()
 	return e
 }
 

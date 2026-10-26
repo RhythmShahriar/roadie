@@ -355,6 +355,12 @@ func TestSplitWPHost(t *testing.T) {
 	if e := c.endpoint(""); e.DSN != "mysql://u@localhost:3306/wp?socket=%2Frun%2Fmysqld.sock" {
 		t.Errorf("socket DSN %q", e.DSN)
 	}
+	// The user and the password stay out of Display; DSN and User keep
+	// the user for db.Open.
+	c = dbConfig{driver: core.MySQL, host: "127.0.0.1", port: 3307, name: "shop", user: "jane.doe", password: "pw"}
+	if e := c.endpoint(""); e.Display != "mysql://127.0.0.1:3307/shop" || e.User != "jane.doe" || e.DSN != "mysql://jane.doe@127.0.0.1:3307/shop" || e.Password != "pw" {
+		t.Errorf("endpoint %+v", e)
+	}
 }
 
 func TestReadOnlyEnforced(t *testing.T) {
