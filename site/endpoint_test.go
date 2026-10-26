@@ -78,6 +78,9 @@ func TestParseEndpointPassword(t *testing.T) {
 		{"mysql://shop:" + pw + "@db.example/shop", "mysql://shop:•••@db.example/shop", "mysql://shop@db.example/shop"},
 		{"postgres://app:" + url.QueryEscape(pw+"/@:") + "@pg.example:5433/app", "postgres://app:•••@pg.example:5433/app", "postgres://app@pg.example:5433/app"},
 		{"postgres://app@pg.example/app?password=" + pw + "&sslmode=disable", "postgres://app:•••@pg.example/app?sslmode=disable", "postgres://app@pg.example/app?sslmode=disable"},
+		{"mysql://u@h/db?PASSWORD=" + pw, "mysql://u:•••@h/db", "mysql://u@h/db"},
+		{"mysql://u@h/db?Password=" + pw + "&charset=utf8mb4", "mysql://u:•••@h/db?charset=utf8mb4", "mysql://u@h/db?charset=utf8mb4"},
+		{"postgres://u@h/db?SSLPassword=" + pw + "&pass=" + pw + "x", "postgres://u:•••@h/db", "postgres://u@h/db"},
 	}
 	for _, tt := range tests {
 		e, err := ParseEndpoint(tt.in)
@@ -238,6 +241,16 @@ func FuzzEndpoint(f *testing.F) {
 		}
 		if a.Password != pw {
 			t.Fatalf("Password %q, want %q", a.Password, pw)
+		}
+		// A password key in any case leaves Display and DSN.
+		for _, k := range []string{"PASSWORD", "Pwd", "sslPassword"} {
+			c, err := ParseEndpoint("mysql://db.example/db?" + k + "=" + url.QueryEscape(pw))
+			if err != nil {
+				continue
+			}
+			if strings.Contains(c.Display, pw) || strings.Contains(c.DSN, pw) {
+				t.Fatalf("%s shows the password: %q %q", k, c.Display, c.DSN)
+			}
 		}
 	})
 }

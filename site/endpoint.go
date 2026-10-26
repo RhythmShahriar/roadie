@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -185,8 +186,18 @@ func parseDSN(s, scheme string) (core.Endpoint, error) {
 		}
 	}
 	q := u.Query()
-	for _, k := range passwordParams {
-		if q.Has(k) {
+	// Keys match in any case (PASSWORD, Password), as maskQueryPasswords
+	// does, so no spelling of a password key stays in DSN or Display.
+	keys := make([]string, 0, len(q))
+	for k := range q {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, p := range passwordParams {
+		for _, k := range keys {
+			if strings.ToLower(k) != p {
+				continue
+			}
 			if e.Password == "" {
 				e.Password = q.Get(k)
 			}
