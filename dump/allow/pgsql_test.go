@@ -166,3 +166,18 @@ func TestPGFilterClean(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A COPY head read as rows is judged like a statement; only Keep passes.
+func TestFilterHead(t *testing.T) {
+	f := NewFilter(Options{Name: "app.sql", Dialect: core.Postgres})
+	if err := f.Head(core.Statement{Kind: core.StmtCopy, Text: []byte("COPY public.t (a) FROM stdin;\n"), Line: 4}); err != nil {
+		t.Errorf("COPY FROM stdin: %v", err)
+	}
+	for _, s := range []string{"COPY t FROM PROGRAM 'id';\n", "GRANT ALL ON t TO x;\n"} {
+		err := f.Head(core.Statement{Kind: core.StmtCopy, Text: []byte(s), Line: 4})
+		var ce *core.Error
+		if !errors.As(err, &ce) || ce.Code != core.ErrDumpRefused || ce.Line != 4 {
+			t.Errorf("%q: %v", s, err)
+		}
+	}
+}
