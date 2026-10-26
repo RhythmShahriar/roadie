@@ -81,5 +81,11 @@ rules:
   "edd.edd_notes.content":
     positive: {table: wp_2_edd_notes, row: {content: "Call Anna on +44 7700 900123"}}
     negative: {table: wp_12_edd_notes, row: {content: "Call Anna on +44 7700 900123"}}
+  "edd.edd_logs_emails.email":
+    positive: {table: wp_2_edd_logs_emails, row: {email: "anna.lee@example.com"}}
+    negative: {table: wp_12_edd_logs_emails, row: {email: "anna.lee@example.com"}}
+  "edd.edd_logs_emails.subject":
+    positive: {table: wp_edd_logs_emails, row: {subject: "Your receipt, Anna Lee"}}
+    negative: {table: wp_12_edd_logs_emails, row: {subject: "Your receipt, Anna Lee"}}
 lists:
   "truncate:{prefix}{site}edd_logs_api_requests": {positive: wp_edd_logs_api_requests, negative: wp_12_edd_logs_api_requests}
