@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -168,8 +169,12 @@ func TestUpdateInstallsAndLoads(t *testing.T) {
 	if out.String() != "Installed profile pack 9.9.9 (2 profiles).\n" {
 		t.Errorf("output %q", out.String())
 	}
-	if fi, err := os.Stat(filepath.Join(dir, "9.9.9", "wordpress.yaml")); err != nil || fi.Mode().Perm()&0o077 != 0 {
-		t.Errorf("stored file %v %v", fi, err)
+	fi, err := os.Stat(filepath.Join(dir, "9.9.9", "wordpress.yaml"))
+	if err != nil {
+		t.Errorf("stored file: %v", err)
+	} else if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
+		// Windows reports 0666 for any writable file.
+		t.Errorf("stored file mode %v", fi.Mode().Perm())
 	}
 	defs, ver, err := Load(context.Background(), false)
 	if err != nil || ver != "9.9.9" {
