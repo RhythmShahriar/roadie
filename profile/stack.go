@@ -61,7 +61,8 @@ func StackOf(s *core.Schema) core.Stack {
 
 // ResolveStack turns stack: or --stack into the stack of this run. An
 // explicit value wins. auto asks the site (site.DetectStack) when there is
-// one and falls back to the schema. When nothing matches, a config with
+// one and falls back to the schema, which also decides when the site
+// says only sql. When nothing matches, a config with
 // columns: runs as sql; without them it is ErrNoStack (exit 2). An
 // unknown value is a config error; the CLI refuses it first as a usage
 // error.
@@ -73,19 +74,24 @@ func ResolveStack(ctx context.Context, want string, s *core.Schema, st core.Site
 	default:
 		return "", core.Errorf(core.ErrConfig, 2, "stack %q isn't one of auto, wordpress, laravel or sql", want)
 	}
+	var fromSite core.Stack
 	if st != nil {
 		got, err := site.DetectStack(ctx, st)
 		switch {
-		case err == nil && got != "":
+		case err == nil && got != "" && got != core.StackSQL:
 			return got, nil
-		case err != nil && !errors.Is(err, core.ErrNotBuilt):
+		case err == nil:
+			// sql only says the site has no WordPress or Laravel files,
+			// as for a DSN; the schema can still say which app it holds.
+			fromSite = got
+		case !errors.Is(err, core.ErrNotBuilt):
 			return "", err
 		}
 	}
 	if got := StackOf(s); got != "" {
 		return got, nil
 	}
-	if hasColumns {
+	if hasColumns || fromSite != "" {
 		return core.StackSQL, nil
 	}
 	return "", ErrNoStack
