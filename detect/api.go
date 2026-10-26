@@ -64,6 +64,12 @@ func WithAllow(d core.Detector, a Allow) core.Detector {
 
 // Uncovered applies PRD 11.3 to one table: covered names the columns a rule covers, samples holds up to
 // 1,000 non-empty values per text column. Used by engine (pass 1, copy stops) and verify (findings).
+//
+// A text column no rule covers is listed when its name matches the PRD
+// 11.3 list (see PersonalName) or when 20% or more of its first 1,000
+// non-empty samples are real-looking emails or strong-format phones;
+// Rate is that share in percent. Generated and non-text columns are left
+// out. Columns come back in table order.
 func Uncovered(t *core.Table, covered map[string]bool, samples map[string][][]byte) []core.Uncovered {
-	return nil
+	return uncovered(t, covered, samples)
 }
