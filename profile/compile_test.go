@@ -268,6 +268,27 @@ func TestOverridePrecedence(t *testing.T) {
 	if got := ruleIDs(c.Rules("wp_postmeta")); !slices.Equal(got, []string{"config.wp_postmeta.meta_value"}) {
 		t.Errorf("whole-column override: %v", got)
 	}
+	// A columns: table glob replaces the profile rules on the tables it
+	// matches, as the exact name does; without that a profile rule with a
+	// where clause would sort first and win.
+	cfg = roadiecfg.Default()
+	cfg.Columns = []roadiecfg.ColumnRule{{Table: "wp_*meta", Column: "meta_value", Rule: "text"}}
+	c, err = Compile(nil, defs, s, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ruleIDs(c.Rules("wp_postmeta")); !slices.Equal(got, []string{"config.wp_*meta.meta_value"}) {
+		t.Errorf("glob override: %v", got)
+	}
+	// A glob that doesn't match the table leaves the profile rules.
+	cfg.Columns = []roadiecfg.ColumnRule{{Table: "wp_*log", Column: "meta_value", Rule: "text"}}
+	c, err = Compile(nil, defs, s, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ruleIDs(c.Rules("wp_postmeta")); !slices.Contains(got, "mini-core.postmeta.meta_value._billing_email") {
+		t.Errorf("a glob for other tables removed profile rules: %v", got)
+	}
 }
 
 func TestStackResolution(t *testing.T) {

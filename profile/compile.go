@@ -294,11 +294,22 @@ func sameTarget(a, b core.Rule) bool {
 }
 
 // overrides reports whether user rule u replaces profile rule r: the
-// same table and column with the same where clause (or none, which means
-// the whole column) and path (or none).
+// same table (or a table u's glob matches) and column with the same where
+// clause (or none, which means the whole column) and path (or none). A
+// glob must replace too: the engine applies the first whole-value rule,
+// and a profile rule with a where clause sorts before a user rule
+// without one, so a kept profile rule would win over the user's.
 func overrides(u, r core.Rule) bool {
-	if u.Table != r.Table || !strings.EqualFold(u.Column, r.Column) {
+	if !strings.EqualFold(u.Column, r.Column) {
 		return false
+	}
+	if u.Table != r.Table {
+		if !hasGlob(u.Table) {
+			return false
+		}
+		if ok, _ := path.Match(u.Table, r.Table); !ok {
+			return false
+		}
 	}
 	if len(u.Where) > 0 && !equalWhere(u.Where, r.Where) {
 		return false
