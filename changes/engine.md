@@ -78,12 +78,14 @@ The file is called `.roadie/config.yaml` in messages when it is in the usual pla
 
 `${ROADIE_NAME}` is read only in string values. `config show` masks test keys and every interpolated value (`sk_t•••••`); DSN and proxy passwords show as `•••`. Each value names its source: flag, file, echo, soundcheck or default.
 
+A validation error about a value read from the environment shows the `${ROADIE_NAME}` reference where the value would stand, never the value: `.roadie/config.yaml line 1: url is "${ROADIE_URL}", which isn't a URL like https://staging.shop.test`. A value of three bytes or less is replaced only where it stands quoted.
+
 ### `config init`
 
 - WordPress and WooCommerce (and `auto`) get the PRD 8.1 file byte for byte (`roadiecfg/testdata/golden/init-wordpress.yaml`). Laravel (`init-laravel.yaml`) and SQL (`init-sql.yaml`) get their own: Laravel marks the WordPress-only side effects and `noindex` as such and shows `laravel.tables`; SQL starts with an active `columns:` example.
 - Messages: `Wrote .roadie/config.yaml for a WooCommerce site.`, `... for a WordPress site.`, `... for a Laravel app.`, `... for a generic SQL database.`
 - Git: `.roadie/reports/`, `.roadie/key`, `.roadie/backups/` and `.roadie/basic-auth/` go into `.git/info/exclude` (of the main repository for a linked worktree) under `# rhythm-roadie: reports, keys and backups stay out of git`, anchored at the work tree root. Glob characters in the project's path (`*`, `?`, `[`, `]`, `\`) are backslash-escaped, so a folder named `shop[1]` is excluded too.
-- `config init --from <dump>` adds the uncovered columns as commented suggestions before `keys:` (`roadiecfg/testdata/golden/init-from.yaml`): `#    rule: <guess>  # 98% of sampled values look personal` or `# the name looks personal`.
+- `config init --from <dump>` adds the uncovered columns as commented suggestions before `keys:` (`roadiecfg/testdata/golden/init-from.yaml`): `#    rule: <guess>  # 98% of sampled values look personal` or `# the name looks personal`. A table or column name that isn't plain (letters, digits, `_`, `$`, `.`, `-`) is written as a double-quoted YAML string, so a name holding a newline can't become an active setting: `#    column: "notes\nsource: ..."`.
 
 ## 2. The consistency key
 
@@ -96,7 +98,7 @@ The file is called `.roadie/config.yaml` in messages when it is in the usual pla
 
 A profile names the tables and columns of one stack or plugin and the rule for each. `auto` picks the detected profiles of the stack plus the stack's base profile. `{prefix}` is the WordPress table prefix (from `$table_prefix`, else the options table); `{site}` is the main site and every multisite blog (`2_`, `11_`), matched exactly so `wp_1_` never takes `wp_11_` tables.
 
-- A `columns:` rule replaces the profile's rule on the same table, column, where clause and path; without a where clause it replaces every profile rule on that column.
+- A `columns:` rule replaces the profile's rule on the same table, column, where clause and path; without a where clause it replaces every profile rule on that column. A `columns:` table glob (`wp_*meta`) replaces the profile rules on every table it matches the same way.
 - Table actions, first match wins: config drop, config truncate, a table `columns:` names, profile drop, profile truncate, profile keep, has rules, else kept.
 - `pseudonymise.keep` keeps the address parts it names; `free_text: blank|keep` turns text rules into blank or keep; `passwords: keep` keeps password hashes.
 - Errors (exit 2): `profiles names "mini-cor", which isn't a profile; did you mean mini-core? rhythm-roadie profiles lists them.`, `profiles names laravel, which is for laravel; this is a wordpress schema. Remove it or set stack:.`, `stack: no profile matches this dump (no wp_options or migrations table). For your own schema, list the tables under columns: and set stack: sql.`
