@@ -93,7 +93,7 @@ func (s *scrubber) fake(kind core.FakeKind, v []byte) []byte {
 //
 // A pair joined by white space that Known lacks but that reads as a
 // Roadie fake full name (Kylie Kim) is left whole, words and all: it is
-// most likely a fake from an earlier pass, and rewriting a word of it
+// most likely a fake from an earlier pass and rewriting a word of it
 // because another customer is named Kim would make Scrub change its own
 // output. A real customer named Kylie Kim is still found, as Known then
 // holds the pair. A single list word on its own (Kylie) can't be told

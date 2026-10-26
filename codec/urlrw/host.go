@@ -44,8 +44,8 @@ func errURL(what, entry string) error {
 }
 
 // maskUserinfo replaces everything between the scheme and the last @ of
-// entry with ***, and reports whether there was an @. It looks past the
-// authority on purpose: a password may hold / ? or #, and an entry with
+// entry with *** and reports whether there was an @. It looks past the
+// authority on purpose: a password may hold / ? or # and an entry with
 // an @ is refused anyway.
 func maskUserinfo(entry string) (string, bool) {
 	start := 0
