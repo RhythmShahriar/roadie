@@ -454,6 +454,7 @@ func laravelKeyStep(o Options) core.Step {
 		}
 		return core.Pair{}, false
 	}
+	ks := &keyFileStep{step: step{id: id}}
 	plan, apply := envEdit(o, id,
 		func(f *dotenv.File) []string {
 			var out []string
@@ -463,6 +464,7 @@ func laravelKeyStep(o Options) core.Step {
 			return out
 		},
 		func(f *dotenv.File) error {
+			ks.applied = nil
 			for _, h := range live(f) {
 				p, ok := pairAt(f, h.At.Line)
 				if !ok {
@@ -472,6 +474,8 @@ func laravelKeyStep(o Options) core.Step {
 				if err != nil {
 					return err
 				}
+				h.Action = action
+				ks.applied = append(ks.applied, h)
 				if action == "manual" || action == "kept" {
 					continue
 				}
@@ -482,7 +486,8 @@ func laravelKeyStep(o Options) core.Step {
 			return nil
 		},
 		"live keys stay in "+rel)
-	return &step{id: id, plan: plan, apply: apply, check: func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
+	ks.plan, ks.apply = plan, apply
+	ks.check = func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
 		se := core.SideEffect{ID: id, Status: "off", How: "no live key in " + rel}
 		f, err := readEnv(ctx, s, rel)
 		if err != nil {
@@ -497,7 +502,8 @@ func laravelKeyStep(o Options) core.Step {
 			out = append(out, fd)
 		}
 		return se, out, nil
-	}}
+	}
+	return ks
 }
 
 // laravelRules clear production's queued jobs, so no worker on the copy

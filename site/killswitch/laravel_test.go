@@ -490,3 +490,36 @@ func lineDiff(a, b string) string {
 	}
 	return out.String()
 }
+
+// The key step lists the live keys it changed in .env, for the run's key
+// counts; an .env without a live key lists none.
+func TestLaravelKeyStepAppliedKeys(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		env  string
+		want int
+	}{
+		{"live key", prodEnv(), 1},
+		{"no live key", strings.ReplaceAll(prodEnv(), liveStripe, "sk_test_fixture"), 0},
+	} {
+		s := laravelSite(c.env, 0)
+		o := laravelOptions()
+		var got []core.KeyHit
+		for _, st := range Steps(core.StackLaravel, o) {
+			if err := st.Apply(context.Background(), s); err != nil {
+				t.Fatalf("%s: %s: %v", c.name, st.ID(), err)
+			}
+			if ks, ok := st.(core.KeyStep); ok {
+				got = append(got, ks.AppliedKeys()...)
+			}
+		}
+		if len(got) != c.want {
+			t.Fatalf("%s: applied keys %+v", c.name, got)
+		}
+		for _, k := range got {
+			if k.At.File != ".env" || k.At.Line == 0 || k.Action == "" || strings.Contains(k.Masked, liveStripe) {
+				t.Errorf("%s: key %+v", c.name, k)
+			}
+		}
+	}
+}

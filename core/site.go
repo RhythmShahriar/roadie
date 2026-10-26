@@ -93,3 +93,11 @@ type Step interface {
 	Apply(ctx context.Context, s Site) error
 	Check(ctx context.Context, s Site) (SideEffect, []Finding, error)
 }
+
+// KeyStep is a Step that swaps or blanks the live keys of a config file
+// (wp-config.php, .env). After Apply, AppliedKeys lists each live key it
+// found with what it did, so the run's key counts include them.
+type KeyStep interface {
+	Step
+	AppliedKeys() []KeyHit
+}

@@ -1448,3 +1448,44 @@ func TestCheckDialects(t *testing.T) {
 		}
 	}
 }
+
+// fakeKeyStep is a key step that blanked one live key in .env.
+type fakeKeyStep struct{ fakeStep }
+
+func (s *fakeKeyStep) AppliedKeys() []core.KeyHit {
+	return []core.KeyHit{{ID: "key.stripe-live", Provider: "stripe", Env: "live", Severity: core.SeverityCritical,
+		At: core.Location{File: ".env", Line: 4}, Masked: "sk_l•••••", Action: "blanked"}}
+}
+
+// The live keys a key step changed in a config file count with the keys
+// in the data: data.keys and the summary name them.
+func TestRunCountsFileKeys(t *testing.T) {
+	f := useRunFakes(t)
+	ks := &fakeKeyStep{fakeStep{id: core.FindingKeyGeneric, phase: "files", rec: f.rec}}
+	killSteps = func(core.Stack, killswitch.Options) []core.Step { return []core.Step{ks} }
+	res, err := Run(context.Background(), f.job(Copy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, k := range res.Keys {
+		if k.At.File == ".env" && k.Action == "blanked" {
+			found = true
+		}
+	}
+	if s := res.Summary(); !found || s.KeysFound < 1 || s.KeysBlanked < 1 {
+		t.Errorf("keys %+v summary %+v", res.Keys, s)
+	}
+	// A plan applies no step, so it counts no file key.
+	f = useRunFakes(t)
+	killSteps = func(core.Stack, killswitch.Options) []core.Step { return []core.Step{ks} }
+	res, err = Run(context.Background(), f.job(Plan))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range res.Keys {
+		if k.At.File == ".env" {
+			t.Errorf("plan counted %+v", k)
+		}
+	}
+}

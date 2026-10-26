@@ -47,6 +47,17 @@ type step struct {
 	check func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error)
 }
 
+// keyFileStep is a step that changes the live keys of a config file and
+// keeps what it did for core.KeyStep.
+type keyFileStep struct {
+	step
+	applied []core.KeyHit
+}
+
+// AppliedKeys lists the live keys the last Apply found, each with what
+// it did: swapped, blanked or manual.
+func (st *keyFileStep) AppliedKeys() []core.KeyHit { return st.applied }
+
 func (st *step) ID() string    { return st.id }
 func (st *step) Phase() string { return "files" }
 
@@ -374,6 +385,7 @@ func keyStep(o Options) core.Step {
 		}
 		return core.Pair{}, false
 	}
+	ks := &keyFileStep{step: step{id: id}}
 	plan, apply := configEdit(id,
 		func(f *wpconfig.File) []string {
 			var out []string
@@ -383,6 +395,7 @@ func keyStep(o Options) core.Step {
 			return out
 		},
 		func(f *wpconfig.File) error {
+			ks.applied = nil
 			for _, h := range live(f) {
 				p, ok := pairAt(f, h.At.Line)
 				if !ok {
@@ -392,6 +405,8 @@ func keyStep(o Options) core.Step {
 				if err != nil {
 					return err
 				}
+				h.Action = action
+				ks.applied = append(ks.applied, h)
 				if action == "manual" || action == "kept" {
 					continue
 				}
@@ -402,7 +417,8 @@ func keyStep(o Options) core.Step {
 			return nil
 		},
 		"live keys stay in wp-config.php")
-	return &step{id: id, plan: plan, apply: apply, check: func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
+	ks.plan, ks.apply = plan, apply
+	ks.check = func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
 		se := core.SideEffect{ID: id, Status: "off", How: "no live key defined in wp-config.php"}
 		f, err := readConfig(ctx, s)
 		if err != nil {
@@ -417,7 +433,8 @@ func keyStep(o Options) core.Step {
 			out = append(out, fd)
 		}
 		return se, out, nil
-	}}
+	}
+	return ks
 }
 
 // saltsStep regenerates the eight salts. Its Check gives status only:

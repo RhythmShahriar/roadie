@@ -91,6 +91,9 @@ type runner struct {
 	// target: a run that stops after it left the target mixed, not
 	// untouched.
 	stepped bool
+	// fileKeys are the live keys the key steps changed in wp-config.php
+	// or .env; they join the keys the pass over the data found.
+	fileKeys []core.KeyHit
 	// notes are the dump reader's plan lines: statements the allowlist
 	// dropped and routines --keep-routines kept.
 	notes dumpNotes
@@ -312,6 +315,7 @@ func (r *runner) run(ctx context.Context) error {
 			return err
 		}
 	}
+	r.res.Keys = append(r.res.Keys, r.fileKeys...)
 	r.fillEndpoints(ctx)
 	if r.res.Stack.Name == "" {
 		// No pass ran (prepare --only noindex): the site says its stack.
@@ -772,6 +776,9 @@ func (r *runner) apply(ctx context.Context, steps []core.Step, phase string) err
 		err := st.Apply(ctx, r.to)
 		if err == nil {
 			r.stepped = true
+			if ks, ok := st.(core.KeyStep); ok {
+				r.fileKeys = append(r.fileKeys, ks.AppliedKeys()...)
+			}
 			continue
 		}
 		var ce *core.Error
