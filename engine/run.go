@@ -302,7 +302,10 @@ func (r *runner) endpoints() error {
 	default:
 		return core.Errorf(core.ErrConfig, 2, "engine: unknown mode %q", r.mode)
 	}
-	r.samePlace = r.j.From.Kind == r.j.To.Kind && r.j.From.Raw == r.j.To.Raw && isSite(r.j.To.Kind)
+	// Only prepare and plan may read and write one site: a copy whose
+	// source is its target must reach the target-is-source guard.
+	r.samePlace = (r.mode == Prepare || r.mode == Plan) &&
+		r.j.From.Kind == r.j.To.Kind && r.j.From.Raw == r.j.To.Raw && isSite(r.j.To.Kind)
 	return nil
 }
 

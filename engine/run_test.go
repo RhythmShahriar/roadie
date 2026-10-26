@@ -769,3 +769,28 @@ func TestPipelineSites(t *testing.T) {
 		t.Errorf("one-pass with --site: %v", err)
 	}
 }
+
+// A copy whose source is its target goes to the guards as a copy, so
+// target-is-source can refuse it; a plan of one staging is a prepare.
+func TestRunSamePlace(t *testing.T) {
+	f := useRunFakes(t)
+	f.guardErr = func(in site.GuardInput) error {
+		if in.Mode == "copy" && in.From.Raw == in.To.Raw {
+			return core.Errorf(core.ErrTargetIsSource, 3, "target-is-source: --from and --to both reach /srv/staging.")
+		}
+		return nil
+	}
+	j := f.job(Copy)
+	j.From = stagingEP
+	if _, err := Run(context.Background(), j); !isCode(err, core.ErrTargetIsSource) {
+		t.Errorf("copy onto its source: %v", err)
+	}
+	j = f.job(Plan)
+	j.From = stagingEP
+	if _, err := Run(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	if g := f.guards[len(f.guards)-1]; g.Mode != "prepare" || g.FromSite != g.ToSite {
+		t.Errorf("plan of a staging guarded as %+v", g)
+	}
+}
