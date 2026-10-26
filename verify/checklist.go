@@ -22,7 +22,7 @@ var dataChecks = []string{
 	core.FindingPIIEmail, core.FindingPIIPhone, core.FindingPIIName, core.FindingPIIAddress,
 	core.FindingPIIIP, core.FindingPIICard, core.FindingPIIIBAN, core.FindingExactSurvivors,
 	CheckKeyLive, core.FindingKeyLiveMode, core.FindingKeyGeneric, core.FindingKeyUnknownEnv,
-	core.FindingURLProduction, core.FindingURLProductionSiteURL,
+	core.FindingURLProduction, core.FindingURLProductionSiteURL, core.FindingDataEncrypted,
 }
 
 // siteFileChecks read a site's files; a database or dump target skips them.

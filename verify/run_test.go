@@ -447,6 +447,14 @@ func TestRunEncrypted(t *testing.T) {
 	if f == nil || f.Count != 2 || f.Locations[0].Column != "ssn" || len(notUncovered(res)) != 1 {
 		t.Fatalf("encrypted: %+v", res.Findings)
 	}
+	// An info finding fails its check only when --fail-on is info.
+	if c := checkByID(res, core.FindingDataEncrypted); c.Status != "pass" || c.Checked != 2 {
+		t.Errorf("data.encrypted check %+v", c)
+	}
+	res = runJob(t, Job{Source: source(batch(table("users", "id", "ssn"), []string{"1", payload})), Opts: Options{FailOn: core.SeverityInfo}})
+	if c := checkByID(res, core.FindingDataEncrypted); c.Status != "fail" || c.Detail != "1 hit" {
+		t.Errorf("data.encrypted check at --fail-on info %+v", c)
+	}
 }
 
 // A ShouldBeEncrypted job keeps its command encrypted inside the JSON
