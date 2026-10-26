@@ -3,7 +3,7 @@ SPDX-License-Identifier: MIT
 
 r04: Action Scheduler. 150 pending actions with an email in short JSON
 args; 30 long ones whose JSON is in extended_args with its md5 in args, as
-Action Scheduler stores args over 191 bytes; and 10 short ones padded to
+Action Scheduler stores args over 191 bytes; 10 short ones padded to
 181 to 190 bytes, so a fake longer than the email pushes them over 191
 and the row must move to extended_args with an md5. */ -}}
 -- MySQL dump 10.13  Distrib 8.4.3, for Linux (x86_64)

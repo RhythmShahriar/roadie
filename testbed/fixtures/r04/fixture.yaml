@@ -3,7 +3,7 @@
 
 description: >-
   Action Scheduler: emails in short JSON args, long args in extended_args
-  with their md5 in args, and short args a few bytes under the 191-byte
+  with their md5 in args; short args a few bytes under the 191-byte
   limit so a longer fake must move them to extended_args.
 stack: woocommerce
 canaries: true
