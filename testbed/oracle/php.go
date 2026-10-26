@@ -173,8 +173,12 @@ func LoadSerialized(path string) ([]Location, error) {
 type Integrity struct {
 	Checked  int        `json:"checked"`
 	Failures int        `json:"failures"`
-	Missing  int        `json:"missing"` // cells whose row or column is gone from the output
-	Failed   []Location `json:"failed,omitempty"`
+	Missing  int        `json:"missing"` // cells whose row is there and whose value or column is gone
+	// Gone counts, by table, the cells whose whole row is gone from the
+	// output: a row the copy deleted on purpose (a session) or a
+	// truncated table. The row counts say whether that was meant.
+	Gone   map[string]int `json:"gone,omitempty"`
+	Failed []Location     `json:"failed,omitempty"`
 }
 
 // CheckIntegrity unserializes, in the output dump, every cell that held a
@@ -185,7 +189,9 @@ func CheckIntegrity(ctx context.Context, output io.Reader, cells []Location, p P
 		want[c] = true
 	}
 	found := map[Location]string{}
+	rows := map[[2]string]bool{}
 	_, err := ReadDump(output, func(r Row) error {
+		rows[[2]string{r.Table, r.Key}] = true
 		for i, v := range r.Vals {
 			if i >= len(r.Cols) {
 				break
@@ -205,6 +211,13 @@ func CheckIntegrity(ctx context.Context, output io.Reader, cells []Location, p P
 	var vals []string
 	for _, c := range cells {
 		v, ok := found[c]
+		if !ok && !rows[[2]string{c.Table, c.Key}] {
+			if res.Gone == nil {
+				res.Gone = map[string]int{}
+			}
+			res.Gone[c.Table]++
+			continue
+		}
 		if !ok {
 			res.Missing++
 			continue

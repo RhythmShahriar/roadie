@@ -650,7 +650,9 @@ func TestCleanAndIntegrity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Clean() || rep.Integrity.Failures != 1 || rep.Integrity.Missing != 1 || !rep.RowsDiffer {
+	// The dropped row's cell is gone with its row, which the row counts
+	// judge; Missing is for a cell whose row is still there.
+	if rep.Clean() || rep.Integrity.Failures != 1 || rep.Integrity.Missing != 0 || rep.Integrity.Gone["wp_postmeta"] != 1 || !rep.RowsDiffer {
 		t.Errorf("broken output: %+v %+v", rep, rep.Integrity)
 	}
 	if len(rep.Integrity.Failed) != 1 || rep.Integrity.Failed[0] != (Location{"wp_options", "id=1", "v"}) {
