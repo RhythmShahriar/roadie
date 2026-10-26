@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>Roadie: PASS, staging.shop.test is a pseudonymised copy</title>
+<style>
+:root{--ink:#100F0D;--paper:#FFFFFF;--muted:#6B7280;--line:#E5E7EB;--card:#F9FAFB;--dot:#FF7C52;--ok:#10B981;--bad:#EF4444;--high:#F97316;--warn:#EAB308;--low:#60A5FA}
+@media (prefers-color-scheme:dark){:root{--ink:#F3F4F6;--paper:#100F0D;--muted:#9CA3AF;--line:#2A2926;--card:#1A1916}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+main{max-width:980px;margin:0 auto;padding:24px 16px 48px}
+header.top{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+header.top img{max-height:40px;max-width:160px}
+header.top .brand{font-weight:600}
+header.top .tool{color:var(--muted);margin-left:auto}
+h2{font-size:17px;margin:28px 0 10px;border-bottom:1px solid var(--line);padding-bottom:4px}
+h3{font-size:15px;margin:16px 0 6px}
+.band{border-radius:10px;padding:16px 20px;border:2px solid var(--muted);margin:8px 0 16px}
+.band.pass{border-color:var(--ok)}.band.fail,.band.stop{border-color:var(--bad)}.band.plan,.band.done{border-color:var(--warn)}
+.band .word{font-weight:700;font-size:20px;margin-right:10px}
+.band.pass .word{color:var(--ok)}.band.fail .word,.band.stop .word{color:var(--bad)}.band.plan .word,.band.done .word{color:var(--warn)}
+.band .line{font-size:18px}
+.band .meta{color:var(--muted);margin-top:4px;font-size:13px}
+.error{background:var(--card);border-left:4px solid var(--bad);padding:10px 14px;margin:12px 0}
+dl.card{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;background:var(--card);border-radius:10px;padding:14px 18px;margin:0}
+dl.card dt{color:var(--muted)}dl.card dd{margin:0;overflow-wrap:anywhere}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+th{color:var(--muted);font-weight:600}
+code{font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--card);padding:1px 4px;border-radius:4px;overflow-wrap:anywhere}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.muted{color:var(--muted)}
+.finding{border-left:4px solid var(--muted);padding:6px 12px;margin:8px 0;background:var(--card);border-radius:0 8px 8px 0}
+.finding.critical{border-color:var(--bad)}.finding.high{border-color:var(--high)}.finding.medium{border-color:var(--warn)}.finding.low{border-color:var(--low)}
+.badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:1px 6px;border-radius:4px;border:1px solid currentColor;margin-right:6px}
+.badge.critical{color:var(--bad)}.badge.high{color:var(--high)}.badge.medium{color:var(--warn)}.badge.low{color:var(--low)}.badge.info{color:var(--muted)}
+.finding .sub{color:var(--muted);font-size:13px}
+.note{color:var(--muted);font-size:13px}
+.notcovered{background:var(--card);border-radius:10px;padding:12px 16px}
+footer{margin-top:24px;border-top:1px solid var(--line);padding-top:12px;font-size:13px}
+footer p{margin:0}
+footer .sig{margin-top:10px;color:var(--muted)}
+section.report+section.report{margin-top:48px;border-top:3px solid var(--line);padding-top:8px}
+</style>
+</head>
+<body>
+<main>
+<header class="top"><span class="tool">rhythm roadie</span></header>
+
+
+<section class="report" id="r1">
+<div class="band pass"><span class="word">PASS</span><span class="line">staging.shop.test is a pseudonymised copy</span>
+<div class="meta">0 critical · 0 high · 0 medium · 0 low · 1 info · 2026-10-26T14:02:11Z · signed by roadie:NHUPmL1…</div></div>
+
+
+<h2>Copy</h2>
+<dl class="card"><dt>Source</dt><dd>ssh://deploy@shop.com/var/www/shop</dd><dt>Target</dt><dd>/var/www/staging</dd><dt>Copy</dt><dd>https://staging.shop.test</dd><dt>Production</dt><dd>shop.com</dd><dt>Stack and profiles</dt><dd>wordpress (wordpress, woocommerce, woocommerce-hpos)</dd><dt>Verify</dt><dd>exact, every row of 61 tables</dd><dt>Consistency</dt><dd>per-run key: each real person gets one fake, across every table</dd><dt>Input</dt><dd>sha256-file 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 (2.4 GB)</dd><dt>Fail on</dt><dd>high</dd></dl>
+
+<h2>Checks</h2>
+<table><tr><th>Check</th><th>Result</th><th>ID</th></tr>
+<tr><td>No pseudonymised value survives</td><td class="ok">&#10003; 1,210,044 checked</td><td><code>exact.survivors</code></td></tr>
+<tr><td>No real-looking emails</td><td class="ok">&#10003; 18,402 checked, all @example.invalid or kept</td><td><code>pii.email</code></td></tr>
+<tr><td>No live keys</td><td class="ok">&#10003; database, wp-config.php</td><td><code>keys</code></td></tr>
+<tr><td>Side effects off</td><td class="ok">&#10003; 2 of 2</td><td><code>side-effects</code></td></tr>
+</table>
+
+<h2>Findings</h2>
+<div class="finding info"><span class="badge info">info</span><strong>1 user kept as it is</strong>
+<div class="sub">wp_users.user_email 1</div>
+<div class="sub">More: <code>rhythm-roadie explain info.kept-users</code></div></div>
+
+
+<h2>What changed</h2>
+<table><tr><th>Table</th><th>Rows</th><th>Action</th><th>Profile</th><th>Columns</th></tr>
+<tr><td><code>wp_users</code></td><td>18,402</td><td>pseudonymise</td><td>wordpress</td><td>user_email (wordpress.users.user_email) 18,401 changed, 1 kept; user_pass (wordpress.users.user_pass) 18,401 changed, 1 kept</td></tr>
+<tr><td><code>wp_wc_orders</code></td><td>41,077</td><td>pseudonymise</td><td>woocommerce-hpos</td><td>billing_email (woocommerce.wc_orders.billing_email) 41,077 changed</td></tr>
+<tr><td><code>wp_woocommerce_sessions</code></td><td>912</td><td>truncate</td><td>woocommerce</td><td>truncate</td></tr>
+</table>
+
+<h2>Keys</h2>
+<table><tr><th>Provider</th><th>Where</th><th>Value</th><th>Action</th></tr>
+<tr><td><span class="badge critical">critical</span>Stripe live</td><td>wp_options woocommerce_stripe_settings → serialized:secret_key</td><td><code>sk_l•••••</code></td><td>swapped</td></tr>
+</table>
+
+<h2>Side effects</h2>
+<table><tr><th>Side effect</th><th>Status</th><th>How</th><th>To turn it back on for a test</th></tr>
+<tr><td>Echo connector, sealed</td><td class="ok">off</td><td>Echo connector sealed in wp-content/mu-plugins</td><td><code>rhythm echo up on the staging host</code></td></tr>
+<tr><td>WP-Cron</td><td class="ok">off</td><td>DISABLE_WP_CRON in wp-config.php</td><td><code>wp cron event run --due-now</code></td></tr>
+<tr><td>Jetpack</td><td class="muted">not on this site</td><td></td><td></td></tr>
+</table>
+<p class="note">Not stopped: a server crontab calling wp cron or artisan schedule:run, wp action-scheduler run by hand, queue workers already running, code that opens SMTP sockets or uses fsockopen with credentials Roadie doesn&#39;t know, raw cURL without --echo-proxy. Credentials are blanked so those paths fail at the provider. Blocking outbound traffic at the host is the only certainty.</p>
+
+<h2>Not covered</h2>
+<p class="notcovered">Not covered by this report: files and uploads (PDF invoices, form uploads, images with location data), other databases, object caches (Redis, Memcached), search indexes (Algolia, ElasticPress), logs on disk outside wp-content, copies held by third parties (Mailchimp lists, Stripe customers), names and street addresses written in free text that Roadie didn&#39;t see in a structured column, encrypted columns, tables you told Roadie to keep.</p>
+
+<footer>
+<p>Pseudonymised data is still personal data under the GDPR (Article 4(5), Recital 26). This report shows what Roadie&#39;s checks found in this copy; it is not a statement that the copy holds no personal data. Signed by roadie:NHUPmL1… (rhythm-roadie report check report.json): the signature shows who ran Roadie, which version and rules, on which input and that the report is unchanged since. It doesn&#39;t prove the data holds no personal data.</p>
+<div class="sig">Roadie 1.0.0 · profile pack 1.0.0<br>Signature: ed25519, key roadie:NHUPmL1Z_PyUbaRa, public key <code>iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w=</code><br>This view is a rendering of report.json; rhythm-roadie report check report.json checks its signature.</div>
+</footer>
+</section>
+
+</main>
+</body>
+</html>

@@ -108,15 +108,3 @@ func clearProfiles(stdout, stderr io.Writer) int {
 	fmt.Fprintln(stdout, "Removed the cached profile pack; Roadie uses its built-in profiles until rhythm-roadie update runs again.")
 	return cli.ExitOK
 }
-
-// notBuilt is a command whose work isn't wired yet.
-func notBuilt(name string) runFunc {
-	return func(_ context.Context, _ *parsed, _, stderr io.Writer) error {
-		fmt.Fprintf(stderr, "%s %s: not built yet\n", prog(), name)
-		return &cli.ExitError{Code: cli.ExitUnavailable}
-	}
-}
-
-// runReport renders saved reports and checks signatures; its renderers
-// and Check come with the report package (lane items 5 to 7).
-var runReport = notBuilt("report")

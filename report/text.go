@@ -4,6 +4,7 @@
 package report
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -42,18 +43,22 @@ const StillPersonal = "Pseudonymised data is still personal data under the GDPR 
 // Footer is PRD 19.1's report footer for a report signed by keyID, as
 // lines; an unsigned report says so instead of naming a key. explain
 // pseudonymised prints the same text with the example key ID.
-func Footer(keyID string) []string {
+func Footer(keyID string) []string { return footerLines(ShortKeyID(keyID)) }
+
+// footerLines is the footer with the key's short ID as given, so each
+// view can escape it for its format.
+func footerLines(shortID string) []string {
 	lines := []string{
 		StillPersonal,
 		"This report shows what Roadie's checks found in this copy; it is not a statement that",
 	}
-	if keyID == "" {
+	if shortID == "" {
 		return append(lines,
 			"the copy holds no personal data. This report is not signed (--sign=off), so nothing",
 			"shows it is unchanged since Roadie wrote it.")
 	}
 	return append(lines,
-		"the copy holds no personal data. Signed by "+ShortKeyID(keyID)+" (rhythm-roadie report check report.json):",
+		"the copy holds no personal data. Signed by "+shortID+" (rhythm-roadie report check report.json):",
 		"the signature shows who ran Roadie, which version and rules, on which input and that",
 		"the report is unchanged since. It doesn't prove the data holds no personal data.")
 }
@@ -135,3 +140,16 @@ func EffectLabel(id string, short bool) string {
 // KillSwitchLimits is PRD 13.5's list of what the kill switch can't stop,
 // for the Side effects section of the screen and the reports.
 const KillSwitchLimits = "a server crontab calling wp cron or artisan schedule:run, wp action-scheduler run by hand, queue workers already running, code that opens SMTP sockets or uses fsockopen with credentials Roadie doesn't know, raw cURL without --echo-proxy. Credentials are blanked so those paths fail at the provider. Blocking outbound traffic at the host is the only certainty."
+
+// escapeExtras escapes the items of a not_covered list that aren't PRD
+// 19.1's own, which are fixed text.
+func escapeExtras(items []string, esc func(string) string) []string {
+	out := make([]string, 0, len(items))
+	for _, s := range items {
+		if !slices.Contains(notCoveredItems, s) {
+			s = esc(s)
+		}
+		out = append(out, s)
+	}
+	return out
+}

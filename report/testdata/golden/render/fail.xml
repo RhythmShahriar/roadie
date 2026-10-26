@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="roadie.verify" tests="4" failures="2" errors="0">
+  <testsuite name="roadie.verify" tests="4" failures="2" errors="0" skipped="1" timestamp="2026-10-26T14:10:11Z">
+    <properties>
+      <property name="tool" value="rhythm-roadie"></property>
+      <property name="version" value="1.0.0"></property>
+      <property name="kind" value="verify"></property>
+      <property name="verdict" value="findings"></property>
+      <property name="verify_mode" value="heuristic"></property>
+      <property name="fail_on" value="high"></property>
+    </properties>
+    <testcase name="No real-looking emails (pii.email)" classname="roadie.verify">
+      <failure message="3 real-looking emails" type="pii.email">pii.email high: 3 real-looking emails at wp_users.user_email ID=42 2 · wp_postmeta.meta_value meta_key=_billing_email 1 (e.g. ad•••@gm•••.com)</failure>
+    </testcase>
+    <testcase name="No real-looking phones (pii.phone)" classname="roadie.verify"></testcase>
+    <testcase name="No live keys (keys)" classname="roadie.verify">
+      <failure message="Stripe live key" type="keys">key.stripe-live critical: Stripe live key at wp_options.option_value option_name=woocommerce_stripe_settings → serialized:secret_key 1 (e.g. sk_l•••••)</failure>
+    </testcase>
+    <testcase name="No personal files in uploads (uploads.personal)" classname="roadie.verify">
+      <skipped message="a dump has no uploads"></skipped>
+    </testcase>
+    <system-out>Not covered by this report: files and uploads (PDF invoices, form uploads, images with location data), other databases, object caches (Redis, Memcached), search indexes (Algolia, ElasticPress), logs on disk outside wp-content, copies held by third parties (Mailchimp lists, Stripe customers), names and street addresses written in free text that Roadie didn&#39;t see in a structured column, encrypted columns, tables you told Roadie to keep, uploads on the staging host.&#xA;Pseudonymised data is still personal data under the GDPR (Article 4(5), Recital 26).&#xA;This report shows what Roadie&#39;s checks found in this copy; it is not a statement that&#xA;the copy holds no personal data. Signed by roadie:NHUPmL1… (rhythm-roadie report check report.json):&#xA;the signature shows who ran Roadie, which version and rules, on which input and that&#xA;the report is unchanged since. It doesn&#39;t prove the data holds no personal data.&#xA;</system-out>
+  </testsuite>
+</testsuites>

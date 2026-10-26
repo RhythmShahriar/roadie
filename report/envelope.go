@@ -231,16 +231,7 @@ func marshal(v any) ([]byte, error) {
 // encodeEnvelope writes an envelope as report.json and --json do:
 // indented two spaces, no HTML escaping, a newline at the end. Indenting
 // doesn't change what the signature covers: that is the canonical form.
-func encodeEnvelope(e *core.Envelope) ([]byte, error) {
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(e); err != nil {
-		return nil, err
-	}
-	return b.Bytes(), nil
-}
+func encodeEnvelope(e *core.Envelope) ([]byte, error) { return marshalIndent(e) }
 
 // ParseData reads an envelope's data object back. An envelope of another
 // kind (profiles, explain) reads as mostly empty data.
