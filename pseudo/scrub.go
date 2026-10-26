@@ -22,6 +22,7 @@ type scrubber struct {
 	f     core.Faker
 	out   []byte // nil until the first replacement
 	pair  []byte // reused for each word pair looked up
+	lower []byte // reused to look a word up in the name lists
 	last  int    // end of the text already copied to out
 	n     int
 }
@@ -119,7 +120,7 @@ func (s *scrubber) names(start, end int) {
 					i++
 					continue
 				}
-				if bytes.ContainsFunc(gap, unicode.IsSpace) && IsFake(core.KFullName, s.pair) {
+				if bytes.ContainsFunc(gap, unicode.IsSpace) && s.fakeFullName(s.text[a[0]:a[1]], s.text[b[0]:b[1]]) {
 					i++ // a fake full name: keeps Scrub idempotent
 					continue
 				}
@@ -136,6 +137,35 @@ func (s *scrubber) names(start, end int) {
 			s.replace(a[0], a[1], s.fake(kind, word))
 		}
 	}
+}
+
+// fakeFullName reports whether first and last, both capitalised, are
+// each a word of the name lists, as in a Roadie fake full name. It runs
+// for every word pair Known lacks, so it must not allocate: each word is
+// lower-cased into a reused buffer and looked up with string(b), which
+// the compiler does without a copy.
+func (s *scrubber) fakeFullName(first, last []byte) bool {
+	if !capitalised(first) || !capitalised(last) {
+		return false
+	}
+	loadLists()
+	return s.inNames(first) && s.inNames(last)
+}
+
+// inNames reports whether word, lower-cased, is a first or last name of
+// the lists.
+func (s *scrubber) inNames(word []byte) bool {
+	s.lower = s.lower[:0]
+	for i := 0; i < len(word); {
+		r, size := utf8.DecodeRune(word[i:])
+		s.lower = utf8.AppendRune(s.lower, unicode.ToLower(r))
+		i += size
+	}
+	if _, ok := lists.first[string(s.lower)]; ok {
+		return true
+	}
+	_, ok := lists.last[string(s.lower)]
+	return ok
 }
 
 // capitalised reports whether word starts with an upper or title case
