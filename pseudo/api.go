@@ -76,7 +76,7 @@ func NewFaker(k Key, o Options) (core.Faker, error) {
 // in its raw (any case), md5 hex and sha256 hex forms. Names also store
 // their words and word pairs, for the free-text scrubber.
 func NewKnown(k Key) core.Known {
-	return nil
+	return newKnown(k)
 }
 
 // Normalise puts a value in the form its fake is keyed on.
