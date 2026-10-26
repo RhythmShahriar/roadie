@@ -164,9 +164,9 @@ type shared struct {
 	stagingPath string
 	kept        *keptUsers
 	siteUsers   *siteUsers // copy --site's user limit, nil for none
-	adminID     string // the first administrator's ID
+	adminID     string     // the first administrator's ID
 	addr        *addrIndex // sealed; nil with --one-pass
-	adminHash   []byte // the kept users' password hash for --admin-password-env
+	adminHash   []byte     // the kept users' password hash for --admin-password-env
 	onePass     bool
 	parts       parts
 }

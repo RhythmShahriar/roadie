@@ -14,7 +14,7 @@ import (
 
 // The window lets batches in while they fit, a batch larger than the
 // window in when nothing else is in flight, waits for give otherwise and
-// stops waiting when the run is cancelled.
+// stops waiting when the run is canceled.
 func TestWindow(t *testing.T) {
 	ctx := context.Background()
 	w := newWindow(100)
@@ -45,7 +45,7 @@ func TestWindow(t *testing.T) {
 	go func() { got <- w.take(cctx, 1) }()
 	cancel(stop)
 	if err := <-got; !errors.Is(err, stop) {
-		t.Errorf("cancelled take: %v", err)
+		t.Errorf("canceled take: %v", err)
 	}
 }
 

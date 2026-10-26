@@ -178,10 +178,10 @@ type indexer struct {
 	siteBlogs []int
 	siteUsers *siteUsers
 	admins    []uint64
-	forms    []formRow
-	addr     *addrIndex
-	rows     map[string]int64
-	order    []string // tables in the order their rows came
+	forms     []formRow
+	addr      *addrIndex
+	rows      map[string]int64
+	order     []string // tables in the order their rows came
 
 	// prov is the rule set of the profiles detected so far, wide every
 	// profile of the stack; both are rebuilt when the schema or the
