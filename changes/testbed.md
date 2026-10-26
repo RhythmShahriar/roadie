@@ -22,12 +22,12 @@ Nothing prints a secret. Passwords, Echo's token, the SSH keys, the signing and 
 
 ## Ports
 
-- The gate publishes `127.0.0.1:18920-18939` only: 18920 prod-wp, 18921 staging-wp, 18922 Laravel, 18923 Mailpit, 18924 Echo's API, 18925 sshd, 18926 prod-db, 18927 staging-db, 18928 laravel-db, 18929 PostgreSQL; 18930-18939 are spare.
+- The gate publishes `127.0.0.1:18920-18929` only: 18920 prod-wp, 18921 staging-wp, 18922 Laravel, 18923 Mailpit, 18924 Echo's API, 18925 sshd, 18926 prod-db, 18927 staging-db, 18928 laravel-db, 18929 PostgreSQL; 18930-18939 are reserved and not published.
 - PRD 22.1 gives Go test listeners `127.0.0.1:23240-23259`. This lane's tests use the ports it was assigned instead, `127.0.0.1:33120-33139`: 33120 and 33121 the sinkhole, 33122 the stubs, 33123 the tools fetch test, 33124 and 33125 the traffic generator and Echo stand-in. Integration can move them into 23240-23259 (one constant per test file).
 
 ## The testbed
 
-A Docker Compose project, `roadie-testbed`, on a network with `internal: true`: `prod-wp` and `staging-wp` (WordPress 6.8.3 with WooCommerce 9.8.5, WP Mail SMTP, WP Mail Logging, FluentSMTP and Subscriptions core), `prod-db` (MySQL 8.4), `staging-db` (MariaDB 11.4), `laravel` and `laravel-db`, `pg` (PostgreSQL 16), `sshd` (WP-CLI and the production site, key login only), `sinkhole` (DNS answers every name with its own address; every TCP port lands on it and is recorded with host, port, SNI and first bytes), `stubs` (Stripe, PayPal, Twilio, Zapier and Mailchimp hosts; a call with a live key is recorded as live), `mailpit` and `echo` (rhythm-echo in seal mode). Databases are on tmpfs. Images are pinned by digest and plugin zips by URL and sha256.
+A Docker Compose project, `roadie-testbed`, on a network with `internal: true`: `prod-wp` and `staging-wp` (WordPress 6.8.3 with WooCommerce 9.8.5, WP Mail SMTP, WP Mail Logging, FluentSMTP and Subscriptions core), `prod-db` (MySQL 8.4), `staging-db` (MariaDB 11.4), `laravel` and `laravel-db`, `pg` (PostgreSQL 16), `sshd` (WP-CLI and the production site, key login only), `sinkhole` (DNS answers every name with its own address; every TCP port lands on it and is recorded with host, port, SNI and the first 256 bytes, the values of Authorization, Proxy-Authorization, Cookie, Set-Cookie, X-Api-Key and Api-Key headers masked as `[masked]`), `stubs` (Stripe, PayPal, Twilio, Zapier and Mailchimp hosts; a call with a live key is recorded as live), `mailpit` and `echo` (rhythm-echo in seal mode). Databases are on tmpfs. Images are pinned by digest and plugin zips by URL and sha256.
 
 ## What each scenario proves
 
@@ -45,10 +45,16 @@ Per copy, prepare and environment scenario, in this order with the run checks be
 
 1. **Canaries**: the oracle finds none of the scenario's seeded personal values in the output dump or file tree, in any of 22 encodings (raw, lower, upper, four JSON spellings, three URL spellings, three HTML spellings, base64 and base64url at each offset, PHP serialized, md5, sha256), each also in its mysqldump-escaped spelling. Live keys left and test keys changed are gates of their own.
 2. **Integrity**: every cell that held valid serialized PHP in the input still unserializes in real PHP (`allowed_classes => false`); the row count of every input table is unchanged (PostgreSQL: rows only).
-3. **Side effects**: zero sinkhole connections, zero stub calls with a live key and zero mail captured by Echo to a recipient outside the reserved domains, during the run (with the traffic generator and the host cron where the scenario says so) and during the side-effect drill after it (cron, Action Scheduler, an order, a password reset, a renewal and every webhook, in rounds for 5 minutes). A capture to a fake address is a pass.
+3. **Side effects**: zero sinkhole connections, zero stub calls with a live key and zero mail captured by Echo to a recipient outside the reserved domains, during the run (with the traffic generator and the host cron where the scenario says so) and during the side-effect drill after it (cron, Action Scheduler, an order, a password reset, a renewal and every webhook, in rounds for 5 minutes). A capture to a fake address is a pass. Echo must be readable: when its captures can't be cleared or read (Echo down, a wrong token) the gate fails with `Echo's captures couldn't be read` in its detail, except in r22, which stops Echo on purpose. The harness checks that Echo answers before it starts (`bench: echo doesn't answer on http://127.0.0.1:18924 (make -C testbed up): ...`, exit 3) and after r22 waits up to 30 s for Echo to come back; if it doesn't, the scenario's run notes say `teardown: echo didn't answer again after the scenario: ...` and every later gate 3 fails.
 4. **verify**: a fresh `rhythm-roadie verify` of the result exits 0 with no finding at or above medium; `report check` accepts its report.
 
 The copy must also boot (home, shop, cart and checkout answer 200). A scenario is caught only when every gate holds.
+
+When `rhythm-soundcheck` is on PATH, each boot check also runs `rhythm-soundcheck run http://127.0.0.1:18921/ --quick --modules health --no-download --fail-on error` on the same pages (isolated home, `RHYTHM_NO_UPDATE_CHECK=1`, 3 minute limit) and records a run note: `soundcheck: <n> pages healthy`, `soundcheck: issues at error level: ...` or `soundcheck: not run (<reason>)`. It is not scored: the staging site's own URL (`http://staging-wp`) resolves only inside the sealed network, so a browser on the host can't load its assets.
+
+The oracle reports symbolic links in an output tree under `links` (they aren't followed, so what they point to went unread) and reads every compressed member of a zip archive, plain or gzip, as it reads a gzip file; a survivor inside one is found at `file:<archive>!<member>`. Links in a site copied out of a container are skipped and named in the run notes (`output tree: <n> link(s) not copied or read: ...`).
+
+`-strict` (on in `make bench` and `make reproduce` through `STRICT ?= -strict`, so in the nightly too; `STRICT=` turns it off) also fails the run (exit 1) when a case stopped at `not-built` or the control pass checked nothing although a good scenario ran, printing `strict: <n> case(s) stopped at not-built` or `strict: the control pass checked nothing`. Scenarios the manifest marks pending don't count. results.json counts the not-built cases in `summary.not_built` and marks each with `not_built: true`.
 
 ## The oracle is independent
 
@@ -59,9 +65,9 @@ The copy must also boot (home, shop, cart and checkout answer 200). A scenario i
 The benchmark runs other tools on the same inputs after the scenarios and records them in results.json under `tools`; each is judged only on what it does; anything else is "can't see". Configuration is in `testbed/tools/`, versions in `testbed/Makefile`.
 
 - WP-CLI `search-replace` 2.12.0 on r01, r09 and r12: production URLs left, plus lookalike links, other subdomains and addresses at the production domain it changed.
-- Replibyte 0.10.0 on r01 and r12: personal values and live keys left, serialized integrity.
+- Replibyte 0.10.0 on r01 and r12: personal values and live keys left, serialized integrity. Not run until its sha256 is recorded in `testbed/Makefile` (see below).
 - Greenmask 0.2.26: not run, with the reason "Greenmask 0.2.26 dumps and restores PostgreSQL only; these inputs are MySQL dumps of WordPress shops".
-- Staging Shield 1.0.2 on r01 and r13: side effects during the drill on a raw copy with the plugin active.
+- Staging Shield 1.0.2 on r01 and r13: side effects during the drill on a raw copy with the plugin active. Not run until its sha256 is recorded in `testbed/Makefile`: both lines still say `unverified`, because the release files couldn't be fetched to hash from where this lane ran (no outbound network). Until then the benchmark reports them "not run" with that reason.
 
 A tool that can't run is "not run" with the reason, never an error.
 
@@ -87,5 +93,9 @@ Every day at 03:17 UTC and on demand. Results are artifacts; nothing is committe
 | `fuzz` | every `FUZZ_TARGETS` entry for 5 minutes, then the testbed's own targets | a fuzz target found an input that breaks it; the input is uploaded (`fuzz-failures`) to commit with a named unit test |
 | `php-oracle-corpus` | the PHP serialized codec's committed corpus through real PHP 8.3, then 5 minutes of `FuzzDifferentialPHP` | Roadie wrote a serialized value real PHP can't read, or reads one differently |
 | `docker-tests` | `go test -tags docker -timeout 40m ./...` | a test against a real database or site in Docker failed |
-| `testbed` | `make testbed`, `make -C testbed seal`, `make -C testbed bench DRILL=5m`, `make -C testbed reproduce DRILL=30s`; uploads results.json and docs/benchmark.md (`benchmark`) | the seal broke, a scenario missed or errored, a clean input raised a false alarm, or two runs scored differently |
+| `testbed` | `make testbed`, `make -C testbed seal`, `make -C testbed bench DRILL=5m`, `make -C testbed reproduce DRILL=30s`; uploads results.json and docs/benchmark.md (`benchmark`) | the seal broke, a scenario missed or errored, a clean input raised a false alarm, Roadie answered `not-built` or the control pass checked nothing (`-strict`), or two runs scored differently |
 | `large-dump` | r17 at 20 GB (`make -C testbed up GEN_SIZE=20GB`, `make -C testbed bench ONLY=r17`) against the last green night's results (`r17-results`) | r17 missed a gate, peak RSS grew more than 1.5x from the 200 MB run, or throughput dropped more than 20% |
+
+## Fixture templates
+
+Files named `*.php.tmpl` under `testbed/fixtures/` (r14's `wp-config.php.tmpl`) are Go templates: `php -l` on the raw template fails on the `{{ }}` braces by design. Lint the rendered copy under `testbed/runtime/fixtures/<id>/files/` after `make -C testbed up` (or `go run ./testbed/seed`), which passes.

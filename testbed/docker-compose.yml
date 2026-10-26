@@ -10,7 +10,7 @@
 #
 # Everything sits on `sealed` (internal: true, so Docker gives it no route
 # out) and uses the sinkhole as its DNS. `gate` alone also sits on
-# `egress`, for the ports published on 127.0.0.1:18920-18939; its start
+# `egress`, for the ports published on 127.0.0.1:18920-18929; its start
 # script drops every outbound connection, so it can answer but never call
 # out. Databases live in tmpfs and the sites in volumes `make down` removes.
 #
