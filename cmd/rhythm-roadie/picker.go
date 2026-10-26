@@ -17,6 +17,7 @@ import (
 	"syscall"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/x/term"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
 
@@ -263,7 +264,7 @@ func (huhAsker) choose(title string, options []choice) (string, error) {
 	}
 	v := options[0].value
 	err := huh.NewForm(huh.NewGroup(huh.NewSelect[string]().Title(title).Options(opts...).Value(&v))).
-		WithTheme(huh.ThemeCharm()).Run()
+		WithTheme(huh.ThemeCharm()).WithWidth(formWidth(termWidth())).Run()
 	return v, err
 }
 
@@ -278,8 +279,32 @@ func (huhAsker) input(title, placeholder string, required bool) (string, error) 
 			return nil
 		})
 	}
-	err := huh.NewForm(huh.NewGroup(in)).WithTheme(huh.ThemeCharm()).Run()
+	err := huh.NewForm(huh.NewGroup(in)).WithTheme(huh.ThemeCharm()).WithWidth(formWidth(termWidth())).Run()
 	return strings.TrimSpace(v), err
+}
+
+// termWidth is stdout's width in columns, 0 when unknown.
+func termWidth() int {
+	w, _, err := term.GetSize(os.Stdout.Fd())
+	if err != nil {
+		return 0
+	}
+	return w
+}
+
+// formWidth is the width a picker form is drawn at. A terminal that
+// reports 0 columns (a pty with no window size) made Huh's text input
+// panic, so the form gets the screen's width then, and at least
+// minFormWidth columns always.
+func formWidth(cols int) int {
+	const minFormWidth = 40
+	switch {
+	case cols <= 0:
+		return width
+	case cols < minFormWidth:
+		return minFormWidth
+	}
+	return cols
 }
 
 // runPicker is rhythm-roadie with no arguments on a terminal.
