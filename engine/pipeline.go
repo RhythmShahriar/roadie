@@ -163,6 +163,7 @@ type shared struct {
 	// stagingPath is the subfolder of --url, "" for none.
 	stagingPath string
 	kept        *keptUsers
+	siteUsers   *siteUsers // copy --site's user limit, nil for none
 	adminID     string // the first administrator's ID
 	addr        map[addrKey]addrLens
 	adminHash   []byte // the kept users' password hash for --admin-password-env
@@ -367,6 +368,7 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 		return out, core.ErrNotBuilt
 	}
 	idx := newIndexer(ctx, p.cfg, p.defs, p.site, known)
+	idx.siteBlogs = p.opts.Sites
 	var (
 		final  *profile.Compiled
 		schema *core.Schema
@@ -385,6 +387,7 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 			return out, err
 		}
 		known.Seal()
+		idx.siteUsers.seal(idx.kept)
 		uncov = p.uncovered(schema, final, idx)
 		if plan, err = p.urlPlan(ctx, idx, final); err != nil {
 			return out, err
@@ -484,6 +487,11 @@ func (p *pipeline) finalCompile(idx *indexer, schema *core.Schema) (*profile.Com
 	if err != nil {
 		return nil, err
 	}
+	// Drop the other blogs first: it compiles the rules again, which
+	// would lose the field-type rules added below.
+	if c, err = p.dropOtherBlogs(idx, schema, c); err != nil {
+		return nil, err
+	}
 	ft := profile.NewFieldTypes(c)
 	for _, f := range idx.forms {
 		vals := f.vals
@@ -491,9 +499,6 @@ func (p *pipeline) finalCompile(idx *indexer, schema *core.Schema) (*profile.Com
 	}
 	if rs := ft.Rules(); len(rs) > 0 {
 		c = c.WithRules(rs)
-	}
-	if c, err = p.dropOtherBlogs(idx, schema, c); err != nil {
-		return nil, err
 	}
 	return p.join(c), nil
 }
@@ -592,7 +597,7 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 		p.phase("transform")
 	}
 	sh := &shared{cfg: p.cfg, opts: p.opts, known: known, spans: textSpans(), kept: idx.kept,
-		adminID: idx.firstAdmin(), addr: idx.addr, onePass: p.opts.OnePass, parts: p.parts}
+		siteUsers: idx.siteUsers, adminID: idx.firstAdmin(), addr: idx.addr, onePass: p.opts.OnePass, parts: p.parts}
 	if p.opts.OnePass {
 		// The reader goroutine fills the address lengths and Known while
 		// the workers run: the workers get neither. Known can't be read

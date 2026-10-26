@@ -103,6 +103,13 @@ func (t *transformer) transform(ctx context.Context, b *core.Batch, c *profile.C
 				orig[i], nulls[i] = row.Values[i].Raw, row.Values[i].Kind == core.Null
 			}
 		}
+		if col, drop := t.sh.siteUsers.drops(tb.Name, prefix, get); drop {
+			row.Drop = true
+			c := out.change(siteUserRule, tb.Name, col, core.DeleteRow)
+			c.Rows++
+			c.Values++
+			continue
+		}
 		if keptRow(t.sh.kept, tb.Name, prefix, get) {
 			t.keepRow(out, tb.Name, isUsers, row, pos)
 			continue

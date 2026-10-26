@@ -181,7 +181,11 @@ type indexer struct {
 	blogs    []blogDomain
 	hpos     [2]string // woocommerce_custom_orders_table_enabled, _data_sync_enabled
 	kept     *keptUsers
-	admins   []uint64
+	// siteBlogs are copy --site's blogs; siteUsers is made from them
+	// once the prefix is known.
+	siteBlogs []int
+	siteUsers *siteUsers
+	admins    []uint64
 	forms    []formRow
 	addr     map[addrKey]addrLens
 	rows     map[string]int64
@@ -332,6 +336,19 @@ func (x *indexer) collect(b *core.Batch, pos map[string]int) {
 				}
 			}
 			x.siteURLs[blog] = u
+		}
+		if len(x.siteBlogs) > 0 && p != "" {
+			if x.siteUsers == nil {
+				x.siteUsers = newSiteUsers(p, x.siteBlogs)
+			}
+			switch name {
+			case p + "users":
+				x.siteUsers.observeUser(get)
+			case p + "usermeta":
+				x.siteUsers.observeMeta(get)
+			case p + "sitemeta":
+				x.siteUsers.observeSiteMeta(get)
+			}
 		}
 		switch {
 		case p != "" && (name == p+"blogs" || name == p+"site"):
