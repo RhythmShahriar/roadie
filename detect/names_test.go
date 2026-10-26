@@ -44,3 +44,16 @@ func TestNameCache(t *testing.T) {
 		t.Error("tests share a memo bit")
 	}
 }
+
+func TestSystemAuthor(t *testing.T) {
+	for _, name := range []string{"WooCommerce", " woocommerce ", "WordPress", "Action Scheduler", "WP-CLI"} {
+		if !SystemAuthor([]byte(name)) {
+			t.Errorf("%q is a system author", name)
+		}
+	}
+	for _, name := range []string{"Ada Kowalczyk", "Woo", "WooCommerce Team", ""} {
+		if SystemAuthor([]byte(name)) {
+			t.Errorf("%q is not a system author", name)
+		}
+	}
+}

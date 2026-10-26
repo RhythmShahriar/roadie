@@ -21,7 +21,15 @@ const (
 	changeKeys          = "keys"
 	changeAdminPassword = "admin-password-env"
 	changeUnparseable   = "on_unparseable"
+	changeKnown         = "known-values"
 )
+
+// sweepKinds are the kinds the known-value sweep replaces in leaves no
+// rule covers. Emails, phones and personal URLs are specific enough that
+// a whole leaf equal to a production one is that person's; a lone name
+// word or a login can be an ordinary setting ("Green", "admin") and is
+// left to verify's exact.survivors check.
+var sweepKinds = []core.FakeKind{core.KEmail, core.KPhone, core.KURL}
 
 // formatText is what nested.Format calls a value that isn't serialized,
 // JSON or base64-serialized.
@@ -320,7 +328,18 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 			break
 		}
 		if !matched && whole != nil && whole.Action == core.Scrub {
-			if nv, ch := t.scrub(cur); ch {
+			// A free-text field that holds one production value whole (a
+			// form's address or date field without a type) gets that
+			// value's fake; the scrubber finds only names and shapes.
+			nv, ch, err := t.sweep(cur, nil)
+			if err != nil {
+				leafErr = err
+				return leaf, false
+			}
+			if !ch {
+				nv, ch = t.scrub(cur)
+			}
+			if ch {
 				cnt.changed(whole, 1)
 				cur, changed = nv, true
 			}
@@ -336,6 +355,21 @@ func (t *transformer) value(out *batchOut, rc rowCtx, col core.Column, v *core.V
 				if whole != nil && whole.Action == core.RewriteURL {
 					cnt.changed(whole, int64(n))
 				}
+				cur, changed = nv, true
+			}
+		}
+		// After the URL rewrite: production's own URL becomes the staging
+		// URL even when a user's profile URL is the same.
+		if !matched && whole == nil && !changed {
+			nv, ch, err := t.sweep(cur, sweepKinds)
+			if err != nil {
+				leafErr = err
+				return leaf, false
+			}
+			if ch {
+				c := out.change(changeKnown, rc.table, col.Name, core.Fake)
+				c.Rows++
+				c.Values++
 				cur, changed = nv, true
 			}
 		}
@@ -436,6 +470,30 @@ func (t *transformer) applyLeaf(r core.Rule, leaf []byte, col core.Column) ([]by
 	col.MaxLen, col.Nullable = 0, true
 	nv, _, ch, err := t.apply(r, leaf, col)
 	return nv, ch, err
+}
+
+// sweep replaces a leaf when the whole leaf is a production value of
+// one of kinds (nil: any kind) that pass 1 indexed: the same person's
+// value in a plugin setting, a theme option or a free-text field gets
+// the same fake as in the covered columns, instead of only being
+// reported by verify. Kept users' values aren't in Known, so they stay.
+func (t *transformer) sweep(leaf []byte, kinds []core.FakeKind) ([]byte, bool, error) {
+	if t.sh.parts.noData || t.sh.known == nil || t.sh.known.Len() == 0 {
+		return leaf, false, nil
+	}
+	tok := bytes.TrimSpace(leaf)
+	if len(tok) < 4 || len(tok) > 320 {
+		return leaf, false, nil
+	}
+	kind, enc, ok := t.sh.known.Contains(tok)
+	if !ok || enc != "raw" || kinds != nil && !slices.Contains(kinds, kind) {
+		return leaf, false, nil
+	}
+	nv, err := t.faker.Fake(kind, tok, core.FakeOpts{Locale: t.sh.cfg.Pseudonymise.Locale})
+	if err != nil {
+		return leaf, false, err
+	}
+	return nv, true, nil
 }
 
 // scrub replaces the emails, phones, cards, IPs and known names in free

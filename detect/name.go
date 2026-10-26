@@ -63,6 +63,14 @@ var systemAuthors = map[string]bool{
 	"system": true, "wp-cli": true, "cron": true,
 }
 
+// SystemAuthor reports whether name, trimmed and in any case, is one
+// WordPress or WooCommerce signs its own comments and order notes with.
+// The engine leaves these out of the known set: "WooCommerce" is not a
+// person, and every hook and option name holds the word.
+func SystemAuthor(name []byte) bool {
+	return systemAuthors[strings.ToLower(strings.TrimSpace(string(name)))]
+}
+
 // businessTokens mark a settings name that holds the business's own
 // details (woocommerce_store_address, company_address), not a customer's.
 var businessTokens = []string{"store", "company", "business", "shop", "merchant", "seller"}

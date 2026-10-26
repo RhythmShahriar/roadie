@@ -592,6 +592,51 @@ func TestTransformRealPackages(t *testing.T) {
 	}
 }
 
+// A whole leaf that is a production email, phone or personal URL gets its
+// fake where no rule covers it; a name word, production's own URL and a
+// system author stay. A free-text field holding one known value whole
+// gets that value's fake.
+func TestKnownValueSweep(t *testing.T) {
+	if _, err := pseudo.NewFaker(pseudo.Key{}, pseudo.Options{}); errors.Is(err, core.ErrNotBuilt) {
+		t.Skip("needs the values lane")
+	}
+	settings := `{"notify":"anna.lee@shop-mail.com","color":"Green","home":"https://shop.com","site":"https://anna.example/blog","by":"WooCommerce"}`
+	p, sink, _ := fixture(t, Copy, "wp_", func() []tableData {
+		return []tableData{
+			{table("wp_options", "option_id:bigint(20)", "option_name", "option_value"), rows{
+				{1, "siteurl", "https://shop.com"}, {2, "home", "https://shop.com"}, {3, "plugin_settings", settings}}},
+			{table("wp_users", "ID:bigint(20)", "user_login", "user_email", "user_url"), rows{
+				{1, "anna", "anna.lee@shop-mail.com", "https://anna.example/blog"}}},
+			{table("wp_usermeta", "umeta_id:bigint(20)", "user_id:bigint(20)", "meta_key", "meta_value"), rows{
+				{1, 1, "last_name", "Green"}, {2, 1, "billing_address_1", "12 Wexcombe Road"}}},
+			{table("wp_comments", "comment_ID:bigint(20)", "comment_author", "comment_content"), rows{
+				{1, "WooCommerce", "12 Wexcombe Road"}, {2, "WooCommerce", "Green"}}},
+		}
+	}, nil, Options{URL: "https://staging.shop.test"})
+	out := run(t, p)
+	v, _ := valueOf(t, sink, "wp_options", 2, "option_value")
+	for _, gone := range []string{"anna.lee@shop-mail.com", "https://anna.example/blog", "https://shop.com"} {
+		if strings.Contains(v, gone) {
+			t.Errorf("settings keep %q: %s", gone, v)
+		}
+	}
+	for _, kept := range []string{`"color":"Green"`, `"home":"https://staging.shop.test"`, `"by":"WooCommerce"`, "@example.invalid"} {
+		if !strings.Contains(v, kept) {
+			t.Errorf("settings lack %q: %s", kept, v)
+		}
+	}
+	if c, _ := valueOf(t, sink, "wp_comments", 0, "comment_content"); c == "12 Wexcombe Road" || c == "" {
+		t.Errorf("a known street as a whole comment stayed: %q", c)
+	}
+	swept := false
+	for _, c := range out.Result.Changes {
+		swept = swept || c.Rule == changeKnown && c.Table == "wp_options" && c.Values == 2
+	}
+	if !swept {
+		t.Errorf("changes %+v lack two known-values on wp_options", out.Result.Changes)
+	}
+}
+
 // The kill switch writes its option rules with bare paths ("testmode");
 // they still change the leaf of a serialized option.
 func TestKillSwitchOptionRuleOnSerialized(t *testing.T) {

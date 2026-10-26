@@ -14,6 +14,7 @@ import (
 
 	"github.com/RhythmShahriar/roadie/codec/nested"
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/detect"
 	"github.com/RhythmShahriar/roadie/profile"
 	"github.com/RhythmShahriar/roadie/roadiecfg"
 )
@@ -564,15 +565,27 @@ func (x *indexer) addKnown(b *core.Batch, pos map[string]int, r *core.Row, rs *r
 			return
 		}
 		if rule.Path == "" {
-			x.known.Add(rule.Fake, v)
+			x.addValue(rule.Fake, v)
 			return
 		}
 		_ = nestedLeaves(v, func(p string, leaf []byte) {
 			if leafMatch(rule.Path, p) && len(bytes.TrimSpace(leaf)) > 0 {
-				x.known.Add(rule.Fake, leaf)
+				x.addValue(rule.Fake, leaf)
 			}
 		}, nested.Options{})
 	})
+}
+
+// addValue adds one value to Known, except the names WordPress and
+// WooCommerce sign their own notes with (comment_author "WooCommerce").
+func (x *indexer) addValue(kind core.FakeKind, v []byte) {
+	switch kind {
+	case core.KFirstName, core.KLastName, core.KFullName:
+		if detect.SystemAuthor(v) {
+			return
+		}
+	}
+	x.known.Add(kind, v)
 }
 
 // wouldKeep reports whether keep_users names this users row: a glob on
