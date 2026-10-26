@@ -49,7 +49,7 @@ type Options struct {
 // DataRules, Laravel's are .env edits. A sql target (a DSN, or a folder
 // with neither stack) gets one check-only step that reports
 // side-effect.not-applicable. The exposure steps come from the exposure
-// package.
+// package: exposure.AllSteps returns these followed by them.
 func Steps(stack core.Stack, o Options) []core.Step {
 	switch stack {
 	case core.StackWordPress:

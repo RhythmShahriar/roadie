@@ -21,6 +21,19 @@ func Steps(o killswitch.Options) []core.Step {
 	return []core.Step{robotsStep(o)}
 }
 
+// AllSteps returns every prepare step for the stack in the order they
+// apply: killswitch.Steps, then, for WordPress and Laravel, the exposure
+// Steps. The kill switch can't add them itself, since this package
+// imports it for Options; the engine calls AllSteps so robots.txt is
+// never left out.
+func AllSteps(stack core.Stack, o killswitch.Options) []core.Step {
+	steps := killswitch.Steps(stack, o)
+	if stack == core.StackWordPress || stack == core.StackLaravel {
+		steps = append(steps, Steps(o)...)
+	}
+	return steps
+}
+
 // BasicAuth returns the files of a basic auth setup for user and the
 // password it chose: apache.htaccess, .htpasswd, nginx.conf and Caddyfile,
 // to go under BasicAuthDir. The password is in no file; the caller prints
