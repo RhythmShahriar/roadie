@@ -587,6 +587,13 @@ func (x *indexer) addKnown(b *core.Batch, pos map[string]int, r *core.Row, rs *r
 
 // addValue adds one value to Known, except the names WordPress and
 // WooCommerce sign their own notes with (comment_author "WooCommerce").
+// starts is the first-word set pass 1 recorded, when Known was made
+// with newTextStarts.
+func (x *indexer) starts() *textStarts {
+	ts, _ := x.known.(*textStarts)
+	return ts
+}
+
 func (x *indexer) addValue(kind core.FakeKind, v []byte) {
 	switch kind {
 	case core.KFirstName, core.KLastName, core.KFullName:

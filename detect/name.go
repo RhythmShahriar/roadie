@@ -68,7 +68,18 @@ var systemAuthors = map[string]bool{
 // The engine leaves these out of the known set: "WooCommerce" is not a
 // person; every hook and option name holds the word.
 func SystemAuthor(name []byte) bool {
-	return systemAuthors[strings.ToLower(strings.TrimSpace(string(name)))]
+	// The engine asks for every name pass 1 indexes: compare without
+	// allocating, and only names as long as one of the list.
+	name = bytes.TrimSpace(name)
+	if len(name) < 4 || len(name) > 16 {
+		return false
+	}
+	for a := range systemAuthors {
+		if len(a) == len(name) && bytes.EqualFold(name, []byte(a)) {
+			return true
+		}
+	}
+	return false
 }
 
 // businessTokens mark a settings name that holds the business's own

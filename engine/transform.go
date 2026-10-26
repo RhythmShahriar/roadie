@@ -7,8 +7,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"hash/maphash"
 	"slices"
 	"strings"
+	"sync"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/RhythmShahriar/roadie/codec/nested"
 	"github.com/RhythmShahriar/roadie/core"
@@ -607,6 +611,10 @@ func (t *transformer) sweepText(text []byte) ([]byte, bool) {
 	var out []byte
 	last := 0
 	for i := 0; i < len(words); {
+		if t.sh.starts != nil && !t.sh.starts.has(text[words[i][0]:words[i][1]]) {
+			i++
+			continue
+		}
 		// The run may only cross white space: "Road, Dublin" is two values.
 		end := i + 1
 		for end < len(words) && end-i < maxTextWords && len(bytes.TrimSpace(text[words[end-1][1]:words[end][0]])) == 0 {
@@ -638,6 +646,57 @@ func (t *transformer) sweepText(text []byte) ([]byte, bool) {
 		return text, false
 	}
 	return append(out, text[last:]...), true
+}
+
+// textStarts is Known while pass 1 fills it, recording the first word
+// of every street, address line and postcode it is given: sweepText
+// looks a run of words up only where one of them starts, so free text
+// costs a map lookup per word instead of a Known lookup per run.
+type textStarts struct {
+	core.Known
+	seed maphash.Seed
+	mu   sync.Mutex
+	set  map[uint64]struct{}
+}
+
+func newTextStarts(k core.Known) *textStarts {
+	return &textStarts{Known: k, seed: maphash.MakeSeed(), set: map[uint64]struct{}{}}
+}
+
+// Add records value's first word for the text kinds, then adds it to
+// Known.
+func (s *textStarts) Add(kind core.FakeKind, value []byte) {
+	if slices.Contains(textKinds, kind) {
+		if w := textWords(value); len(w) > 0 {
+			h := s.hash(value[w[0][0]:w[0][1]])
+			s.mu.Lock()
+			s.set[h] = struct{}{}
+			s.mu.Unlock()
+		}
+	}
+	s.Known.Add(kind, value)
+}
+
+// has reports whether word, in any case, starts a known value. It is
+// read once pass 1 is over, with no more Adds.
+func (s *textStarts) has(word []byte) bool {
+	_, ok := s.set[s.hash(word)]
+	return ok
+}
+
+// hash is the seeded hash of word lower-cased.
+func (s *textStarts) hash(word []byte) uint64 {
+	var buf [64]byte
+	low := buf[:0]
+	if len(word) > len(buf) {
+		low = make([]byte, 0, len(word))
+	}
+	for i := 0; i < len(word); {
+		r, n := utf8.DecodeRune(word[i:])
+		low = utf8.AppendRune(low, unicode.ToLower(r))
+		i += n
+	}
+	return maphash.Bytes(s.seed, low)
 }
 
 // textWords splits text into words at white space and the punctuation

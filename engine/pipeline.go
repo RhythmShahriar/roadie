@@ -196,6 +196,9 @@ type shared struct {
 	key         pseudo.Key // keys the reset hashes, so a stable key repeats them
 	onePass     bool
 	parts       parts
+	// starts are the first words of the known streets, address lines
+	// and postcodes, for sweepText; nil looks every run up.
+	starts *textStarts
 }
 
 // parts is what prepare --only leaves out; the zero value does every
@@ -416,6 +419,8 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 	if known == nil || faker == nil {
 		return out, core.ErrNotBuilt
 	}
+	starts := newTextStarts(known)
+	known = starts
 	idx := newIndexer(ctx, p.cfg, p.defs, p.site, known)
 	idx.siteBlogs = p.opts.Sites
 	if p.opts.OnePass {
@@ -669,7 +674,7 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 	} else {
 		p.phase("transform")
 	}
-	sh := &shared{cfg: p.cfg, opts: p.opts, known: known, spans: textSpans(), kept: idx.kept, key: p.key,
+	sh := &shared{cfg: p.cfg, opts: p.opts, known: known, spans: textSpans(), kept: idx.kept, key: p.key, starts: idx.starts(),
 		siteUsers: idx.siteUsers, adminID: idx.firstAdmin(), addr: idx.addr, onePass: p.opts.OnePass, parts: p.parts}
 	if p.opts.OnePass {
 		// The reader goroutine fills the address lengths and Known while
