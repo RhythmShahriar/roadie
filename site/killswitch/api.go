@@ -5,8 +5,8 @@
 // world: mail, cron, Action Scheduler, webhooks, payment gateways,
 // subscriptions and the rest of PRD 13. It also checks they stay off.
 //
-// The exported names in this file are the frozen cross-lane API; the site
-// lane replaces the bodies, which return zero values until then.
+// The exported names in this file are the frozen cross-lane API; new
+// names are added, never changed.
 package killswitch
 
 import (
@@ -29,6 +29,8 @@ type Options struct {
 	Replace    func(h core.KeyHit, value []byte) ([]byte, string, error) // nil: keys.Replace with Cfg.Keys
 	Gateways   []keys.Gateway                                            // nil: keys.Gateways()
 	Mailers    []keys.Mailer                                             // nil: keys.Mailers()
+	// Version is rhythm-roadie's version, for the mu-plugin header.
+	Version string
 }
 
 // Steps returns the kill-switch steps for the stack.
@@ -41,7 +43,11 @@ func DataRules(stack core.Stack, o Options) []core.Rule {
 	return nil
 }
 
-// MuPlugin returns roadie-staging.php.
+// MuPlugin returns roadie-staging.php: the Roadie mu-plugin that pauses
+// Action Scheduler, marks the site a Subscriptions duplicate, puts
+// Jetpack offline, blocks wp_mail when the Echo connector is absent, adds
+// noindex (when o.Noindex) and shows an admin-bar notice. It does nothing
+// on a site whose environment type is production.
 func MuPlugin(o Options) []byte {
-	return nil
+	return muPlugin(o)
 }
