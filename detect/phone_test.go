@@ -78,3 +78,15 @@ func FuzzPhone(f *testing.F) {
 		}
 	})
 }
+
+// Found by FuzzPhone: dropping a "(0)" trunk made 16 digits pass as 15.
+func TestPhoneTrunkNeverStretchesPastFifteen(t *testing.T) {
+	for _, v := range []string{"00(0)0000000000000", "+44 (0)20 1234 5678 9012"} {
+		if h := scanAll(Phone(), v, core.ScanContext{Column: "phone"}); len(h) != 0 {
+			t.Errorf("%q: %v", v, h)
+		}
+	}
+	if h := scanAll(Phone(), "+44 (0)161 496 1234", core.ScanContext{}); len(h) != 1 {
+		t.Errorf("a trunk number with 12 digits: %v", h)
+	}
+}

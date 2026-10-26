@@ -88,9 +88,10 @@ func readNumber(v []byte, i, max int) (end int, digits []byte, seps bool) {
 }
 
 // dropTrunk removes the "(0)" a UK or German number may carry after its
-// country code: "+44 (0)20" dials as +4420.
-func dropTrunk(v []byte, digits []byte) []byte {
-	if bytes.Contains(v, []byte("(0)")) && len(digits) > 3 {
+// country code: "+44 (0)20" dials as +4420. Only a number written with +
+// has a country code; one already over 15 digits stays too long.
+func dropTrunk(v []byte, digits []byte, plus bool) []byte {
+	if plus && len(digits) <= 15 && bytes.Contains(v, []byte("(0)")) && len(digits) > 3 {
 		s := string(v)
 		head := s[:strings.Index(s, "(0)")]
 		n := 0
@@ -188,7 +189,7 @@ func phoneAt(v []byte, i int, phoneCol bool) (phoneMatch, bool, int) {
 		if end == j {
 			return phoneMatch{}, false, i + 1
 		}
-		digits = dropTrunk(v[i:end], digits)
+		digits = dropTrunk(v[i:end], digits, plus)
 		if len(digits) >= 7 && len(digits) <= 15 && !isWordRune(runeAt(v, end)) {
 			return phoneMatch{start: i, end: end, digits: string(digits), plus: plus, seps: seps}, true, end
 		}
@@ -197,7 +198,7 @@ func phoneAt(v []byte, i int, phoneCol bool) (phoneMatch, bool, int) {
 	if v[i] == '+' {
 		if d := nextDigit(v, i+1); d >= 0 {
 			end, digits, seps := readNumber(v, i+1, 15)
-			digits = dropTrunk(v[i:end], digits)
+			digits = dropTrunk(v[i:end], digits, true)
 			if len(digits) >= 8 && len(digits) <= 15 && !isWordRune(runeAt(v, end)) {
 				return phoneMatch{start: i, end: end, digits: string(digits), plus: true, seps: seps}, true, end
 			}
@@ -239,7 +240,7 @@ func telLink(v []byte, i int) (phoneMatch, bool) {
 		i++
 	}
 	end, digits, seps := readNumber(v, i, 15)
-	digits = dropTrunk(v[start:end], digits)
+	digits = dropTrunk(v[start:end], digits, plus)
 	if len(digits) < 7 || len(digits) > 15 || isWordRune(runeAt(v, end)) {
 		return phoneMatch{}, false
 	}
