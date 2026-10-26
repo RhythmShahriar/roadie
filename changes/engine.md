@@ -82,7 +82,7 @@ The file is called `.roadie/config.yaml` in messages when it is in the usual pla
 
 - WordPress and WooCommerce (and `auto`) get the PRD 8.1 file byte for byte (`roadiecfg/testdata/golden/init-wordpress.yaml`). Laravel (`init-laravel.yaml`) and SQL (`init-sql.yaml`) get their own: Laravel marks the WordPress-only side effects and `noindex` as such and shows `laravel.tables`; SQL starts with an active `columns:` example.
 - Messages: `Wrote .roadie/config.yaml for a WooCommerce site.`, `... for a WordPress site.`, `... for a Laravel app.`, `... for a generic SQL database.`
-- Git: `.roadie/reports/`, `.roadie/key`, `.roadie/backups/` and `.roadie/basic-auth/` go into `.git/info/exclude` (of the main repository for a linked worktree) under `# rhythm-roadie: reports, keys and backups stay out of git`, anchored at the work tree root.
+- Git: `.roadie/reports/`, `.roadie/key`, `.roadie/backups/` and `.roadie/basic-auth/` go into `.git/info/exclude` (of the main repository for a linked worktree) under `# rhythm-roadie: reports, keys and backups stay out of git`, anchored at the work tree root. Glob characters in the project's path (`*`, `?`, `[`, `]`, `\`) are backslash-escaped, so a folder named `shop[1]` is excluded too.
 - `config init --from <dump>` adds the uncovered columns as commented suggestions before `keys:` (`roadiecfg/testdata/golden/init-from.yaml`): `#    rule: <guess>  # 98% of sampled values look personal` or `# the name looks personal`.
 
 ## 2. The consistency key
@@ -660,7 +660,7 @@ Users are limited to the members of the chosen blogs and the main site (a `<pref
 | `side-effects` | the kill-switch steps and its data rules |
 | `noindex` | the exposure steps (noindex, robots) and `--basic-auth` |
 
-Without `data`, `keys` and `urls`, only the tables the kill switch touches are exported and imported (`<prefix>options`, `<prefix>wc_webhooks`, `<prefix>automatewoo_queue`). `--only noindex` imports nothing and makes no backup.
+Without `data`, `keys` and `urls`, only the tables the kill switch touches are exported and imported (`<prefix>options`, `<prefix>wc_webhooks`, `<prefix>automatewoo_queue`). On a multisite every blog's copies go with them (`<prefix><N>_options` and so on for each `blog_id` above 1 in `<prefix>blogs`), so the kill switch's data rules reach every blog; a table the site doesn't have is skipped. `--only noindex` imports nothing and makes no backup.
 
 ## 6. Confirmation
 

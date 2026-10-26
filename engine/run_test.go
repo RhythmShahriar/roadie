@@ -438,7 +438,8 @@ func TestRunOnlySideEffects(t *testing.T) {
 		t.Fatal("no export")
 	}
 	for _, tb := range f.tables {
-		if !slices.Equal(tb, want) {
+		// The first read looks the multisite blogs up.
+		if !slices.Equal(tb, want) && !slices.Equal(tb, []string{"wp_blogs"}) {
 			t.Errorf("exported %v, want %v", tb, want)
 		}
 	}
@@ -475,6 +476,79 @@ func TestRunOnlySideEffects(t *testing.T) {
 	j.Opts.Only = []string{"data,nope"}
 	if _, err := Run(context.Background(), j); !isCode(err, core.ErrConfig) {
 		t.Errorf("bad part: %v", err)
+	}
+}
+
+// On a multisite, prepare --only side-effects exports every blog's kill
+// switch tables, so blog 2's live settings are switched off as well as
+// the main site's.
+func TestRunOnlySideEffectsMultisite(t *testing.T) {
+	f := useRunFakes(t)
+	killDataRules = func(core.Stack, killswitch.Options) []core.Rule {
+		return []core.Rule{{ID: "killswitch.options.option_value.admin_email", Profile: "killswitch",
+			Table: "{prefix}{site}options", Column: "option_value", Where: map[string]string{"option_name": "admin_email"},
+			Action: core.Fixed, Value: "staging@example.invalid"}}
+	}
+	network := func() []tableData {
+		td := blogTables()
+		for i := range td {
+			if strings.HasSuffix(td[i].t.Name, "options") {
+				td[i].rows = append(td[i].rows, []any{9, "admin_email", "owner@shop.com"})
+			}
+		}
+		return td
+	}
+	f.staging.SourceFunc = func(tables []string) (core.Source, error) {
+		f.tables = append(f.tables, tables)
+		td := slices.DeleteFunc(network(), func(d tableData) bool { return !slices.Contains(tables, d.t.Name) })
+		return testutil.FakeSource(schemaOf("wp_", td), batches(td)), nil
+	}
+	j := f.job(Prepare)
+	j.Opts.Only = []string{"side-effects"}
+	if _, err := Run(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"wp_options", "wp_wc_webhooks", "wp_automatewoo_queue",
+		"wp_2_options", "wp_2_wc_webhooks", "wp_2_automatewoo_queue",
+		"wp_3_options", "wp_3_wc_webhooks", "wp_3_automatewoo_queue"}
+	if !slices.ContainsFunc(f.tables, func(tb []string) bool { return slices.Equal(tb, want) }) {
+		t.Errorf("exported %v, want %v", f.tables, want)
+	}
+	for _, tb := range []string{"wp_options", "wp_2_options", "wp_3_options"} {
+		if v, _ := valueOf(t, f.stagSink.Sink, tb, 1, "option_value"); v != "staging@example.invalid" {
+			t.Errorf("%s admin_email %q", tb, v)
+		}
+	}
+	for _, b := range f.stagSink.Batches() {
+		if b.Table != nil && strings.HasSuffix(b.Table.Name, "comments") {
+			t.Errorf("wrote %s", b.Table.Name)
+		}
+	}
+}
+
+// A single site has no blogs table: only the main prefix is listed.
+// A failing read is an error, not a silent single-site guess.
+func TestBlogPrefixes(t *testing.T) {
+	s := testutil.FakeSite(nil)
+	s.SourceFunc = func(tables []string) (core.Source, error) {
+		td := slices.DeleteFunc(wpUsers(), func(d tableData) bool { return !slices.Contains(tables, d.t.Name) })
+		return testutil.FakeSource(schemaOf("wp_", td), batches(td)), nil
+	}
+	got, err := blogPrefixes(context.Background(), s, "wp_")
+	if err != nil || !slices.Equal(got, []string{"wp_"}) {
+		t.Errorf("single site %v %v", got, err)
+	}
+	s.SourceFunc = func([]string) (core.Source, error) {
+		td := []tableData{{table("wp_blogs", "blog_id:bigint(20)", "domain"), rows{{11, "b.shop.com"}, {1, "shop.com"}, {2, "a.shop.com"}, {2, "dup.shop.com"}}}}
+		return testutil.FakeSource(schemaOf("wp_", td), batches(td)), nil
+	}
+	got, err = blogPrefixes(context.Background(), s, "wp_")
+	if err != nil || !slices.Equal(got, []string{"wp_", "wp_2_", "wp_11_"}) {
+		t.Errorf("network %v %v", got, err)
+	}
+	s.SourceFunc = func([]string) (core.Source, error) { return nil, errors.New("connection refused") }
+	if _, err := blogPrefixes(context.Background(), s, "wp_"); err == nil {
+		t.Error("no error from a failing read")
 	}
 }
 

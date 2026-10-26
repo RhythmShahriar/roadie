@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -743,9 +744,15 @@ func (r *runner) inputFor(ctx context.Context, e core.Endpoint, s core.Site, lim
 	if limited {
 		id, err := s.DBIdentity(ctx)
 		if err == nil && s.Stack() == core.StackWordPress {
-			tables := make([]string, 0, len(sideEffectTables))
-			for _, t := range sideEffectTables {
-				tables = append(tables, id.Prefix+t)
+			blogs, err := blogPrefixes(ctx, s, id.Prefix)
+			if err != nil {
+				return nil, err
+			}
+			tables := make([]string, 0, len(sideEffectTables)*len(blogs))
+			for _, b := range blogs {
+				for _, t := range sideEffectTables {
+					tables = append(tables, b+t)
+				}
 			}
 			return &tablesInput{s: s, tables: tables}, nil
 		}
@@ -770,6 +777,54 @@ func (r *runner) inputFor(ctx context.Context, e core.Endpoint, s core.Site, lim
 		return in, nil
 	}
 	return &siteInput{s: s}, nil
+}
+
+// blogPrefixes returns the table prefix of every blog of a WordPress
+// site: "wp_" first, then "wp_2_" and so on for each other blog of a
+// multisite's blogs table. A single site has no blogs table, so the
+// list is the main prefix alone. Each blog keeps its own options,
+// webhooks and AutomateWoo queue, so the kill switch has to reach them
+// all. The site skips a listed table it doesn't have.
+func blogPrefixes(ctx context.Context, s core.Site, prefix string) ([]string, error) {
+	out := []string{prefix}
+	src, err := s.Source(ctx, []string{prefix + "blogs"})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = src.Close() }()
+	seen := map[uint64]bool{}
+	var ids []uint64
+	for {
+		b, err := src.Next(ctx)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if b == nil || b.Table == nil || b.Table.Name != prefix+"blogs" {
+			continue
+		}
+		pos := positions(b)
+		for ri := range b.Rows {
+			v, ok := rowGet(b, pos, &b.Rows[ri])("blog_id")
+			if !ok {
+				continue
+			}
+			// Blog 1 is the main site, which uses the bare prefix.
+			n, err := strconv.ParseUint(strings.Trim(string(v), "'\""), 10, 64)
+			if err != nil || n <= 1 || seen[n] {
+				continue
+			}
+			seen[n] = true
+			ids = append(ids, n)
+		}
+	}
+	slices.Sort(ids)
+	for _, n := range ids {
+		out = append(out, prefix+strconv.FormatUint(n, 10)+"_")
+	}
+	return out, nil
 }
 
 // tablesInput exports only some tables of a site, on every pass.
