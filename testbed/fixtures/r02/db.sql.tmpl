@@ -7,7 +7,7 @@ and wp_wc_orders_meta with the same person's values. */ -}}
 {{template "head"}}
 {{- template "wp_options" "wp_"}}
 LOCK TABLES `wp_options` WRITE;
-INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'admin_email','owner@shop.example.com','on'),(5,'blog_public','1','on'),(6,'woocommerce_custom_orders_table_enabled','yes','on'),(7,'woocommerce_custom_orders_table_data_sync_enabled','yes','on');
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'admin_email','owner@shop.example.com','on'),(5,'blog_public','1','on'),(6,'woocommerce_custom_orders_table_enabled','yes','on'),(7,'woocommerce_custom_orders_table_data_sync_enabled','yes','on'),(8,'woocommerce_version','9.8.5','on'),(9,'woocommerce_db_version','9.8.5','on');
 UNLOCK TABLES;
 {{template "wp_users" "wp_"}}
 LOCK TABLES `wp_users` WRITE;

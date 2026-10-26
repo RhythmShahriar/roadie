@@ -17,6 +17,9 @@ columns:
   - table: Address
     column: line1
     rule: street
+  - table: Address
+    column: city
+    rule: city
   - table: Session
     column: ipAddress
     rule: ip

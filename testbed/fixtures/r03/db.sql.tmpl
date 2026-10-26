@@ -8,7 +8,7 @@ a payment token per customer. */ -}}
 {{template "head"}}
 {{- template "wp_options" "wp_"}}
 LOCK TABLES `wp_options` WRITE;
-INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'blog_public','1','on'),(5,'woocommerce_custom_orders_table_enabled','no','on');
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'blog_public','1','on'),(5,'woocommerce_custom_orders_table_enabled','no','on'),(6,'woocommerce_version','9.8.5','on'),(7,'woocommerce_db_version','9.8.5','on');
 UNLOCK TABLES;
 {{template "wp_users" "wp_"}}
 LOCK TABLES `wp_users` WRITE;
