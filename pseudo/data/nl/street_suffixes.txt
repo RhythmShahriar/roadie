@@ -1,0 +1,11 @@
+straat
+laan
+weg
+plein
+gracht
+kade
+singel
+dijk
+hof
+pad
+steeg

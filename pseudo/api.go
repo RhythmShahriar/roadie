@@ -6,8 +6,14 @@
 // in a range verify never flags. It also keeps the set of replaced values
 // for exact-mode verify and makes passwords, salts and keys for the copy.
 //
-// The exported names in this file are the frozen cross-lane API; the
-// values lane replaces the bodies, which return core.ErrNotBuilt until then.
+// A fake is F(kind, HMAC-SHA256(key, kind || 0x00 || Normalise(kind,
+// original))): the same person gets the same fake in every table and
+// encoding of one run and in every run that uses the same key. Without
+// the key a fake can't be linked back to its original; with the key a
+// guess can be checked, which is why the copy is pseudonymised and not
+// anonymised.
+//
+// The exported names in this file are the frozen cross-lane API.
 package pseudo
 
 import "github.com/RhythmShahriar/roadie/core"
@@ -25,66 +31,126 @@ type Options struct {
 
 // NewKey returns a key from crypto/rand.
 func NewKey() (Key, error) {
-	return Key{}, core.ErrNotBuilt
+	return newKey()
 }
 
 // ParseKey reads a key written as base64 of 32 bytes.
+//
+// Surrounding spaces and a trailing newline are ignored, so the content of
+// a key file or ROADIE_KEY can be passed as it is. Anything else is an
+// error with the code config that never quotes the value.
 func ParseKey(s string) (Key, error) {
-	return Key{}, core.ErrNotBuilt
+	return parseKey(s)
 }
 
 // String returns the key as base64.
 func (k Key) String() string {
-	return ""
+	return k.encode()
 }
 
 // Fingerprint returns "roadie-key:" and 12 base32 characters, safe to print.
+//
+// The characters are the first 12 of the lower-case, unpadded base32 of
+// SHA-256(key), so the fingerprint names a key without revealing it.
 func (k Key) Fingerprint() string {
-	return ""
+	return k.fingerprint()
 }
 
 // NewFaker returns a Faker keyed by k.
+//
+// Empty options take their defaults: email domain example.invalid, locale
+// en, phone style echo and a cache of 65,536 fakes. An email domain that
+// isn't reserved (core.ReservedEmailDomain), an unknown locale or an
+// unknown phone style is an error with the code config (exit 2).
+//
+// A Faker is for one goroutine; Clone gives each worker its own. Clones
+// share the key and the per-run set of unique fakes, so a collision
+// between two workers is still caught.
 func NewFaker(k Key, o Options) (core.Faker, error) {
-	return nil, core.ErrNotBuilt
+	return newFaker(k, o)
 }
 
 // NewKnown returns an empty known-value set keyed by k.
+//
+// It keeps 8-byte keyed hashes, never the values. It finds a value again
+// in its raw (any case), md5 hex and sha256 hex forms. Names also store
+// their words and word pairs, for the free-text scrubber.
 func NewKnown(k Key) core.Known {
-	return nil
+	return newKnown(k)
 }
 
 // Normalise puts a value in the form its fake is keyed on.
+//
+// Emails are trimmed and lower-cased; phones keep their digits and a
+// leading '+'; names, streets, addresses, cities and companies are
+// Unicode NFC, case-folded, trimmed and have runs of white space made one
+// space; IPs are written in canonical form with IPv4-mapped IPv6 unmapped;
+// other kinds are trimmed. The result never shares memory with b.
 func Normalise(kind core.FakeKind, b []byte) []byte {
-	return nil
+	return normalise(kind, b)
 }
 
 // Scrub replaces the personal values sp finds in free text (and the known
 // values) with their fakes; it returns the text and the count replaced.
+//
+// Spans of kind email, phone, ip and the other fake kinds become the
+// faker's fake of that kind; any other span (cards, IBANs) becomes
+// "XXXX". Scrub also finds addresses itself by their '@' and reads them
+// as Unicode; every email span is widened over the Unicode letters around
+// it, so no part of an address stays behind. Spans that already hold a
+// Roadie fake are left as they are. Then every word pair and word of the
+// rest of the text that known reports as a name becomes a fake name with
+// the same number of words (O'Sullivan and Jean-Luc count as one word).
+// Text outside the replaced parts is copied byte for byte; with nothing
+// to replace, text itself comes back. Names Roadie never saw in a
+// structured column can't be found and stay.
 func Scrub(text []byte, sp core.Spanner, known core.Known, f core.Faker) ([]byte, int) {
-	return nil, 0
+	return scrub(text, sp, known, f)
 }
 
 // ResetHash returns a password hash no password matches, for the stack.
+//
+// WordPress gets "$P$roadie" and 22 random phpass characters: phpass
+// reads 'r' as an iteration count out of its range and refuses the hash.
+// Laravel and sql get a bcrypt (cost 10, "$2y$") of 32 random bytes that
+// are thrown away. Any other stack is an error with the code stack.
 func ResetHash(stack core.Stack) ([]byte, error) {
-	return nil, core.ErrNotBuilt
+	return resetHash(stack)
 }
 
 // PasswordHash hashes password for the stack: phpass $P$ or bcrypt.
+//
+// WordPress gets a phpass portable hash ("$P$B", an 8-character salt,
+// 2^13 md5 rounds) that every WordPress since 2.5 checks, 6.8's bcrypt
+// default included. Laravel and sql get bcrypt with cost 12 and the
+// "$2y$" prefix PHP writes. An empty password or one over 72 bytes is an
+// error with the code config (exit 2) that never quotes the password.
 func PasswordHash(stack core.Stack, password []byte) ([]byte, error) {
-	return nil, core.ErrNotBuilt
+	return passwordHash(stack, password)
 }
 
 // IsFake reports whether v is a value Roadie's lists or formats produce.
+//
+// Emails, usernames, nicenames and URLs are checked by their format and
+// reserved domain; names, streets, addresses, cities and companies by
+// membership of any locale's lists, ignoring case; phones by
+// core.FictionalPhone; IPs by core.DocumentationIP; the user agent by
+// equality. Postcodes, dates of birth and text can't be told apart from
+// real ones and always report false.
 func IsFake(kind core.FakeKind, v []byte) bool {
-	return false
+	return isFake(kind, v)
 }
 
 // Salt returns 64 printable characters from crypto/rand.
+//
+// The characters are the ones WordPress salts use (letters, digits and
+// !@#$%^&*()-_ []{}<>~`+=,.;:/?|), never a quote or backslash, so a salt
+// can go in wp-config.php's single-quoted defines as it is.
 func Salt() string {
-	return ""
+	return salt()
 }
 
 // AppKey returns a Laravel APP_KEY: "base64:" and 32 random bytes.
 func AppKey() string {
-	return ""
+	return appKey()
 }

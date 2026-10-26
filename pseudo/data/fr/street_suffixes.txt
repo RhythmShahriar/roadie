@@ -1,0 +1,10 @@
+Rue
+Avenue
+Boulevard
+Allee
+Chemin
+Impasse
+Place
+Quai
+Route
+Square

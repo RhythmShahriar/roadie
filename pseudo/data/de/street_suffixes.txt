@@ -1,0 +1,10 @@
+strasse
+weg
+allee
+ring
+gasse
+platz
+steig
+damm
+pfad
+ufer

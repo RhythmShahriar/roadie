@@ -1,0 +1,219 @@
+Roma
+Milano
+Napoli
+Torino
+Firenze
+Venezia
+Bologna
+Genova
+Palermo
+Bari
+Verona
+Padova
+Trieste
+Brescia
+Parma
+Modena
+Ancona
+Pescara
+Perugia
+Siena
+Pisa
+Lucca
+Livorno
+Arezzo
+Ravenna
+Rimini
+Ferrara
+Mantova
+Cremona
+Bergamo
+Como
+Varese
+Novara
+Vercelli
+Asti
+Cuneo
+Alessandria
+Aosta
+Trento
+Bolzano
+Udine
+Treviso
+Vicenza
+Rovigo
+Belluno
+Piacenza
+Reggio
+Forli
+Cesena
+Urbino
+Macerata
+Fermo
+Ascoli
+Teramo
+Chieti
+Campobasso
+Isernia
+Foggia
+Lecce
+Taranto
+Brindisi
+Matera
+Potenza
+Cosenza
+Catanzaro
+Messina
+Catania
+Siracusa
+Ragusa
+Trapani
+Agrippa
+Cagliari
+Sassari
+Nuoro
+Garibaldi
+Mazzini
+Cavour
+Vittorio Emanuele
+Umberto I
+Margherita
+Dante Alighieri
+Petrarca
+Boccaccio
+Ariosto
+Tasso
+Leopardi
+Foscolo
+Manzoni
+Carducci
+Pascoli
+Dannunzio
+Verga
+Pirandello
+Svevo
+Montale
+Ungaretti
+Quasimodo
+Calvino
+Pavese
+Moravia
+Gramsci
+Croce
+Galilei
+Volta
+Marconi
+Fermi
+Meucci
+Colombo
+Vespucci
+Marco Polo
+Caboto
+Verrazzano
+Leonardo da Vinci
+Michelangelo
+Raffaello
+Giotto
+Botticelli
+Tiziano
+Caravaggio
+Bernini
+Canova
+Brunelleschi
+Donatello
+Masaccio
+Mantegna
+Tintoretto
+Verdi
+Puccini
+Rossini
+Bellini
+Donizetti
+Vivaldi
+Paganini
+Monteverdi
+Scarlatti
+Corelli
+Toscanini
+San Francesco
+San Marco
+San Giovanni
+San Pietro
+San Paolo
+San Lorenzo
+Santa Maria
+Santa Chiara
+Sant Antonio
+San Giuseppe
+San Michele
+San Martino
+San Nicola
+San Rocco
+Santo Stefano
+San Giorgio
+dei Mille
+della Repubblica
+della Liberta
+della Pace
+della Vittoria
+della Costituzione
+dell Unita
+XX Settembre
+IV Novembre
+XXV Aprile
+II Giugno
+I Maggio
+XXIV Maggio
+dei Martiri
+dei Caduti
+degli Alpini
+dei Bersaglieri
+dei Partigiani
+della Resistenza
+del Lavoro
+dell Industria
+del Commercio
+dell Artigianato
+del Mare
+del Porto
+del Lago
+del Fiume
+della Stazione
+del Mercato
+della Chiesa
+del Castello
+del Duomo
+del Municipio
+delle Scuole
+dell Ospedale
+del Teatro
+del Cimitero
+del Mulino
+della Fontana
+del Pozzo
+dei Tigli
+dei Pini
+degli Ulivi
+dei Cipressi
+delle Querce
+dei Castagni
+dei Platani
+delle Rose
+dei Gigli
+delle Viole
+dei Glicini
+delle Ortensie
+dei Gerani
+delle Camelie
+delle Magnolie
+dei Mandorli
+degli Aranci
+dei Limoni
+dei Gelsi
+delle Vigne
+dei Campi
+dei Prati
+dei Boschi
+dei Giardini
+degli Orti
+delle Mura
