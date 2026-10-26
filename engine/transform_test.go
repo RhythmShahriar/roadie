@@ -148,7 +148,7 @@ func TestWholeRuleBeatsPathRule(t *testing.T) {
 
 // The default fields of Contact Form 7 (your-name, your-email) and of
 // Fluent Forms (names, email, phone) get their own rules: the values are
-// faked, not scrubbed, and the names reach Known for the free text.
+// faked rather than scrubbed; the names reach Known for the free text.
 func TestFormDefaultFields(t *testing.T) {
 	f := useFakes(t)
 	tables := func() []tableData {
