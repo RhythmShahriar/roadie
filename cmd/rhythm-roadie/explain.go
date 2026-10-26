@@ -22,6 +22,15 @@ import (
 //go:embed explain/*.md
 var explainFS embed.FS
 
+// engineRules are the rule names in data.changes that no profile owns: the
+// engine's own changes and the kill switch's rule family
+// (killswitch.wc_webhooks.secret reads "killswitch"). explain has a text
+// for each, so every rule ID a report or plan shows has one (PRD 6.10).
+var engineRules = []string{
+	"urls", "keys", "known-values", "uncovered-values", "action-scheduler-args", "hpos-address-index",
+	"admin-password-env", "on_unparseable", "killswitch",
+}
+
 // explainIDs lists every ID explain knows, sorted.
 func explainIDs() []string {
 	entries, _ := fs.ReadDir(explainFS, "explain")

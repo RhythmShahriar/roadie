@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -532,6 +533,7 @@ func TestExplainCoversEveryID(t *testing.T) {
 		ids = append(ids, core.KeyLiveID(p))
 	}
 	ids = append(ids, profileIDs...)
+	ids = append(ids, engineRules...)
 	for _, id := range ids {
 		found, text, ok := explainText(id)
 		if !ok || found != id {
@@ -543,9 +545,43 @@ func TestExplainCoversEveryID(t *testing.T) {
 		}
 	}
 	for _, id := range explainIDs() {
-		if !core.KnownID(id) && !slices.Contains(profileIDs, id) && id != "pseudonymised" {
+		if !core.KnownID(id) && !slices.Contains(profileIDs, id) && !slices.Contains(engineRules, id) && id != "pseudonymised" {
 			t.Errorf("explain/%s.md names no known ID", id)
 		}
+	}
+	// A rule ID as data.changes names it finds its family's text.
+	for id, want := range map[string]string{
+		"killswitch.options.option_value.woocommerce_stripe_settings.testmode": "killswitch",
+		"killswitch.wc_webhooks.secret":                                        "killswitch", "killswitch.wc_webhooks.status": "killswitch",
+		"urls": "urls", "keys": "keys", "action-scheduler-args": "action-scheduler-args",
+		"woocommerce.wc_orders.billing_email": "woocommerce",
+	} {
+		if found, _, ok := explainText(id); !ok || found != want {
+			t.Errorf("explain %s found %q", id, found)
+		}
+	}
+}
+
+// Every rule name the engine and the kill switch write into data.changes
+// has a text: the engine's change names are in engine/transform.go and
+// engine/rowfix.go.
+func TestExplainCoversEngineRules(t *testing.T) {
+	n := 0
+	for _, file := range []string{"../../engine/transform.go", "../../engine/rowfix.go"} {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range regexp.MustCompile(`(?m)^\s*change\w+\s*=\s*"([a-z_-]+)"|out\.change\("([a-z_-]+)"`).FindAllStringSubmatch(string(b), -1) {
+			id := m[1] + m[2]
+			n++
+			if !slices.Contains(engineRules, id) {
+				t.Errorf("%s: rule %s has no explain text", file, id)
+			}
+		}
+	}
+	if n < 8 {
+		t.Errorf("found %d rule names; the pattern no longer matches the engine", n)
 	}
 }
 
