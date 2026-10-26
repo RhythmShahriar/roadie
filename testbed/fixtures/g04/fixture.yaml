@@ -1,0 +1,8 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  A clean Laravel staging: reserved-domain users, Stripe test keys,
+  MAIL_MAILER=log, QUEUE_CONNECTION=sync and APP_ENV=staging.
+stack: laravel
+canaries: false

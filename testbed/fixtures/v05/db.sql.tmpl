@@ -1,0 +1,7 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+v05: clean data, every switch on. */ -}}
+{{template "head"}}
+{{- template "clean_wp" (dict "n" 20 "gw" "live" "webhook" true)}}
+{{- template "tail"}}

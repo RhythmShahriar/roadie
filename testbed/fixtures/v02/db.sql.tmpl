@@ -1,0 +1,26 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+v02: plain columns faked, nested values real. */ -}}
+{{template "head"}}
+{{- template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://staging.shop.test','on'),(2,'home','https://staging.shop.test','on'),(3,'blog_public','0','on');
+UNLOCK TABLES;
+{{template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+INSERT INTO `wp_users` VALUES {{range $i := seq 60}}{{if gt $i 1}},{{end}}({{add $i 1}},'user{{$i}}','$wp$2y$10$testbedtestbedtestbedtestbedtestbedtestbedtestbedtes','user-{{$i}}','u{{printf "%016x" $i}}@example.invalid','','2026-06-02 10:00:00','',0,'User {{$i}}'){{end}};
+UNLOCK TABLES;
+{{template "wp_usermeta" "wp_"}}
+LOCK TABLES `wp_usermeta` WRITE;
+INSERT INTO `wp_usermeta` VALUES {{range $i := seq 60}}{{$n := printf "g%d" $i}}{{if gt $i 1}},{{end}}({{$i}},{{add $i 1}},'session_tokens','{{sql (sarr (printf "%064d" $i) (sarr "expiration" "i:1893456000;" "ip" (ser (canary "ip" $n "wp_usermeta.meta_value")) "ua" (ser (canary "user_agent" $n "wp_usermeta.meta_value")) "login" "i:1782000000;"))}}'){{end}};
+UNLOCK TABLES;
+{{template "wp_actionscheduler_actions" "wp_"}}
+LOCK TABLES `wp_actionscheduler_actions` WRITE;
+INSERT INTO `wp_actionscheduler_actions` VALUES {{range $a := seq 60}}{{if gt $a 1}},{{end}}({{$a}},'woocommerce_send_review_reminder','complete','2026-08-01 09:00:00','2026-08-01 09:00:00',10,'{{sql "{\"email\":\"" (json (canary "email" (printf "g%d" $a) "wp_actionscheduler_actions.args")) "\"}"}}','O:30:\"ActionScheduler_SimpleSchedule\":0:{}',0,1,'2026-08-01 09:00:00','2026-08-01 09:00:00',0,NULL){{end}};
+UNLOCK TABLES;
+{{template "wp_woocommerce_sessions" "wp_"}}
+LOCK TABLES `wp_woocommerce_sessions` WRITE;
+INSERT INTO `wp_woocommerce_sessions` VALUES {{range $i := seq 60}}{{$n := printf "g%d" $i}}{{if gt $i 1}},{{end}}({{$i}},'{{printf "%032d" $i}}','{{sql (sarr "customer" (ser (sarr "first_name" (ser (canary "first_name" $n "wp_woocommerce_sessions.session_value")) "phone" (ser (canary "phone" $n "wp_woocommerce_sessions.session_value")) "email" (ser (canary "email" $n)))))}}',1893456000){{end}};
+UNLOCK TABLES;
+{{template "tail"}}

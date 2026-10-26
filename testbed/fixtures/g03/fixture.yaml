@@ -1,0 +1,10 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  A clean international staging: CJK and right-to-left fake names on
+  reserved addresses, Arabic-Indic digits, phone numbers from the UK, US
+  and German fiction ranges and IBAN-shaped order references (the
+  published example IBANs and strings that fail the IBAN checksum).
+stack: woocommerce
+canaries: false

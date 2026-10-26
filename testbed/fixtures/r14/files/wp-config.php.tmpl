@@ -1,0 +1,32 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+Every line ends in {{cr}} and the file starts with {{bom}}: Git would turn
+real CRLF bytes into LF on checkout. */ -}}
+{{bom}}<?php{{cr}}
+/**{{cr}}
+ * Production wp-config.php, copied to staging as it is.{{cr}}
+ */{{cr}}
+define( 'WP_ENVIRONMENT_TYPE', 'production' );{{cr}}
+define( 'DISABLE_WP_CRON', false );{{cr}}
+define( 'DB_NAME', getenv( 'WORDPRESS_DB_NAME' ) ?: '@@DB_NAME@@' );{{cr}}
+define( 'DB_USER', getenv( 'WORDPRESS_DB_USER' ) ?: '@@DB_USER@@' );{{cr}}
+define( 'DB_PASSWORD', getenv( 'WORDPRESS_DB_PASSWORD' ) ?: '@@DB_PASSWORD@@' );{{cr}}
+define( 'DB_HOST', getenv( 'WORDPRESS_DB_HOST' ) ?: 'db.shop.example.com' );{{cr}}
+define( 'DB_CHARSET', 'utf8mb4' );{{cr}}
+define( 'DB_COLLATE', '' );{{cr}}
+define( 'WP_REDIS_HOST', 'redis.shop.example.com' );{{cr}}
+define( 'WP_CACHE_KEY_SALT', 'shop.example.com:' );{{cr}}
+define( 'AUTH_KEY',         'kV?0x`Z+3mP4]qL!w8Rn.tY6sB2#jH9e' );{{cr}}
+define( 'SECURE_AUTH_KEY',  'B7)cQ1u^Nf5zD0}kX3vM8pS;rT2gW6hL' );{{cr}}
+define( 'LOGGED_IN_KEY',    'yE4{oJ9a!Lq2Vn7Hc0Zr5Ub8Ks3Gt6Wm' );{{cr}}
+define( 'NONCE_KEY',        'Pf1@dR6xY0sN3kM8wQ5vB2jT7hC9gL4z' );{{cr}}
+define( 'AUTH_SALT',        'rZ8%aK3nW6qT0yU5cM1vH9xB4sJ7dG2e' );{{cr}}
+define( 'SECURE_AUTH_SALT', 'Lm5&nQ0tV3wY8zB1cX6kR9sD4fH7gJ2p' );{{cr}}
+define( 'LOGGED_IN_SALT',   'Hd2*fK7mP0qS5vX8yB3nW6rT1cZ4gL9j' );{{cr}}
+define( 'NONCE_SALT',       'Wc9(gN4kR1tV6yZ0bM3qS8xD5fH2jL7p' );{{cr}}
+$table_prefix = 'wp_';{{cr}}
+if ( ! defined( 'ABSPATH' ) ) {{"{"}}{{cr}}
+	define( 'ABSPATH', __DIR__ . '/' );{{cr}}
+{{"}"}}{{cr}}
+require_once ABSPATH . 'wp-settings.php';{{cr}}

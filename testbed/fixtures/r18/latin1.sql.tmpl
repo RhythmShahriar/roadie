@@ -1,0 +1,19 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r18: an old latin1 table that holds UTF-8 bytes read as latin1 and
+written again as UTF-8 (double-encoded), as many old WordPress sites do.
+"MÃ¼ller" is how "Müller" looks then; the canaries sit next to it. */ -}}
+{{template "head"}}
+DROP TABLE IF EXISTS `wp_comments`;
+CREATE TABLE `wp_comments` (
+  `comment_ID` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `comment_author` tinytext NOT NULL,
+  `comment_author_email` varchar(100) NOT NULL DEFAULT '',
+  `comment_content` text NOT NULL,
+  PRIMARY KEY (`comment_ID`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+LOCK TABLES `wp_comments` WRITE;
+INSERT INTO `wp_comments` VALUES {{range $i := seq 40}}{{$n := printf "f%d" $i}}{{if gt $i 1}},{{end}}({{$i}},'{{sql (canary "full_name" $n)}} MÃ¼ller','{{sql (canary "email" $n)}}','{{sql "Grüße from " (canary "street" $n "wp_comments.comment_content") ", KÃ¶ln"}}'){{end}};
+UNLOCK TABLES;
+{{template "tail"}}

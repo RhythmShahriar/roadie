@@ -1,0 +1,19 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r09: 30 pages with the production URL in each form, plus the values a
+rewriter must leave alone. */ -}}
+{{template "head"}}
+{{- template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'blog_public','1','on'),(5,'admin_email','owner@shop.example.com','on'),(6,'theme_mods_storefront','{{sql (sarr "custom_logo" "i:12;" "header_image" (ser "https://shop.example.com/wp-content/uploads/2026/03/header.jpg") "footer_link" (ser "https://www.shop.example.com/about/"))}}','on');
+UNLOCK TABLES;
+{{template "wp_posts" "wp_"}}
+LOCK TABLES `wp_posts` WRITE;
+INSERT INTO `wp_posts` VALUES {{range $p := seq 30}}{{if gt $p 1}},{{end}}({{$p}},1,'2026-03-01 09:00:00','{{sql "<!-- wp:image {\"id\":" $p ",\"url\":\"https://shop.example.com/wp-content/uploads/2026/03/p" $p ".jpg\"} -->\n<figure><img src=\"//shop.example.com/wp-content/uploads/2026/03/p" $p ".jpg\"/></figure>\n<!-- /wp:image -->\n<p>See <a href=\"http://shop.example.com/beans/\">our beans</a>, our Australian shop at <a href=\"https://shop.example.com.au/\">shop.example.com.au</a>, <a href=\"https://myshop.example.com/\">myshop.example.com</a> and <a href=\"https://www.royalmail.com/track-your-item\">tracking</a>. Write to hello@shop.example.com.</p>"}}','Page {{$p}}','','publish','page-{{$p}}',0,'https://shop.example.com/?page_id={{$p}}','page',''){{end}};
+UNLOCK TABLES;
+{{template "wp_postmeta" "wp_"}}
+LOCK TABLES `wp_postmeta` WRITE;
+INSERT INTO `wp_postmeta` VALUES {{range $p := seq 30}}{{$m := mul $p 4}}{{if gt $p 1}},{{end}}({{$m}},{{$p}},'_elementor_data','{{sql "[{\"id\":\"a" $p "\",\"elType\":\"widget\",\"settings\":{\"image\":{\"url\":\"https:\\/\\/shop.example.com\\/wp-content\\/uploads\\/2026\\/03\\/hero" $p ".jpg\"},\"link\":{\"url\":\"https:\\/\\/shop.example.com.au\\/\"}}}]"}}'),({{add $m 1}},{{$p}},'_menu_item_url','{{sql "https://shop.example.com/wp-login.php?redirect_to=https%3A%2F%2Fshop.example.com%2Fmy-account%2F&ref=https%3a%2f%2fshop.example.com%2f"}}'),({{add $m 2}},{{$p}},'_elementor_page_settings','{{sql (sarr "background_image" (ser "https://shop.example.com/wp-content/uploads/2026/03/bg.jpg") "partner" (ser "https://www.royalmail.com/"))}}'),({{add $m 3}},{{$p}},'_wp_attached_file','2026/03/p{{$p}}.jpg'){{end}};
+UNLOCK TABLES;
+{{template "tail"}}

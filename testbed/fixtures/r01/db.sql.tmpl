@@ -1,0 +1,220 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r01: a WooCommerce HPOS shop. 150 customers, 300 orders, a note per
+order, 40 Action Scheduler actions. Every value a person typed is a
+canary; "c<n>" names the customer, so the same person's email is one
+canary in every table. */ -}}
+-- MySQL dump 10.13  Distrib 8.4.3, for Linux (x86_64)
+--
+-- Host: localhost    Database: shop
+-- ------------------------------------------------------
+-- Server version	8.4.3
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!50503 SET NAMES utf8mb4 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+
+DROP TABLE IF EXISTS `wp_options`;
+CREATE TABLE `wp_options` (
+  `option_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `option_name` varchar(191) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `option_value` longtext COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `autoload` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT 'yes',
+  PRIMARY KEY (`option_id`),
+  UNIQUE KEY `option_name` (`option_name`),
+  KEY `autoload` (`autoload`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'admin_email','owner@shop.example.com','on'),(5,'blog_public','1','on'),(6,'woocommerce_custom_orders_table_enabled','yes','on'),(7,'woocommerce_custom_orders_table_data_sync_enabled','no','on'),(8,'woocommerce_stripe_settings','{{sql (sarr "enabled" (ser "yes") "title" (ser "Credit Card (Stripe)") "testmode" (ser "no") "publishable_key" (ser (key "stripe_live_publishable")) "secret_key" (ser (key "stripe_live_secret")) "webhook_secret" (ser (key "stripe_webhook_secret")) "test_publishable_key" (ser (key "stripe_test_publishable")) "test_secret_key" (ser (key "stripe_test_secret")))}}','on'),(9,'woocommerce_currency','GBP','on'),(10,'active_plugins','a:2:{i:0;s:27:\"woocommerce/woocommerce.php\";i:1;s:57:\"woocommerce-gateway-stripe/woocommerce-gateway-stripe.php\";}','on');
+UNLOCK TABLES;
+
+DROP TABLE IF EXISTS `wp_users`;
+CREATE TABLE `wp_users` (
+  `ID` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_login` varchar(60) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_pass` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_nicename` varchar(50) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_email` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_url` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_registered` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `user_activation_key` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_status` int NOT NULL DEFAULT '0',
+  `display_name` varchar(250) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  PRIMARY KEY (`ID`),
+  KEY `user_login_key` (`user_login`),
+  KEY `user_nicename` (`user_nicename`),
+  KEY `user_email` (`user_email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+LOCK TABLES `wp_users` WRITE;
+INSERT INTO `wp_users` VALUES (1,'shopowner','$wp$2y$10$testbedtestbedtestbedtestbedtestbedtestbedtestbedtes','shopowner','owner@shop.example.com','https://shop.example.com','2026-06-01 09:00:00','',0,'Shop Owner')
+{{- range $i := seq 150}},({{add $i 1}},'customer{{$i}}','$wp$2y$10$testbedtestbedtestbedtestbedtestbedtestbedtestbedtes','customer-{{$i}}','{{sql (canary "email" (printf "c%d" $i) "wp_users.user_email")}}','','2026-06-02 10:00:00','',0,'{{sql (canary "first_name" (printf "c%d" $i) "wp_usermeta.meta_value")}} {{sql (canary "last_name" (printf "c%d" $i) "wp_usermeta.meta_value")}}'){{end}};
+UNLOCK TABLES;
+
+DROP TABLE IF EXISTS `wp_usermeta`;
+CREATE TABLE `wp_usermeta` (
+  `umeta_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint unsigned NOT NULL DEFAULT '0',
+  `meta_key` varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `meta_value` longtext COLLATE utf8mb4_unicode_520_ci,
+  PRIMARY KEY (`umeta_id`),
+  KEY `user_id` (`user_id`),
+  KEY `meta_key` (`meta_key`(191))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+LOCK TABLES `wp_usermeta` WRITE;
+{{range $i := seq 150}}{{$u := add $i 1}}{{$b := mul $i 8}}INSERT INTO `wp_usermeta` VALUES ({{add $b 1}},{{$u}},'first_name','{{sql (canary "first_name" (printf "c%d" $i))}}'),({{add $b 2}},{{$u}},'last_name','{{sql (canary "last_name" (printf "c%d" $i))}}'),({{add $b 3}},{{$u}},'billing_email','{{sql (canary "email" (printf "c%d" $i))}}'),({{add $b 4}},{{$u}},'billing_phone','{{sql (canary "phone" (printf "c%d" $i) "wp_usermeta.meta_value")}}'),({{add $b 5}},{{$u}},'billing_address_1','{{sql (canary "street" (printf "c%d" $i) "wp_usermeta.meta_value")}}'),({{add $b 6}},{{$u}},'shipping_address_1','{{sql (canary "street" (printf "c%d" $i))}}'),({{add $b 7}},{{$u}},'wp_capabilities','a:1:{s:8:\"customer\";b:1;}'),({{add $b 8}},{{$u}},'session_tokens','{{sql (sarr (printf "%064d" $i) (sarr "expiration" "i:1790000000;" "ip" (ser (canary "ip" (printf "c%d" $i) "wp_usermeta.meta_value")) "ua" (ser (canary "user_agent" (printf "c%d" $i) "wp_usermeta.meta_value")) "login" "i:1780000000;"))}}');
+{{end -}}
+UNLOCK TABLES;
+
+DROP TABLE IF EXISTS `wp_comments`;
+CREATE TABLE `wp_comments` (
+  `comment_ID` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `comment_post_ID` bigint unsigned NOT NULL DEFAULT '0',
+  `comment_author` tinytext COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `comment_author_email` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `comment_author_url` varchar(200) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `comment_author_IP` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `comment_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `comment_date_gmt` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `comment_content` text COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `comment_karma` int NOT NULL DEFAULT '0',
+  `comment_approved` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '1',
+  `comment_agent` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `comment_type` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT 'comment',
+  `comment_parent` bigint unsigned NOT NULL DEFAULT '0',
+  `user_id` bigint unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`comment_ID`),
+  KEY `comment_post_ID` (`comment_post_ID`),
+  KEY `comment_type` (`comment_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+LOCK TABLES `wp_comments` WRITE;
+INSERT INTO `wp_comments` VALUES {{range $o := seq 300}}{{if gt $o 1}},{{end}}({{$o}},{{add $o 1000}},'WooCommerce','woocommerce@shop.example.com','','','2026-07-01 12:00:00','2026-07-01 12:00:00','{{sql "Customer rang from " (canary "phone" (printf "note%d" $o) "wp_comments.comment_content") ": send the invoice to " (canary "email" (printf "note%d" $o) "wp_comments.comment_content") " please."}}{{if eq (mod $o 5) 0}}{{sql " Paid by phone with card " (canary "card" (printf "note%d" $o) "wp_comments.comment_content") "."}}{{end}}',0,'1','WooCommerce','order_note',0,0){{end}};
+UNLOCK TABLES;
+
+DROP TABLE IF EXISTS `wp_wc_orders`;
+CREATE TABLE `wp_wc_orders` (
+  `id` bigint unsigned NOT NULL,
+  `status` varchar(20) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `currency` varchar(10) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `type` varchar(20) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `tax_amount` decimal(26,8) DEFAULT NULL,
+  `total_amount` decimal(26,8) DEFAULT NULL,
+  `customer_id` bigint unsigned DEFAULT NULL,
+  `billing_email` varchar(320) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `date_created_gmt` datetime DEFAULT NULL,
+  `date_updated_gmt` datetime DEFAULT NULL,
+  `parent_order_id` bigint unsigned DEFAULT NULL,
+  `payment_method` varchar(100) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `payment_method_title` text COLLATE utf8mb4_unicode_520_ci,
+  `transaction_id` varchar(100) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `ip_address` varchar(100) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `user_agent` text COLLATE utf8mb4_unicode_520_ci,
+  `customer_note` text COLLATE utf8mb4_unicode_520_ci,
+  PRIMARY KEY (`id`),
+  KEY `status` (`status`),
+  KEY `customer_id_billing_email` (`customer_id`,`billing_email`(171)),
+  KEY `billing_email` (`billing_email`(191))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+LOCK TABLES `wp_wc_orders` WRITE;
+INSERT INTO `wp_wc_orders` VALUES {{range $o := seq 300}}{{$c := add (mod $o 150) 1}}{{if gt $o 1}},{{end}}({{add $o 1000}},'wc-completed','GBP','shop_order',4.00000000,24.00000000,{{add $c 1}},'{{sql (canary "email" (printf "c%d" $c))}}','2026-07-01 11:00:00','2026-07-01 12:00:00',0,'stripe','Credit Card (Stripe)','ch_testbed{{$o}}','{{sql (canary "ip" (printf "c%d" $c))}}','{{sql (canary "user_agent" (printf "c%d" $c))}}',''){{end}};
+UNLOCK TABLES;
+
+DROP TABLE IF EXISTS `wp_wc_order_addresses`;
+CREATE TABLE `wp_wc_order_addresses` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `order_id` bigint unsigned NOT NULL,
+  `address_type` varchar(20) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `first_name` text COLLATE utf8mb4_unicode_520_ci,
+  `last_name` text COLLATE utf8mb4_unicode_520_ci,
+  `company` text COLLATE utf8mb4_unicode_520_ci,
+  `address_1` text COLLATE utf8mb4_unicode_520_ci,
+  `address_2` text COLLATE utf8mb4_unicode_520_ci,
+  `city` text COLLATE utf8mb4_unicode_520_ci,
+  `state` text COLLATE utf8mb4_unicode_520_ci,
+  `postcode` text COLLATE utf8mb4_unicode_520_ci,
+  `country` text COLLATE utf8mb4_unicode_520_ci,
+  `email` varchar(320) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `phone` varchar(100) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `address_type_order_id` (`address_type`,`order_id`),
+  KEY `email` (`email`(191)),
+  KEY `phone` (`phone`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+LOCK TABLES `wp_wc_order_addresses` WRITE;
+INSERT INTO `wp_wc_order_addresses` VALUES {{range $o := seq 300}}{{$c := add (mod $o 150) 1}}{{$n := printf "c%d" $c}}{{if gt $o 1}},{{end}}({{add $o $o}},{{add $o 1000}},'billing','{{sql (canary "first_name" $n)}}','{{sql (canary "last_name" $n)}}','','{{sql (canary "street" $n)}}','','Leeds','','LS6 2QD','GB','{{sql (canary "email" $n)}}','{{sql (canary "phone" $n)}}'),({{add (add $o $o) 1}},{{add $o 1000}},'shipping','{{sql (canary "first_name" $n)}}','{{sql (canary "last_name" $n)}}','','{{sql (canary "street" $n)}}','','Leeds','','LS6 2QD','GB',NULL,'{{sql (canary "phone" $n)}}'){{end}};
+UNLOCK TABLES;
+
+DROP TABLE IF EXISTS `wp_wc_orders_meta`;
+CREATE TABLE `wp_wc_orders_meta` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `order_id` bigint unsigned DEFAULT NULL,
+  `meta_key` varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `meta_value` text COLLATE utf8mb4_unicode_520_ci,
+  PRIMARY KEY (`id`),
+  KEY `meta_key_value` (`meta_key`(100),`meta_value`(82)),
+  KEY `order_id_meta_key_meta_value` (`order_id`,`meta_key`(100),`meta_value`(82))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+LOCK TABLES `wp_wc_orders_meta` WRITE;
+INSERT INTO `wp_wc_orders_meta` VALUES {{range $o := seq 300}}{{$c := add (mod $o 150) 1}}{{$n := printf "c%d" $c}}{{if gt $o 1}},{{end}}({{add $o $o}},{{add $o 1000}},'_billing_address_index','{{sql (canary "first_name" $n) " " (canary "last_name" $n) " " (canary "street" $n) " Leeds LS6 2QD GB " (canary "email" $n) " " (canary "phone" $n)}}'),({{add (add $o $o) 1}},{{add $o 1000}},'_wc_order_attribution_session_entry','{{sql "https://shop.example.com/checkout/?ref=crm&contact=" (url (canary "email" $n))}}'){{end}};
+UNLOCK TABLES;
+
+DROP TABLE IF EXISTS `wp_wc_customer_lookup`;
+CREATE TABLE `wp_wc_customer_lookup` (
+  `customer_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint unsigned DEFAULT NULL,
+  `username` varchar(60) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `first_name` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `last_name` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `email` varchar(100) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `date_last_active` timestamp NULL DEFAULT NULL,
+  `date_registered` timestamp NULL DEFAULT NULL,
+  `country` char(2) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `postcode` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `city` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `state` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  PRIMARY KEY (`customer_id`),
+  UNIQUE KEY `user_id` (`user_id`),
+  KEY `email` (`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+LOCK TABLES `wp_wc_customer_lookup` WRITE;
+INSERT INTO `wp_wc_customer_lookup` VALUES {{range $i := seq 150}}{{$n := printf "c%d" $i}}{{if gt $i 1}},{{end}}({{$i}},{{add $i 1}},'customer{{$i}}','{{sql (canary "first_name" $n)}}','{{sql (canary "last_name" $n)}}','{{sql (canary "email" $n)}}','2026-07-02 10:00:00','2026-06-02 10:00:00','GB','LS6 2QD','Leeds',''){{end}};
+UNLOCK TABLES;
+
+DROP TABLE IF EXISTS `wp_actionscheduler_actions`;
+CREATE TABLE `wp_actionscheduler_actions` (
+  `action_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `hook` varchar(191) COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `status` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `scheduled_date_gmt` datetime DEFAULT '0000-00-00 00:00:00',
+  `scheduled_date_local` datetime DEFAULT '0000-00-00 00:00:00',
+  `priority` tinyint unsigned NOT NULL DEFAULT '10',
+  `args` varchar(191) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  `schedule` longtext COLLATE utf8mb4_unicode_520_ci,
+  `group_id` bigint unsigned NOT NULL DEFAULT '0',
+  `attempts` int NOT NULL DEFAULT '0',
+  `last_attempt_gmt` datetime DEFAULT '0000-00-00 00:00:00',
+  `last_attempt_local` datetime DEFAULT '0000-00-00 00:00:00',
+  `claim_id` bigint unsigned NOT NULL DEFAULT '0',
+  `extended_args` varchar(8000) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
+  PRIMARY KEY (`action_id`),
+  KEY `hook_status_scheduled_date_gmt` (`hook`(163),`status`,`scheduled_date_gmt`),
+  KEY `status_scheduled_date_gmt` (`status`,`scheduled_date_gmt`),
+  KEY `args` (`args`),
+  KEY `group_id` (`group_id`),
+  KEY `claim_id_status_scheduled_date_gmt` (`claim_id`,`status`,`scheduled_date_gmt`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+LOCK TABLES `wp_actionscheduler_actions` WRITE;
+INSERT INTO `wp_actionscheduler_actions` VALUES {{range $a := seq 40}}{{if gt $a 1}},{{end}}({{$a}},'woocommerce_send_review_reminder','pending','2026-11-01 09:00:00','2026-11-01 09:00:00',10,'{{sql "{\"order_id\":" (add $a 1000) ",\"email\":\"" (json (canary "email" (printf "c%d" (add (mod $a 150) 1)))) "\"}"}}','O:30:\"ActionScheduler_SimpleSchedule\":0:{}',0,0,'0000-00-00 00:00:00','0000-00-00 00:00:00',0,NULL){{end}};
+UNLOCK TABLES;
+
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+
+-- Dump completed on 2026-10-01 12:00:00

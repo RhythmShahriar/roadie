@@ -1,0 +1,22 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r07: 60 customers; per customer a reset mail and an order mail in
+wp_wpml_mails and the same two in wp_fsmpt_email_logs (FluentSMTP keeps
+headers and the recipient list as serialized PHP). */ -}}
+{{template "head"}}
+{{- template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'blog_public','1','on');
+UNLOCK TABLES;
+{{template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+{{template "users" (dict "p" "wp_" "n" 60 "tag" "m" "base" 1)}}UNLOCK TABLES;
+{{template "wp_mail_logs" "wp_"}}
+LOCK TABLES `wp_wpml_mails` WRITE;
+INSERT INTO `wp_wpml_mails` VALUES {{range $i := seq 60}}{{$n := printf "m%d" $i}}{{$id := mul $i 2}}{{if gt $i 1}},{{end}}({{$id}},'2026-07-05 08:00:00','shop.example.com','{{sql (canary "email" $n)}}','[Bean & Leaf Coffee] Password Reset','{{sql "Someone has requested a password reset for the following account: Username: m" $i "\nTo reset your password, visit the following address:\nhttps://shop.example.com/wp-login.php?action=rp&key=" (canary "token" $n "wp_wpml_mails.message") "&login=m" $i "\n"}}','From: Bean & Leaf Coffee <shop@shop.example.com>','','','1.14.0'),({{add $id 1}},'2026-07-06 08:00:00','shop.example.com','{{sql (canary "email" $n)}}','Your Bean & Leaf Coffee order has been received!','{{sql "<p>Hi " (canary "first_name" $n "wp_wpml_mails.message") ",</p><p>We will ship to " (html (canary "street" $n "wp_wpml_mails.message")) ". Questions? Call " (canary "phone" $n "wp_wpml_mails.message") ".</p>"}}','Content-Type: text/html','','','1.14.0'){{end}};
+UNLOCK TABLES;
+LOCK TABLES `wp_fsmpt_email_logs` WRITE;
+INSERT INTO `wp_fsmpt_email_logs` VALUES {{range $i := seq 60}}{{$n := printf "m%d" $i}}{{$id := mul $i 2}}{{$to := printf "a:1:{i:0;a:2:{s:5:\"email\";%ss:4:\"name\";%s}}" (ser (canary "email" $n)) (ser (canary "full_name" $n))}}{{if gt $i 1}},{{end}}({{$id}},1,'{{sql $to}}','shop@shop.example.com','[Bean & Leaf Coffee] Password Reset','{{sql "Reset link: https://shop.example.com/my-account/lost-password/?key=" (canary "token" $n) "&id=" (add $i 1)}}','a:1:{i:0;s:24:\"Content-Type: text/plain\";}','a:0:{}','sent','a:1:{s:4:\"code\";i:250;}','',0,0,'woocommerce','2026-07-05 08:00:00','2026-07-05 08:00:00'),({{add $id 1}},1,'{{sql $to}}','shop@shop.example.com','Order shipped','{{sql "Hi " (canary "full_name" $n) ", your parcel is on its way to " (canary "street" $n) "."}}','a:0:{}','a:0:{}','sent','a:1:{s:4:\"code\";i:250;}','',0,0,'woocommerce','2026-07-06 08:00:00','2026-07-06 08:00:00'){{end}};
+UNLOCK TABLES;
+{{template "tail"}}

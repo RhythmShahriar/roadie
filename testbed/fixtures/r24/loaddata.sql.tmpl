@@ -1,0 +1,14 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r24 (loaddata): an ordinary dump with one hostile statement. */ -}}
+{{template "head"}}
+{{- template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+{{template "users" (dict "p" "wp_" "n" 5 "tag" "loaddata" "base" 1)}}UNLOCK TABLES;
+{{template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on');
+UNLOCK TABLES;
+LOAD DATA LOCAL INFILE '/etc/hostname' INTO TABLE `wp_options`;
+{{template "tail"}}

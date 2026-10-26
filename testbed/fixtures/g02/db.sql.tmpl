@@ -1,0 +1,14 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+g02: sample products and generated users. */ -}}
+{{template "head"}}
+{{- template "clean_wp" (dict "n" 5 "gw" "test" "webhook" false)}}
+LOCK TABLES `wp_users` WRITE;
+INSERT INTO `wp_users` VALUES {{range $i := seq 50}}{{if gt $i 1}},{{end}}({{add $i 100}},'generated{{$i}}','$wp$2y$10$testbedtestbedtestbedtestbedtestbedtestbedtestbedtes','generated{{$i}}','generated{{$i}}@{{if eq (mod $i 2) 0}}example.com{{else}}shop.test{{end}}','','2026-06-02 10:00:00','',0,'Generated User {{$i}}'){{end}};
+UNLOCK TABLES;
+{{template "wp_posts" "wp_"}}
+LOCK TABLES `wp_posts` WRITE;
+INSERT INTO `wp_posts` VALUES {{range $p := seq 18}}{{if gt $p 1}},{{end}}({{$p}},1,'2026-03-01 09:00:00','Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas.','{{index (list "V-Neck T-Shirt" "Hoodie" "Hoodie with Logo" "T-Shirt" "Beanie" "Belt" "Cap" "Sunglasses" "Hoodie with Pocket" "Hoodie with Zipper" "Long Sleeve Tee" "Polo" "Album" "Single" "T-Shirt with Logo" "Beanie with Logo" "Logo Collection" "WordPress Pennant") (sub $p 1)}}','This is a simple product.','publish','sample-{{$p}}',0,'https://staging.shop.test/?product=sample-{{$p}}','product',''){{end}};
+UNLOCK TABLES;
+{{template "tail"}}

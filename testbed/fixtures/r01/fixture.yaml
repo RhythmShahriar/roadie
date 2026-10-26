@@ -1,0 +1,12 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  WooCommerce shop with HPOS on: customers in wp_users and wp_usermeta, the
+  same people in wc_orders, wc_order_addresses, wc_orders_meta and
+  wc_customer_lookup (so a copy must give one person one fake everywhere),
+  session tokens with IPs and user agents, order notes with a phone, an
+  email and sometimes a card number in free text, Action Scheduler args in
+  JSON and a live Stripe key in serialized settings next to test keys.
+stack: woocommerce
+canaries: true

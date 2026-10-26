@@ -1,0 +1,19 @@
+#!/usr/bin/env php
+<?php
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
+// The fixture app has no framework installed (the testbed downloads
+// nothing at make up), so artisan only answers what Roadie and the
+// harness ask: --version and about.
+$cmd = $argv[1] ?? 'list';
+if ($cmd === '--version' || $cmd === '-V') {
+    echo "Laravel Framework 12.0.0 (testbed fixture)\n";
+    exit(0);
+}
+if ($cmd === 'about') {
+    echo "Environment ........ " . (getenv('APP_ENV') ?: 'production') . "\n";
+    exit(0);
+}
+fwrite(STDERR, "testbed fixture: artisan $cmd is not available\n");
+exit(1);

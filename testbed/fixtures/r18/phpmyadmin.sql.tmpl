@@ -1,0 +1,88 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r18 as phpMyAdmin 5.2 exports it: no DROP TABLE, column lists, START
+TRANSACTION and ALTER TABLE for the keys after the data. */ -}}
+-- phpMyAdmin SQL Dump
+-- version 5.2.2
+-- https://www.phpmyadmin.net/
+--
+-- Host: db
+-- Generation Time: Oct 01, 2026 at 12:00 PM
+-- Server version: 8.4.3
+-- PHP Version: 8.3.12
+
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+START TRANSACTION;
+SET time_zone = "+00:00";
+
+/*!40101 SET NAMES utf8mb4 */;
+
+--
+-- Database: `shop`
+--
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `wp_options`
+--
+
+CREATE TABLE `wp_options` (
+  `option_id` bigint UNSIGNED NOT NULL,
+  `option_name` varchar(191) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `option_value` longtext COLLATE utf8mb4_unicode_520_ci NOT NULL,
+  `autoload` varchar(20) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT 'yes'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+
+--
+-- Dumping data for table `wp_options`
+--
+
+INSERT INTO `wp_options` (`option_id`, `option_name`, `option_value`, `autoload`) VALUES
+(1, 'siteurl', 'https://shop.example.com', 'on'),
+(2, 'home', 'https://shop.example.com', 'on'),
+(3, 'blogname', 'Bean & Leaf Coffee', 'on'),
+(4, 'blog_public', '1', 'on');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `wp_users`
+--
+
+CREATE TABLE `wp_users` (
+  `ID` bigint UNSIGNED NOT NULL,
+  `user_login` varchar(60) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_pass` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_nicename` varchar(50) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_email` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_url` varchar(100) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_registered` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `user_activation_key` varchar(255) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT '',
+  `user_status` int NOT NULL DEFAULT '0',
+  `display_name` varchar(250) COLLATE utf8mb4_unicode_520_ci NOT NULL DEFAULT ''
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
+
+--
+-- Dumping data for table `wp_users`
+--
+
+INSERT INTO `wp_users` (`ID`, `user_login`, `user_pass`, `user_nicename`, `user_email`, `user_url`, `user_registered`, `user_activation_key`, `user_status`, `display_name`) VALUES
+{{range $i := seq 40}}{{$n := printf "f%d" $i}}{{if gt $i 1}},
+{{end}}({{$i}}, 'f{{$i}}', '$wp$2y$10$testbedtestbedtestbedtestbedtestbedtestbedtestbedtes', 'f-{{$i}}', '{{sql (canary "email" $n "wp_users.user_email")}}', '', '2026-06-02 10:00:00', '', 0, '{{sql (canary "full_name" $n "wp_users.display_name")}}'){{end}};
+
+--
+-- Indexes for table `wp_options`
+--
+ALTER TABLE `wp_options`
+  ADD PRIMARY KEY (`option_id`),
+  ADD UNIQUE KEY `option_name` (`option_name`);
+
+--
+-- Indexes for table `wp_users`
+--
+ALTER TABLE `wp_users`
+  ADD PRIMARY KEY (`ID`),
+  ADD KEY `user_email` (`user_email`);
+COMMIT;

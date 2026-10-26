@@ -1,0 +1,8 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  A clean staging database where wp-config.php still defines the live
+  Stripe secret key: verify must name the file and show the key masked.
+stack: woocommerce
+canaries: false

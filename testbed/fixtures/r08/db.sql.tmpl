@@ -1,0 +1,25 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r08: 50 users, each with session_tokens, a nested serialized profile, a
+multibyte address line, an object with protected properties and a
+reference. Lengths are counted by the template in bytes, as PHP does. */ -}}
+{{template "head"}}
+{{- template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'blog_public','1','on'),(5,'testbed_broken_with_email','{{sql "a:2:{s:5:\"email\";s:99:\"" (canary "email" "broken" "wp_options.option_value") "\";s:4:\"note\";s:3:\"hi\";}"}}','off'),(6,'testbed_broken_plain','a:1:{s:4:\"note\";s:40:\"no personal data here at all\";}','off');
+UNLOCK TABLES;
+{{template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+{{template "users" (dict "p" "wp_" "n" 50 "tag" "t" "base" 1)}}UNLOCK TABLES;
+{{template "wp_usermeta" "wp_"}}
+LOCK TABLES `wp_usermeta` WRITE;
+INSERT INTO `wp_usermeta` VALUES {{range $i := seq 50}}{{$n := printf "t%d" $i}}{{$u := add $i 1}}{{$m := mul $i 5}}
+{{- $tok := sarr (printf "%064d" $i) (sarr "expiration" "i:1893456000;" "ip" (ser (canary "ip" $n "wp_usermeta.meta_value")) "ua" (ser (canary "user_agent" $n "wp_usermeta.meta_value")) "login" "i:1782000000;")}}
+{{- $inner := sarr "email" (ser (canary "email" $n)) "phone" (ser (canary "phone" $n "wp_usermeta.meta_value"))}}
+{{- $nested := sarr "profile" (ser $inner) "source" "s:8:\"checkout\";"}}
+{{- $mb := printf "Straße %s, 1. OG, Köln" (canary "street" $n "wp_usermeta.meta_value")}}
+{{- $obj := printf "O:8:\"stdClass\":3:{s:8:\"\x00*\x00email\";%ss:7:\"\x00*\x00name\";%ss:4:\"copy\";R:2;}" (ser (canary "email" $n)) (ser (canary "full_name" $n "wp_usermeta.meta_value"))}}
+{{- if gt $i 1}},{{end}}({{$m}},{{$u}},'session_tokens','{{sql $tok}}'),({{add $m 1}},{{$u}},'testbed_nested_profile','{{sql $nested}}'),({{add $m 2}},{{$u}},'testbed_multibyte','{{sql (sarr "line" (ser $mb) "name" (ser (printf "Zoë %s" (canary "last_name" $n "wp_usermeta.meta_value"))))}}'),({{add $m 3}},{{$u}},'testbed_object','{{sql $obj}}'),({{add $m 4}},{{$u}},'first_name','{{sql (canary "first_name" $n "wp_usermeta.meta_value")}}'){{end}};
+UNLOCK TABLES;
+{{template "tail"}}

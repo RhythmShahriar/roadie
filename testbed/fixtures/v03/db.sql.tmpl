@@ -1,0 +1,22 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+v03: PII only in free text. */ -}}
+{{template "head"}}
+{{- template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://staging.shop.test','on'),(2,'home','https://staging.shop.test','on'),(3,'blog_public','0','on');
+UNLOCK TABLES;
+{{template "wp_comments" "wp_"}}
+LOCK TABLES `wp_comments` WRITE;
+INSERT INTO `wp_comments` VALUES {{range $o := seq 60}}{{if gt $o 1}},{{end}}({{$o}},{{add $o 1000}},'WooCommerce','woocommerce@staging.shop.test','','2026-07-01 12:00:00','{{sql "Customer called from " (canary "phone" (printf "n%d" $o) "wp_comments.comment_content") ", send the invoice to " (canary "email" (printf "n%d" $o) "wp_comments.comment_content") "."}}','1','order_note',0){{end}};
+UNLOCK TABLES;
+{{template "wp_gf" "wp_"}}
+LOCK TABLES `wp_gf_entry_meta` WRITE;
+INSERT INTO `wp_gf_entry_meta` VALUES {{range $e := seq 40}}{{if gt $e 1}},{{end}}({{$e}},1,{{$e}},'5','{{sql "Hi, I am " (canary "full_name" (printf "e%d" $e) "wp_gf_entry_meta.meta_value") ", write to me at " (canary "email" (printf "e%d" $e) "wp_gf_entry_meta.meta_value") "."}}'){{end}};
+UNLOCK TABLES;
+{{template "wp_mail_logs" "wp_"}}
+LOCK TABLES `wp_wpml_mails` WRITE;
+INSERT INTO `wp_wpml_mails` VALUES {{range $m := seq 40}}{{if gt $m 1}},{{end}}({{$m}},'2026-07-05 08:00:00','staging.shop.test','u{{printf "%016x" $m}}@example.invalid','Order shipped','{{sql "Forwarded: please also tell " (canary "email" (printf "m%d" $m) "wp_wpml_mails.message") " on " (canary "phone" (printf "m%d" $m) "wp_wpml_mails.message")}}','','','','1.14.0'){{end}};
+UNLOCK TABLES;
+{{template "tail"}}

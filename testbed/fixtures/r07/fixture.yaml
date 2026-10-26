@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  Mail logs: WP Mail Logging and FluentSMTP tables with full message
+  bodies, order emails with addresses and password reset links holding
+  a reset key and the customer's login.
+stack: wordpress
+canaries: true

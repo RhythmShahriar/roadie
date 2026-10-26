@@ -1,0 +1,12 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  Live keys everywhere: Stripe serialized with testmode no and a webhook
+  secret, PayPal Payments live credentials with the sandbox ones beside
+  them, WP Mail SMTP with Mailgun, a Twilio SMS plugin, Mailchimp and
+  SendGrid options plus wp-config.php defines for Stripe, SMTP and S3
+  offload. Test keys sit in the same settings and must come out byte for
+  byte the same.
+stack: woocommerce
+canaries: false

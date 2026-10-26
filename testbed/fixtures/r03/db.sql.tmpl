@@ -1,0 +1,38 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r03: legacy orders as posts. 50 customers, 100 orders in wp_posts and
+wp_postmeta, 50 sessions whose session_value is a serialized array
+holding a serialized customer array (as WC_Session_Handler stores it) and
+a payment token per customer. */ -}}
+{{template "head"}}
+{{- template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'blog_public','1','on'),(5,'woocommerce_custom_orders_table_enabled','no','on');
+UNLOCK TABLES;
+{{template "wp_users" "wp_"}}
+LOCK TABLES `wp_users` WRITE;
+{{template "users" (dict "p" "wp_" "n" 50 "tag" "c" "base" 1)}}UNLOCK TABLES;
+{{template "wp_usermeta" "wp_"}}
+LOCK TABLES `wp_usermeta` WRITE;
+{{template "usermeta" (dict "p" "wp_" "n" 50 "tag" "c" "base" 1 "meta" 0)}}UNLOCK TABLES;
+{{template "wp_posts" "wp_"}}
+LOCK TABLES `wp_posts` WRITE;
+INSERT INTO `wp_posts` VALUES {{range $o := seq 100}}{{if gt $o 1}},{{end}}({{add $o 3000}},1,'2026-05-01 11:00:00','','Order &ndash; May 1, 2026','{{sql "Please call " (canary "phone" (printf "excerpt%d" $o) "wp_posts.post_excerpt") " on arrival"}}','wc-processing','order-{{$o}}',0,'https://shop.example.com/?post_type=shop_order&p={{add $o 3000}}','shop_order',''){{end}};
+UNLOCK TABLES;
+{{template "wp_postmeta" "wp_"}}
+LOCK TABLES `wp_postmeta` WRITE;
+INSERT INTO `wp_postmeta` VALUES {{range $o := seq 100}}{{$n := printf "c%d" (add (mod $o 50) 1)}}{{$m := mul $o 5}}{{if gt $o 1}},{{end}}({{$m}},{{add $o 3000}},'_billing_email','{{sql (canary "email" $n)}}'),({{add $m 1}},{{add $o 3000}},'_shipping_first_name','{{sql (canary "first_name" $n)}}'),({{add $m 2}},{{add $o 3000}},'_shipping_last_name','{{sql (canary "last_name" $n)}}'),({{add $m 3}},{{add $o 3000}},'_shipping_address_1','{{sql (canary "street" $n)}}'),({{add $m 4}},{{add $o 3000}},'_customer_user_agent','{{sql (canary "user_agent" $n "wp_postmeta.meta_value")}}'){{end}};
+UNLOCK TABLES;
+{{template "wp_woocommerce_sessions" "wp_"}}
+LOCK TABLES `wp_woocommerce_sessions` WRITE;
+INSERT INTO `wp_woocommerce_sessions` VALUES {{range $i := seq 50}}{{$n := printf "c%d" $i}}{{$cust := sarr "id" (printf "s:%d:\"%d\";" (len (printf "%d" (add $i 1))) (add $i 1)) "first_name" (ser (canary "first_name" $n)) "last_name" (ser (canary "last_name" $n)) "email" (ser (canary "email" $n)) "phone" (ser (canary "phone" $n)) "address_1" (ser (canary "street" $n)) "city" "s:5:\"Leeds\";"}}{{if gt $i 1}},{{end}}({{$i}},'{{printf "%032d" $i}}','{{sql (sarr "cart" "s:6:\"a:0:{}\";" "customer" (ser $cust))}}',1893456000){{end}};
+UNLOCK TABLES;
+{{template "wp_woocommerce_payment_tokens" "wp_"}}
+LOCK TABLES `wp_woocommerce_payment_tokens` WRITE;
+INSERT INTO `wp_woocommerce_payment_tokens` VALUES {{range $i := seq 50}}{{if gt $i 1}},{{end}}({{$i}},'stripe','pm_testbed{{printf "%08d" $i}}',{{add $i 1}},'CC',1){{end}};
+UNLOCK TABLES;
+LOCK TABLES `wp_woocommerce_payment_tokenmeta` WRITE;
+INSERT INTO `wp_woocommerce_payment_tokenmeta` VALUES {{range $i := seq 50}}{{$m := mul $i 3}}{{if gt $i 1}},{{end}}({{$m}},{{$i}},'last4','{{printf "%04d" (add 1000 (mul $i 17))}}'),({{add $m 1}},{{$i}},'expiry_year','2029'),({{add $m 2}},{{$i}},'card_type','visa'){{end}};
+UNLOCK TABLES;
+{{template "tail"}}

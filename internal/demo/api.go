@@ -4,14 +4,13 @@
 // Package demo makes the small WooCommerce shop rhythm-roadie demo runs
 // the whole loop on, with fake customers only.
 //
-// The exported names in this file are the frozen cross-lane API; the
-// testbed lane replaces the bodies, which return core.ErrNotBuilt until then.
+// The exported names in this file are the frozen cross-lane API. The shop
+// itself is built in shop.go and the wp-config.php fixture in wpconfig.go.
 package demo
 
 import (
+	"bufio"
 	"io"
-
-	"github.com/RhythmShahriar/roadie/core"
 )
 
 // Options configures Shop.
@@ -21,12 +20,26 @@ type Options struct {
 	Leaky     bool // leave PII and live-looking keys where a careless copy would
 }
 
-// Shop writes a MySQL dump of a small WooCommerce shop to w.
+// DefaultCustomers is how many customers Shop makes when Options.Customers
+// is zero or less.
+const DefaultCustomers = 25
+
+// Shop writes a MySQL dump of a small WooCommerce shop to w. The same
+// Options always give the same bytes. Every customer is invented from the
+// seed, the Stripe key is assembled at run time and every URL points at
+// the hosts Production returns.
+//
+// Leaky asks for the data a careless copy would leave behind. That is the
+// production data itself, so the bytes are the same either way: demo
+// verifies this dump untouched for its FAIL half and Roadie's copy of it
+// for its PASS half.
 func Shop(w io.Writer, o Options) error {
-	return core.ErrNotBuilt
+	bw := bufio.NewWriterSize(w, 64<<10)
+	newShop(o).write(bw)
+	return bw.Flush()
 }
 
 // Production returns the demo's production hosts.
 func Production() []string {
-	return nil
+	return []string{productionHost}
 }

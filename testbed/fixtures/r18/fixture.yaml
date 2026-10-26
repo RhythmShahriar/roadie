@@ -1,0 +1,11 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  One small shop in every dump format Roadie reads: mysqldump 8.4
+  (db.sql), --skip-extended-insert, mariadb-dump 11.4 with its sandbox
+  first line, a phpMyAdmin export and a latin1 table holding
+  double-encoded UTF-8. make formats adds the same data dumped by the
+  real mysqldump, mariadb-dump and wp db export in the containers.
+stack: woocommerce
+canaries: true

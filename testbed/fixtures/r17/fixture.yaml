@@ -1,0 +1,12 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  A large WooCommerce-shaped dump written by testbed/gen at make up
+  (200 MB and 2 GB, 20 GB in the nightly), gzip, with one 50 MB row,
+  --hex-blob values, a trigger in a DELIMITER block and canaries in the
+  first row, the last row and around the 4 GiB offset. Its canaries go
+  into canaries.json when it is generated.
+stack: woocommerce
+canaries: true
+generated: testbed/gen

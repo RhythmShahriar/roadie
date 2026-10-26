@@ -1,0 +1,28 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# r16: the CRM's columns, without contacts.emergency_contact on purpose.
+stack: sql
+production: ["crm.example.com"]
+columns:
+  - table: contacts
+    column: email
+    rule: email
+  - table: contacts
+    column: full_name
+    rule: full_name
+  - table: contacts
+    column: phone
+    rule: phone
+  - table: contacts
+    column: notes
+    rule: text
+  - table: deals
+    column: contact_email
+    rule: email
+  - table: tickets
+    column: requester_email
+    rule: email
+  - table: tickets
+    column: body
+    rule: text

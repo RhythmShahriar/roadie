@@ -1,0 +1,234 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Roadie's sealed testbed. A production shop (prod-wp, prod-db, MySQL 8.4),
+# a staging one (staging-wp, staging-db, MariaDB 11.4), a Laravel app,
+# PostgreSQL, an SSH production host, Mailpit as the "real" mail server,
+# Echo sealed plus the two stand-ins for the internet: the sinkhole (every
+# name resolves to it and it records every connection) and the stubs (the
+# payment and messaging APIs, recording each key).
+#
+# Everything sits on `sealed` (internal: true, so Docker gives it no route
+# out) and uses the sinkhole as its DNS. `gate` alone also sits on
+# `egress`, for the ports published on 127.0.0.1:18920-18929; its start
+# script drops every outbound connection, so it can answer but never call
+# out. Databases live in tmpfs and the sites in volumes `make down` removes.
+#
+# Secrets (database passwords, Echo's token, SSH keys, the fake API keys)
+# are made at make up under runtime/ (0600, gitignored) and reach the
+# containers through env files and mounts, never a command line.
+name: roadie-testbed
+
+networks:
+  sealed:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${TESTBED_SUBNET:-172.31.120.0/24}
+  egress: {}
+
+x-sealed-dns: &sealed-dns
+  dns: [172.31.120.53]
+
+# Two services share each image: only one of them builds it (prod-wp,
+# sinkhole) and the others wait for that build instead of racing it.
+x-wp: &wp
+  image: roadie-testbed-wp:6.8.3
+  pull_policy: never
+  <<: *sealed-dns
+  env_file: [runtime/db.env]
+  # Trust the stubs' CA, then start WordPress as the image does.
+  command: ["sh", "-c", "cp /stubs/ca.pem /usr/local/share/ca-certificates/roadie-testbed-stubs.crt && update-ca-certificates >/dev/null && exec docker-entrypoint.sh apache2-foreground"]
+
+x-runner: &runner
+  image: roadie-testbed-runner:1
+  pull_policy: never
+  <<: *sealed-dns
+
+services:
+  gate:
+    <<: *runner
+    networks: [sealed, egress]
+    cap_add: [NET_ADMIN]
+    environment:
+      TESTBED_SUBNET: ${TESTBED_SUBNET:-172.31.120.0/24}
+    command: ["sh", "/gate/start.sh"]
+    volumes:
+      - ./gate:/gate:ro
+    ports:
+      - "127.0.0.1:18920-18929:18920-18929"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:18999/"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  sinkhole:
+    <<: *runner
+    build: ./runner
+    dns: []
+    networks:
+      sealed:
+        ipv4_address: 172.31.120.53
+    cap_add: [NET_ADMIN]
+    command: ["sh", "-c", "iptables -t nat -A PREROUTING -p tcp ! --dport 53 -j REDIRECT --to-ports 9999 && exec /bin/sinkhole -self 172.31.120.53 -stubs 172.31.120.54 -log /log/sinkhole.jsonl -owner ${TESTBED_UID:-1000}:${TESTBED_GID:-1000}"]
+    volumes:
+      - ./runtime/bin/sinkhole:/bin/sinkhole:ro
+      - ./runtime/log:/log
+
+  stubs:
+    <<: *runner
+    networks:
+      sealed:
+        ipv4_address: 172.31.120.54
+    command: ["/bin/stubs", "-dir", "/stubs", "-canaries", "/canaries.json", "-log", "/log/stubs.jsonl", "-owner", "${TESTBED_UID:-1000}:${TESTBED_GID:-1000}"]
+    volumes:
+      - ./runtime/bin/stubs:/bin/stubs:ro
+      - ./runtime/stubs:/stubs:ro
+      - ./runtime/canaries.json:/canaries.json:ro
+      - ./runtime/log:/log
+
+  echo:
+    <<: *runner
+    networks: [sealed]
+    env_file: [runtime/echo.env]
+    environment:
+      XDG_CONFIG_HOME: /tmp/config
+      XDG_CACHE_HOME: /tmp/cache
+      RHYTHM_NO_UPDATE_CHECK: "1"
+    command: ["/bin/rhythm-echo", "up", "--seal", "--listen", "0.0.0.0:8025", "--smtp", "0.0.0.0:1025", "--plain"]
+    volumes:
+      - ./runtime/bin/rhythm-echo:/bin/rhythm-echo:ro
+
+  mailpit:
+    image: axllent/mailpit:v1.29.2@sha256:030f06031ce5c60913ac9363da1ab0d4be6fd2a78147dd0e1ca0fcac665d6b34
+    <<: *sealed-dns
+    networks: [sealed]
+    environment:
+      MP_DISABLE_VERSION_CHECK: "true"
+      MP_MAX_MESSAGES: "5000"
+
+  prod-db:
+    image: mysql:8.4@sha256:76f0358884cb92d9a086d24e5671c38048d3fef40f2588703d73eb55392d6b69
+    <<: *sealed-dns
+    networks: [sealed]
+    env_file: [runtime/db.env]
+    environment:
+      MYSQL_DATABASE: shop
+      MYSQL_USER: shop
+    tmpfs: [/var/lib/mysql]
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysqladmin -ushop ping -h 127.0.0.1"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  staging-db:
+    image: mariadb:11.4.8@sha256:bc474f00629f0123c10f9e1bca193a45d18af15a274cf0656acda64f1086c3b6
+    <<: *sealed-dns
+    networks: [sealed]
+    env_file: [runtime/db.env]
+    environment:
+      MARIADB_DATABASE: shop
+      MARIADB_USER: shop
+    tmpfs: [/var/lib/mysql]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  laravel-db:
+    image: mysql:8.4@sha256:76f0358884cb92d9a086d24e5671c38048d3fef40f2588703d73eb55392d6b69
+    <<: *sealed-dns
+    networks: [sealed]
+    env_file: [runtime/db.env]
+    environment:
+      MYSQL_DATABASE: laravel
+      MYSQL_USER: laravel
+    tmpfs: [/var/lib/mysql]
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysqladmin -ularavel ping -h 127.0.0.1"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  pg:
+    image: postgres:16@sha256:ff23cdce56cac62ada6f66013e1a50864c0abbe79d132d40b6e05bd80f378a70
+    <<: *sealed-dns
+    networks: [sealed]
+    env_file: [runtime/db.env]
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_DB: app
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "app"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  prod-wp:
+    <<: *wp
+    build:
+      context: ./wp
+      args:
+        PLUGINS: ${TESTBED_PLUGINS:?run through testbed/Makefile, which pins the plugins}
+    networks: [sealed]
+    depends_on:
+      prod-db: {condition: service_healthy}
+    environment:
+      WORDPRESS_DB_HOST: prod-db
+      WORDPRESS_DB_USER: shop
+      WORDPRESS_DB_NAME: shop
+      TESTBED_URL: http://127.0.0.1:18920
+    volumes:
+      - prod-wp:/var/www/html
+      - ./runtime/stubs/ca.pem:/stubs/ca.pem:ro
+
+  staging-wp:
+    <<: *wp
+    networks: [sealed]
+    depends_on:
+      staging-db: {condition: service_healthy}
+    environment:
+      WORDPRESS_DB_HOST: staging-db
+      WORDPRESS_DB_USER: shop
+      WORDPRESS_DB_NAME: shop
+      TESTBED_URL: http://127.0.0.1:18921
+    volumes:
+      - staging-wp:/var/www/html
+      - ./runtime/stubs/ca.pem:/stubs/ca.pem:ro
+
+  laravel:
+    build: ./laravel
+    image: roadie-testbed-laravel:8.3
+    <<: *sealed-dns
+    networks: [sealed]
+    depends_on:
+      laravel-db: {condition: service_healthy}
+    env_file: [runtime/db.env]
+    working_dir: /app
+    command: ["php", "-S", "0.0.0.0:8000", "-t", "public"]
+    volumes:
+      - ./laravel/app:/app:ro
+
+  sshd:
+    build: ./sshd
+    image: roadie-testbed-sshd:1
+    <<: *sealed-dns
+    networks: [sealed]
+    depends_on: [prod-wp]
+    env_file: [runtime/db.env]
+    environment:
+      WORDPRESS_DB_HOST: prod-db
+      WORDPRESS_DB_USER: shop
+      WORDPRESS_DB_NAME: shop
+    volumes:
+      - prod-wp:/var/www/html:ro
+      - ./runtime/ssh/ssh_host_ed25519_key:/keys/ssh_host_ed25519_key:ro
+      - ./runtime/ssh/id_ed25519.pub:/keys/authorized_keys:ro
+
+volumes:
+  prod-wp: {}
+  staging-wp: {}

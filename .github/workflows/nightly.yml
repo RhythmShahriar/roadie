@@ -1,0 +1,150 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# The slow suites, every night and on demand (PRD 22, qa.md 4): every fuzz
+# target for 5 minutes, the PHP serialized codec's fuzz corpus through
+# real PHP, the Docker tests, the sealed testbed with the benchmark and
+# the large-dump run with its regression guard. Results are uploaded as
+# artifacts and never committed: a release commits the docs/benchmark.md
+# of a run that meets every target.
+name: nightly
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  GOWORK: "off"
+jobs:
+  # Every FUZZ_TARGETS entry of the Makefile for 5 minutes. A failure
+  # leaves the input that broke it under the package's testdata/fuzz/:
+  # it is uploaded so it can be committed with a named unit test.
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make fuzz FUZZTIME=5m
+      # The testbed's own parsers (the oracle's dump and archive reader, the sinkhole's
+      # DNS parser, the generator's size flag), until FUZZ_TARGETS lists them.
+      - run: make fuzz FUZZTIME=5m FUZZ_TARGETS="testbed/oracle:FuzzReadDump testbed/oracle:FuzzScanFile testbed/sinkhole:FuzzParseQuery testbed/gen:FuzzParseSize testbed/bench:FuzzSplitRows"
+      - name: Upload the failing inputs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-failures
+          path: "**/testdata/fuzz/**"
+          if-no-files-found: ignore
+
+  # The committed corpus of the PHP serialized codec, every rewrite fed to
+  # real unserialize(), then 5 minutes of the differential target. With
+  # ROADIE_REQUIRE_PHP a missing PHP fails instead of skipping.
+  php-oracle-corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ROADIE_REQUIRE_PHP: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: "8.3"
+          coverage: none
+      - name: Replay the corpus through PHP
+        run: go test -count=1 -run '^(FuzzPHPSerializedRoundTrip|FuzzPHPSerializedRewrite|FuzzDifferentialPHP)$' -v ./codec/phpser/
+      - name: Fuzz against PHP
+        run: go test -run '^$' -fuzz '^FuzzDifferentialPHP$' -fuzztime 5m ./codec/phpser/
+      - name: Upload the failing inputs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: php-oracle-failures
+          path: codec/phpser/testdata/fuzz/**
+          if-no-files-found: ignore
+
+  docker-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test -tags docker -timeout 40m ./...
+
+  # The sealed testbed: the seal check, the benchmark with 5-minute drills
+  # (results.json and docs/benchmark.md as artifacts) and make reproduce,
+  # which runs every scenario twice more and fails if the score differs.
+  testbed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make testbed
+      - run: make -C testbed seal
+      - run: make -C testbed bench DRILL=5m
+      # The score must not depend on the drill's length, so the two runs
+      # that check it use a short one.
+      - run: make -C testbed reproduce DRILL=30s
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: benchmark
+          path: |
+            testbed/bench/work/results.json
+            testbed/bench/work/first/results.json
+            testbed/bench/work/second/results.json
+            docs/benchmark.md
+          if-no-files-found: warn
+      - if: always()
+        run: make testbed-down
+
+  # r17 at 20 GB. The regression guard compares MB/s with the last green
+  # night's results.json (downloaded with gh) and fails on a 20% drop; the
+  # memory check fails when peak RSS grows more than 1.5x from 200 MB.
+  large-dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # The 20 GB dump, its copy and Roadie's spool need the room.
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h .
+      - name: The last green night's results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow nightly.yml --status success --limit 1 --json databaseId -q '.[0].databaseId')
+          if [ -n "$id" ] && gh run download "$id" --repo "$GITHUB_REPOSITORY" -n r17-results -D "$RUNNER_TEMP/baseline"; then
+            echo "BASELINE=$RUNNER_TEMP/baseline/results.json" >> "$GITHUB_ENV"
+          else
+            echo "::notice::no earlier r17 results: this run sets the baseline"
+          fi
+      - run: make -C testbed up GEN_SIZE=20GB
+      - run: make -C testbed bench ONLY=r17 BASELINE="${BASELINE:-}"
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: r17-results
+          path: testbed/bench/work/results.json
+          if-no-files-found: warn
+      - if: always()
+        run: make testbed-down

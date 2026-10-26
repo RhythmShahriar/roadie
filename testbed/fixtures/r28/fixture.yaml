@@ -1,0 +1,10 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  PostgreSQL: a pg_dump -Fp of a Next.js app with a Prisma-style schema
+  (quoted CamelCase tables, text IDs, a JSON column) and a Roadie config
+  naming its columns. Gate 2 is row counts only (no PHP values).
+stack: sql
+dialect: postgres
+canaries: true

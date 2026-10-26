@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  Every structured column is faked; real people are left only in free
+  text: WooCommerce order notes, Gravity Forms entry text and a mail
+  log body.
+stack: woocommerce
+canaries: true

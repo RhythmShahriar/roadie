@@ -1,0 +1,99 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r15: 60 users, 120 orders, a queued and a failed SendInvoice job per
+user, a notification per order and a session per user. users.tax_id is
+an encrypted cast: an opaque Laravel payload no scanner can read. */ -}}
+{{template "head"}}
+DROP TABLE IF EXISTS `users`;
+CREATE TABLE `users` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `email` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `phone` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `email_verified_at` timestamp NULL DEFAULT NULL,
+  `password` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `tax_id` text COLLATE utf8mb4_unicode_ci,
+  `remember_token` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `stripe_id` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `users_email_unique` (`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+LOCK TABLES `users` WRITE;
+INSERT INTO `users` VALUES {{range $i := seq 60}}{{$n := printf "l%d" $i}}{{if gt $i 1}},{{end}}({{$i}},'{{sql (canary "full_name" $n "users.name")}}','{{sql (canary "email" $n "users.email")}}','{{sql (canary "phone" $n "users.phone")}}','2026-03-01 10:00:00','$2y$12$testbedtestbedtestbedtestbedtestbedtestbedtestbedtest','{{b64 (printf "{\"iv\":\"%s\",\"value\":\"%s\",\"mac\":\"%s\",\"tag\":\"\"}" (printf "%024d" $i) (printf "%044d" $i) (printf "%064d" $i))}}',NULL,'{{sql (canary "stripe_customer" $n "users.stripe_id")}}','2026-03-01 10:00:00','2026-03-01 10:00:00'){{end}};
+UNLOCK TABLES;
+DROP TABLE IF EXISTS `orders`;
+CREATE TABLE `orders` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` bigint unsigned NOT NULL,
+  `total` int NOT NULL,
+  `shipping_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `shipping_address` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `ip_address` varchar(45) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `orders_user_id_index` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+LOCK TABLES `orders` WRITE;
+INSERT INTO `orders` VALUES {{range $o := seq 120}}{{$u := add (mod $o 60) 1}}{{$n := printf "l%d" $u}}{{if gt $o 1}},{{end}}({{$o}},{{$u}},2400,'{{sql (canary "full_name" $n)}}','{{sql (canary "street" $n "orders.shipping_address")}}','{{sql (canary "ip" $n "orders.ip_address")}}','2026-06-01 10:00:00'){{end}};
+UNLOCK TABLES;
+DROP TABLE IF EXISTS `jobs`;
+CREATE TABLE `jobs` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `queue` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `payload` longtext COLLATE utf8mb4_unicode_ci NOT NULL,
+  `attempts` tinyint unsigned NOT NULL,
+  `reserved_at` int unsigned DEFAULT NULL,
+  `available_at` int unsigned NOT NULL,
+  `created_at` int unsigned NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `jobs_queue_index` (`queue`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `failed_jobs`;
+CREATE TABLE `failed_jobs` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `uuid` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `connection` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `queue` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `payload` longtext COLLATE utf8mb4_unicode_ci NOT NULL,
+  `exception` longtext COLLATE utf8mb4_unicode_ci NOT NULL,
+  `failed_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `failed_jobs_uuid_unique` (`uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+LOCK TABLES `jobs` WRITE;
+INSERT INTO `jobs` VALUES {{range $i := seq 60}}{{$n := printf "l%d" $i}}{{$cmd := printf "O:20:\"App\\Jobs\\SendInvoice\":2:{s:5:\"email\";%ss:4:\"name\";%s}" (ser (canary "email" $n)) (ser (canary "full_name" $n))}}{{if gt $i 1}},{{end}}({{$i}},'default','{{sql "{\"uuid\":\"00000000-0000-4000-8000-" (printf "%012d" $i) "\",\"displayName\":\"App\\\\Jobs\\\\SendInvoice\",\"job\":\"Illuminate\\\\Queue\\\\CallQueuedHandler@call\",\"data\":{\"commandName\":\"App\\\\Jobs\\\\SendInvoice\",\"command\":\"" (json $cmd) "\"}}"}}',0,NULL,1793520000,1793520000){{end}};
+UNLOCK TABLES;
+LOCK TABLES `failed_jobs` WRITE;
+INSERT INTO `failed_jobs` VALUES {{range $i := seq 60}}{{$n := printf "l%d" $i}}{{$cmd := printf "O:20:\"App\\Jobs\\SendInvoice\":2:{s:5:\"email\";%ss:4:\"name\";%s}" (ser (canary "email" $n)) (ser (canary "full_name" $n))}}{{if gt $i 1}},{{end}}({{$i}},'00000000-0000-4000-9000-{{printf "%012d" $i}}','database','default','{{sql "{\"displayName\":\"App\\\\Jobs\\\\SendInvoice\",\"data\":{\"commandName\":\"App\\\\Jobs\\\\SendInvoice\",\"command\":\"" (json $cmd) "\"}}"}}','{{sql "Swift_TransportException: Expected response code 250 but got 554 for " (canary "email" $n)}}','2026-07-01 10:00:00'){{end}};
+UNLOCK TABLES;
+DROP TABLE IF EXISTS `notifications`;
+CREATE TABLE `notifications` (
+  `id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `type` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `notifiable_type` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `notifiable_id` bigint unsigned NOT NULL,
+  `data` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `read_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+LOCK TABLES `notifications` WRITE;
+INSERT INTO `notifications` VALUES {{range $o := seq 120}}{{$u := add (mod $o 60) 1}}{{$n := printf "l%d" $u}}{{if gt $o 1}},{{end}}('10000000-0000-4000-8000-{{printf "%012d" $o}}','App\\Notifications\\OrderShipped','App\\Models\\User',{{$u}},'{{sql "{\"order\":" $o ",\"to\":\"" (json (canary "full_name" $n)) "\",\"address\":\"" (jsonu (canary "street" $n)) "\"}"}}',NULL,'2026-06-02 10:00:00'){{end}};
+UNLOCK TABLES;
+DROP TABLE IF EXISTS `sessions`;
+CREATE TABLE `sessions` (
+  `id` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `user_id` bigint unsigned DEFAULT NULL,
+  `ip_address` varchar(45) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `user_agent` text COLLATE utf8mb4_unicode_ci,
+  `payload` longtext COLLATE utf8mb4_unicode_ci NOT NULL,
+  `last_activity` int NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+LOCK TABLES `sessions` WRITE;
+INSERT INTO `sessions` VALUES {{range $i := seq 60}}{{$n := printf "l%d" $i}}{{if gt $i 1}},{{end}}('sess{{printf "%036d" $i}}',{{$i}},'{{sql (canary "ip" $n)}}','{{sql (canary "user_agent" $n "sessions.user_agent")}}','{{b64 (sarr "_token" (ser (printf "%040d" $i)) "checkout_email" (ser (canary "email" $n)))}}',1793520000){{end}};
+UNLOCK TABLES;
+{{template "tail"}}

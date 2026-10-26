@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+description: >-
+  Hashed PII in a staging copy Roadie did not make: sha256 of real emails
+  in Action Scheduler args and md5 in Gravatar cache option names, with
+  the production dump (prod.sql) for verify --from prod.
+stack: woocommerce
+canaries: true

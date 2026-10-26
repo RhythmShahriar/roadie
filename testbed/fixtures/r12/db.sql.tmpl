@@ -1,0 +1,14 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT
+
+r12: every live key in the options table, beside test keys. */ -}}
+{{template "head"}}
+{{- template "wp_options" "wp_"}}
+LOCK TABLES `wp_options` WRITE;
+INSERT INTO `wp_options` VALUES (1,'siteurl','https://shop.example.com','on'),(2,'home','https://shop.example.com','on'),(3,'blogname','Bean & Leaf Coffee','on'),(4,'blog_public','1','on'),(5,'woocommerce_stripe_settings','{{sql (include "stripe_live")}}','on'),(6,'woocommerce-ppcp-settings','{{sql (sarr "enabled" "b:1;" "sandbox_on" "b:0;" "client_id_production" (ser (key "paypal_live_client_id")) "client_secret_production" (ser (key "paypal_live_secret")) "client_id_sandbox" (ser (key "paypal_sandbox_client")))}}','on'),(7,'wp_mail_smtp','{{sql (sarr "mail" (sarr "mailer" "s:7:\"mailgun\";" "from_email" (ser "shop@shop.example.com")) "mailgun" (sarr "api_key" (ser (key "mailgun_key")) "domain" (ser "mg.shop.example.com") "region" "s:2:\"EU\";"))}}','off'),(8,'wc_twilio_sms_settings','{{sql (sarr "account_sid" (ser (key "twilio_sid")) "auth_token" (ser (key "twilio_token")) "from" "s:13:\"+447911123456\";")}}','off'),(9,'mc4wp','{{sql (sarr "api_key" (ser (key "mailchimp_key")))}}','off'),(10,'sendgrid_api_key','{{key "sendgrid_key"}}','off'),(11,'woocommerce_cod_settings','a:1:{s:7:\"enabled\";s:3:\"yes\";}','on');
+UNLOCK TABLES;
+{{template "wp_wc_webhooks" "wp_"}}
+LOCK TABLES `wp_wc_webhooks` WRITE;
+INSERT INTO `wp_wc_webhooks` VALUES (1,'active','Zapier order sync',1,'https://hooks.zapier.com/hooks/catch/123456/abcdef/','{{key "stripe_webhook_secret"}}','order.created','2026-02-01 09:00:00',3,0,0);
+UNLOCK TABLES;
+{{template "tail"}}

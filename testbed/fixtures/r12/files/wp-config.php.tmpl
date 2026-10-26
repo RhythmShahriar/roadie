@@ -1,0 +1,14 @@
+{{- /* Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+SPDX-License-Identifier: MIT */ -}}
+{{template "wpconfig_db"}}
+define( 'WP_ENVIRONMENT_TYPE', 'production' );
+define( 'STRIPE_SECRET_KEY', '{{key "stripe_live_restricted"}}' );
+define( 'WPMS_ON', true );
+define( 'WPMS_SMTP_PASS', '{{key "smtp_password"}}' );
+define( 'WPMS_MAILGUN_API_KEY', '{{key "mailgun_key"}}' );
+define( 'AS3CF_SETTINGS', serialize( array(
+	'provider'          => 'aws',
+	'access-key-id'     => '{{key "aws_access_key"}}',
+	'secret-access-key' => '{{key "aws_secret_key"}}',
+) ) );
+{{template "wpconfig_tail"}}
