@@ -1,0 +1,68 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# WordPress core: users, their meta, comments and order notes, options.
+# Network tables ({prefix}users, {prefix}usermeta) are shared by every
+# blog of a multisite; {prefix}{site} tables exist once per blog.
+id: wordpress
+name: WordPress core
+stack: wordpress
+checked_against: "docs: https://raw.githubusercontent.com/WordPress/WordPress/6.8-branch/wp-admin/includes/schema.php"
+detect:
+  tables_any: ["{prefix}options"]
+rules:
+  # users
+  - {table: "{prefix}users", column: user_email, rule: email, explain: "the account's email address"}
+  - {table: "{prefix}users", column: user_login, rule: username, explain: "the login name, often the person's name or email"}
+  - {table: "{prefix}users", column: user_nicename, rule: nicename, explain: "the URL slug of the login, shown in author links"}
+  - {table: "{prefix}users", column: display_name, rule: full_name, explain: "the name shown on posts and comments"}
+  - {table: "{prefix}users", column: user_url, rule: url, explain: "the person's own website"}
+  - {table: "{prefix}users", column: user_pass, rule: password, explain: "the password hash; reset so no real password works on the copy"}
+  - {table: "{prefix}users", column: user_activation_key, rule: blank, explain: "a pending password-reset key"}
+  # usermeta: profile fields
+  - {table: "{prefix}usermeta", where: {meta_key: first_name}, column: meta_value, rule: first_name, explain: "the first name of the profile"}
+  - {table: "{prefix}usermeta", where: {meta_key: last_name}, column: meta_value, rule: last_name, explain: "the last name of the profile"}
+  - {table: "{prefix}usermeta", where: {meta_key: nickname}, column: meta_value, rule: username, explain: "the nickname, the login unless the person changed it"}
+  - {table: "{prefix}usermeta", where: {meta_key: description}, column: meta_value, rule: text, explain: "the biography, free text"}
+  - {table: "{prefix}usermeta", where: {meta_key: session_tokens}, column: meta_value, rule: delete-row, explain: "login sessions with IP addresses and browsers; nobody needs them on a copy"}
+  - {table: "{prefix}usermeta", where: {meta_key: _application_passwords}, column: meta_value, rule: delete-row, explain: "application passwords that would log in to the copy"}
+  - {table: "{prefix}usermeta", where: {meta_key: wc_last_active}, column: meta_value, rule: keep, explain: "a timestamp, kept for reports"}
+  - {table: "{prefix}usermeta", where: {meta_key: community-events-location}, column: meta_value, rule: "serialized:ip=ip", explain: "the dashboard events widget stores the visitor's IP address"}
+  # usermeta: the WooCommerce customer address on the account
+  - {table: "{prefix}usermeta", where: {meta_key: billing_email}, column: meta_value, rule: email, explain: "the billing email of the account"}
+  - {table: "{prefix}usermeta", where: {meta_key: billing_phone}, column: meta_value, rule: phone, explain: "the billing phone of the account"}
+  - {table: "{prefix}usermeta", where: {meta_key: billing_first_name}, column: meta_value, rule: first_name, explain: "the billing first name"}
+  - {table: "{prefix}usermeta", where: {meta_key: billing_last_name}, column: meta_value, rule: last_name, explain: "the billing last name"}
+  - {table: "{prefix}usermeta", where: {meta_key: billing_company}, column: meta_value, rule: company, explain: "the billing company"}
+  - {table: "{prefix}usermeta", where: {meta_key: billing_address_1}, column: meta_value, rule: street, explain: "the billing street"}
+  - {table: "{prefix}usermeta", where: {meta_key: billing_address_2}, column: meta_value, rule: street, explain: "the second billing address line"}
+  - {table: "{prefix}usermeta", where: {meta_key: billing_city}, column: meta_value, rule: city, part: city, explain: "the billing city"}
+  - {table: "{prefix}usermeta", where: {meta_key: billing_postcode}, column: meta_value, rule: postcode, part: postcode, explain: "the billing postcode"}
+  - {table: "{prefix}usermeta", where: {meta_key: billing_country}, column: meta_value, rule: blank, part: country, explain: "the billing country, kept by default for tax rules"}
+  - {table: "{prefix}usermeta", where: {meta_key: billing_state}, column: meta_value, rule: blank, part: state, explain: "the billing state, kept by default for tax rules"}
+  - {table: "{prefix}usermeta", where: {meta_key: shipping_phone}, column: meta_value, rule: phone, explain: "the shipping phone of the account"}
+  - {table: "{prefix}usermeta", where: {meta_key: shipping_first_name}, column: meta_value, rule: first_name, explain: "the shipping first name"}
+  - {table: "{prefix}usermeta", where: {meta_key: shipping_last_name}, column: meta_value, rule: last_name, explain: "the shipping last name"}
+  - {table: "{prefix}usermeta", where: {meta_key: shipping_company}, column: meta_value, rule: company, explain: "the shipping company"}
+  - {table: "{prefix}usermeta", where: {meta_key: shipping_address_1}, column: meta_value, rule: street, explain: "the shipping street"}
+  - {table: "{prefix}usermeta", where: {meta_key: shipping_address_2}, column: meta_value, rule: street, explain: "the second shipping address line"}
+  - {table: "{prefix}usermeta", where: {meta_key: shipping_city}, column: meta_value, rule: city, part: city, explain: "the shipping city"}
+  - {table: "{prefix}usermeta", where: {meta_key: shipping_postcode}, column: meta_value, rule: postcode, part: postcode, explain: "the shipping postcode"}
+  - {table: "{prefix}usermeta", where: {meta_key: shipping_country}, column: meta_value, rule: blank, part: country, explain: "the shipping country, kept by default for shipping rules"}
+  - {table: "{prefix}usermeta", where: {meta_key: shipping_state}, column: meta_value, rule: blank, part: state, explain: "the shipping state, kept by default for shipping rules"}
+  # comments, which also hold WooCommerce order notes (comment_type order_note)
+  - {table: "{prefix}{site}comments", column: comment_author, rule: full_name, explain: "the commenter's name"}
+  - {table: "{prefix}{site}comments", column: comment_author_email, rule: email, explain: "the commenter's email"}
+  - {table: "{prefix}{site}comments", column: comment_author_url, rule: url, explain: "the commenter's website"}
+  - {table: "{prefix}{site}comments", column: comment_author_IP, rule: ip, explain: "the commenter's IP address"}
+  - {table: "{prefix}{site}comments", column: comment_agent, rule: user_agent, explain: "the commenter's browser"}
+  - {table: "{prefix}{site}comments", column: comment_content, rule: text, explain: "comment and order note text; emails, phones and known names in it are replaced"}
+  - {table: "{prefix}{site}commentmeta", column: meta_value, rule: text, explain: "comment metadata of any plugin, scrubbed as free text"}
+  # options
+  - {table: "{prefix}{site}options", where: {option_name: admin_email}, column: option_value, rule: email, explain: "the site's admin email; keep_users keeps it when it matches"}
+  - {table: "{prefix}{site}options", where: {option_name: new_admin_email}, column: option_value, rule: email, explain: "an admin email change waiting for confirmation"}
+  - {table: "{prefix}{site}options", where: {option_name: siteurl}, column: option_value, rule: rewrite-url, explain: "the site's own URL, rewritten to the staging URL"}
+  - {table: "{prefix}{site}options", where: {option_name: home}, column: option_value, rule: rewrite-url, explain: "the home URL, rewritten to the staging URL"}
+  - {table: "{prefix}{site}options", where: {option_name: wc_subscriptions_siteurl}, column: option_value, rule: keep, explain: "never rewritten: the mismatch is what puts WooCommerce Subscriptions in staging mode"}
+  - {table: "{prefix}{site}options", where: {option_name: "_transient_*"}, column: option_value, rule: delete-row, explain: "cached values, rebuilt on demand and often holding personal data"}
+  - {table: "{prefix}{site}options", where: {option_name: "_site_transient_*"}, column: option_value, rule: delete-row, explain: "network-wide cached values"}

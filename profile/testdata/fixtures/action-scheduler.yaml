@@ -1,0 +1,14 @@
+# Positive and negative rows for every rule of the action-scheduler profile.
+# Blogs 2 and 11 exist (their options tables), so {site} tables have wp_2_ and
+# wp_11_ copies; blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
+tables: [wp_2_options, wp_11_options]
+rules:
+  "action-scheduler.actionscheduler_actions.args":
+    positive: {table: wp_actionscheduler_actions, row: {args: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_actionscheduler_actions, row: {args: "Call Anna on +44 7700 900123"}}
+  "action-scheduler.actionscheduler_actions.extended_args":
+    positive: {table: wp_2_actionscheduler_actions, row: {extended_args: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_actionscheduler_actions, row: {extended_args: "Call Anna on +44 7700 900123"}}
+  "action-scheduler.actionscheduler_logs.message":
+    positive: {table: wp_actionscheduler_logs, row: {message: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_actionscheduler_logs, row: {message: "Call Anna on +44 7700 900123"}}

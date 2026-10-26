@@ -1,0 +1,43 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# A throwaway WordPress for capture.sh: MySQL 8.4, WordPress 6.8 and
+# WP-CLI, bound to 127.0.0.1 only. Nothing here is a real site.
+name: roadie-capture
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: capture
+      MYSQL_USER: capture
+      MYSQL_PASSWORD: capture
+      MYSQL_ROOT_PASSWORD: capture-root
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ucapture", "-pcapture"]
+      interval: 2s
+      retries: 60
+  wordpress:
+    image: wordpress:6.8-php8.3-apache
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: capture
+      WORDPRESS_DB_PASSWORD: capture
+      WORDPRESS_DB_NAME: capture
+      WORDPRESS_TABLE_PREFIX: wp_
+    ports: ["127.0.0.1:33020:80"]
+    volumes: [site:/var/www/html]
+  cli:
+    image: wordpress:cli-2.12-php8.3
+    user: "33:33"
+    depends_on: [wordpress]
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: capture
+      WORDPRESS_DB_PASSWORD: capture
+      WORDPRESS_DB_NAME: capture
+    volumes: [site:/var/www/html]
+    entrypoint: ["wp"]
+volumes:
+  site: {}

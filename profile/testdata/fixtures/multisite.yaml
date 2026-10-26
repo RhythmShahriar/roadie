@@ -1,0 +1,47 @@
+# Positive and negative rows for every rule of the multisite profile.
+# Blogs 2 and 11 exist (their options tables), so {site} tables have wp_2_ and
+# wp_11_ copies; blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
+tables: [wp_2_options, wp_11_options]
+rules:
+  "multisite.blogs.domain":
+    positive: {table: wp_blogs, row: {domain: "https://shop.example.com"}}
+    negative: {table: wp_2_blogs, row: {domain: "https://shop.example.com"}}
+  "multisite.blogs.path":
+    positive: {table: wp_blogs, row: {path: "https://shop.example.com"}}
+    negative: {table: wp_2_blogs, row: {path: "https://shop.example.com"}}
+  "multisite.site.domain":
+    positive: {table: wp_site, row: {domain: "https://shop.example.com"}}
+    negative: {table: wp_2_site, row: {domain: "https://shop.example.com"}}
+  "multisite.site.path":
+    positive: {table: wp_site, row: {path: "https://shop.example.com"}}
+    negative: {table: wp_2_site, row: {path: "https://shop.example.com"}}
+  "multisite.sitemeta.meta_value.admin_email":
+    positive: {table: wp_sitemeta, row: {meta_value: "anna.lee@example.com", meta_key: "admin_email"}}
+    negative: {table: wp_sitemeta, row: {meta_value: "anna.lee@example.com", meta_key: "xadmin_email"}}
+  "multisite.sitemeta.meta_value.site_admins.serialized:*":
+    positive: {table: wp_sitemeta, row: {meta_value: "a:1:{s:2:\"ip\";s:11:\"203.0.113.9\";}", meta_key: "site_admins"}}
+    negative: {table: wp_sitemeta, row: {meta_value: "a:1:{s:2:\"ip\";s:11:\"203.0.113.9\";}", meta_key: "xsite_admins"}}
+  "multisite.sitemeta.meta_value.siteurl":
+    positive: {table: wp_sitemeta, row: {meta_value: "https://shop.example.com", meta_key: "siteurl"}}
+    negative: {table: wp_sitemeta, row: {meta_value: "https://shop.example.com", meta_key: "xsiteurl"}}
+  "multisite.signups.user_email":
+    positive: {table: wp_signups, row: {user_email: "anna.lee@example.com"}}
+    negative: {table: wp_2_signups, row: {user_email: "anna.lee@example.com"}}
+  "multisite.signups.user_login":
+    positive: {table: wp_signups, row: {user_login: "annalee"}}
+    negative: {table: wp_2_signups, row: {user_login: "annalee"}}
+  "multisite.signups.meta":
+    positive: {table: wp_signups, row: {meta: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_2_signups, row: {meta: "Call Anna on +44 7700 900123"}}
+  "multisite.signups.activation_key":
+    positive: {table: wp_signups, row: {activation_key: "x"}}
+    negative: {table: wp_2_signups, row: {activation_key: "x"}}
+  "multisite.registration_log.email":
+    positive: {table: wp_registration_log, row: {email: "anna.lee@example.com"}}
+    negative: {table: wp_2_registration_log, row: {email: "anna.lee@example.com"}}
+  "multisite.registration_log.IP":
+    positive: {table: wp_registration_log, row: {IP: "203.0.113.9"}}
+    negative: {table: wp_2_registration_log, row: {IP: "203.0.113.9"}}
+  "multisite.blogmeta.meta_value":
+    positive: {table: wp_blogmeta, row: {meta_value: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_2_blogmeta, row: {meta_value: "Call Anna on +44 7700 900123"}}

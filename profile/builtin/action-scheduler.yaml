@@ -1,0 +1,16 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# Action Scheduler, bundled with WooCommerce: queued actions whose
+# arguments often name customers and orders.
+id: action-scheduler
+name: Action Scheduler
+stack: wordpress
+checked_against: "docs: https://raw.githubusercontent.com/woocommerce/action-scheduler/3.9.2/classes/schema/ActionScheduler_StoreSchema.php"
+detect:
+  tables_any: ["{prefix}{site}actionscheduler_actions"]
+rules:
+  - {table: "{prefix}{site}actionscheduler_actions", column: args, rule: text, explain: "the action's arguments as JSON (with serialized values inside); the action-scheduler-args row fix rehashes them"}
+  - {table: "{prefix}{site}actionscheduler_actions", column: extended_args, rule: text, explain: "arguments over 191 bytes; args then holds their md5"}
+  - {table: "{prefix}{site}actionscheduler_logs", column: message, rule: text, explain: "log lines that can name customers"}
+row_fixes: [action-scheduler-args]

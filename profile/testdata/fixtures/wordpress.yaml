@@ -1,0 +1,155 @@
+# Positive and negative rows for every rule of the wordpress profile.
+# Blogs 2 and 11 exist (their options tables), so {site} tables have wp_2_ and
+# wp_11_ copies; blog 12 doesn't, so wp_12_ lookalikes must stay untouched.
+tables: [wp_2_options, wp_11_options]
+rules:
+  "wordpress.users.user_email":
+    positive: {table: wp_users, row: {user_email: "anna.lee@example.com"}}
+    negative: {table: wp_2_users, row: {user_email: "anna.lee@example.com"}}
+  "wordpress.users.user_login":
+    positive: {table: wp_users, row: {user_login: "annalee"}}
+    negative: {table: wp_2_users, row: {user_login: "annalee"}}
+  "wordpress.users.user_nicename":
+    positive: {table: wp_users, row: {user_nicename: "annalee"}}
+    negative: {table: wp_2_users, row: {user_nicename: "annalee"}}
+  "wordpress.users.display_name":
+    positive: {table: wp_users, row: {display_name: "Anna Lee"}}
+    negative: {table: wp_2_users, row: {display_name: "Anna Lee"}}
+  "wordpress.users.user_url":
+    positive: {table: wp_users, row: {user_url: "https://anna.example.com/"}}
+    negative: {table: wp_2_users, row: {user_url: "https://anna.example.com/"}}
+  "wordpress.users.user_pass":
+    positive: {table: wp_users, row: {user_pass: "$P$Bexamplehash"}}
+    negative: {table: wp_2_users, row: {user_pass: "$P$Bexamplehash"}}
+  "wordpress.users.user_activation_key":
+    positive: {table: wp_users, row: {user_activation_key: "x"}}
+    negative: {table: wp_2_users, row: {user_activation_key: "x"}}
+  "wordpress.usermeta.meta_value.first_name":
+    positive: {table: wp_usermeta, row: {meta_value: "Anna", meta_key: "first_name"}}
+    negative: {table: wp_usermeta, row: {meta_value: "Anna", meta_key: "xfirst_name"}}
+  "wordpress.usermeta.meta_value.last_name":
+    positive: {table: wp_usermeta, row: {meta_value: "Lee", meta_key: "last_name"}}
+    negative: {table: wp_usermeta, row: {meta_value: "Lee", meta_key: "xlast_name"}}
+  "wordpress.usermeta.meta_value.nickname":
+    positive: {table: wp_usermeta, row: {meta_value: "annalee", meta_key: "nickname"}}
+    negative: {table: wp_usermeta, row: {meta_value: "annalee", meta_key: "xnickname"}}
+  "wordpress.usermeta.meta_value.description":
+    positive: {table: wp_usermeta, row: {meta_value: "Call Anna on +44 7700 900123", meta_key: "description"}}
+    negative: {table: wp_usermeta, row: {meta_value: "Call Anna on +44 7700 900123", meta_key: "xdescription"}}
+  "wordpress.usermeta.meta_value.session_tokens":
+    positive: {table: wp_usermeta, row: {meta_value: "x", meta_key: "session_tokens"}}
+    negative: {table: wp_usermeta, row: {meta_value: "x", meta_key: "xsession_tokens"}}
+  "wordpress.usermeta.meta_value._application_passwords":
+    positive: {table: wp_usermeta, row: {meta_value: "x", meta_key: "_application_passwords"}}
+    negative: {table: wp_usermeta, row: {meta_value: "x", meta_key: "x_application_passwords"}}
+  "wordpress.usermeta.meta_value.wc_last_active":
+    positive: {table: wp_usermeta, row: {meta_value: "x", meta_key: "wc_last_active"}}
+    negative: {table: wp_usermeta, row: {meta_value: "x", meta_key: "xwc_last_active"}}
+  "wordpress.usermeta.meta_value.community-events-location.serialized:ip":
+    positive: {table: wp_usermeta, row: {meta_value: "a:1:{s:2:\"ip\";s:11:\"203.0.113.9\";}", meta_key: "community-events-location"}}
+    negative: {table: wp_usermeta, row: {meta_value: "a:1:{s:2:\"ip\";s:11:\"203.0.113.9\";}", meta_key: "xcommunity-events-location"}}
+  "wordpress.usermeta.meta_value.billing_email":
+    positive: {table: wp_usermeta, row: {meta_value: "anna.lee@example.com", meta_key: "billing_email"}}
+    negative: {table: wp_usermeta, row: {meta_value: "anna.lee@example.com", meta_key: "xbilling_email"}}
+  "wordpress.usermeta.meta_value.billing_phone":
+    positive: {table: wp_usermeta, row: {meta_value: "+44 7700 900123", meta_key: "billing_phone"}}
+    negative: {table: wp_usermeta, row: {meta_value: "+44 7700 900123", meta_key: "xbilling_phone"}}
+  "wordpress.usermeta.meta_value.billing_first_name":
+    positive: {table: wp_usermeta, row: {meta_value: "Anna", meta_key: "billing_first_name"}}
+    negative: {table: wp_usermeta, row: {meta_value: "Anna", meta_key: "xbilling_first_name"}}
+  "wordpress.usermeta.meta_value.billing_last_name":
+    positive: {table: wp_usermeta, row: {meta_value: "Lee", meta_key: "billing_last_name"}}
+    negative: {table: wp_usermeta, row: {meta_value: "Lee", meta_key: "xbilling_last_name"}}
+  "wordpress.usermeta.meta_value.billing_company":
+    positive: {table: wp_usermeta, row: {meta_value: "Lee Ltd", meta_key: "billing_company"}}
+    negative: {table: wp_usermeta, row: {meta_value: "Lee Ltd", meta_key: "xbilling_company"}}
+  "wordpress.usermeta.meta_value.billing_address_1":
+    positive: {table: wp_usermeta, row: {meta_value: "1 High Street", meta_key: "billing_address_1"}}
+    negative: {table: wp_usermeta, row: {meta_value: "1 High Street", meta_key: "xbilling_address_1"}}
+  "wordpress.usermeta.meta_value.billing_address_2":
+    positive: {table: wp_usermeta, row: {meta_value: "1 High Street", meta_key: "billing_address_2"}}
+    negative: {table: wp_usermeta, row: {meta_value: "1 High Street", meta_key: "xbilling_address_2"}}
+  "wordpress.usermeta.meta_value.billing_city":
+    positive: {table: wp_usermeta, row: {meta_value: "Leeds", meta_key: "billing_city"}}
+    negative: {table: wp_usermeta, row: {meta_value: "Leeds", meta_key: "xbilling_city"}}
+  "wordpress.usermeta.meta_value.billing_postcode":
+    positive: {table: wp_usermeta, row: {meta_value: "LS1 4AP", meta_key: "billing_postcode"}}
+    negative: {table: wp_usermeta, row: {meta_value: "LS1 4AP", meta_key: "xbilling_postcode"}}
+  "wordpress.usermeta.meta_value.billing_country":
+    positive: {table: wp_usermeta, row: {meta_value: "x", meta_key: "billing_country"}}
+    negative: {table: wp_usermeta, row: {meta_value: "x", meta_key: "xbilling_country"}}
+  "wordpress.usermeta.meta_value.billing_state":
+    positive: {table: wp_usermeta, row: {meta_value: "x", meta_key: "billing_state"}}
+    negative: {table: wp_usermeta, row: {meta_value: "x", meta_key: "xbilling_state"}}
+  "wordpress.usermeta.meta_value.shipping_phone":
+    positive: {table: wp_usermeta, row: {meta_value: "+44 7700 900123", meta_key: "shipping_phone"}}
+    negative: {table: wp_usermeta, row: {meta_value: "+44 7700 900123", meta_key: "xshipping_phone"}}
+  "wordpress.usermeta.meta_value.shipping_first_name":
+    positive: {table: wp_usermeta, row: {meta_value: "Anna", meta_key: "shipping_first_name"}}
+    negative: {table: wp_usermeta, row: {meta_value: "Anna", meta_key: "xshipping_first_name"}}
+  "wordpress.usermeta.meta_value.shipping_last_name":
+    positive: {table: wp_usermeta, row: {meta_value: "Lee", meta_key: "shipping_last_name"}}
+    negative: {table: wp_usermeta, row: {meta_value: "Lee", meta_key: "xshipping_last_name"}}
+  "wordpress.usermeta.meta_value.shipping_company":
+    positive: {table: wp_usermeta, row: {meta_value: "Lee Ltd", meta_key: "shipping_company"}}
+    negative: {table: wp_usermeta, row: {meta_value: "Lee Ltd", meta_key: "xshipping_company"}}
+  "wordpress.usermeta.meta_value.shipping_address_1":
+    positive: {table: wp_usermeta, row: {meta_value: "1 High Street", meta_key: "shipping_address_1"}}
+    negative: {table: wp_usermeta, row: {meta_value: "1 High Street", meta_key: "xshipping_address_1"}}
+  "wordpress.usermeta.meta_value.shipping_address_2":
+    positive: {table: wp_usermeta, row: {meta_value: "1 High Street", meta_key: "shipping_address_2"}}
+    negative: {table: wp_usermeta, row: {meta_value: "1 High Street", meta_key: "xshipping_address_2"}}
+  "wordpress.usermeta.meta_value.shipping_city":
+    positive: {table: wp_usermeta, row: {meta_value: "Leeds", meta_key: "shipping_city"}}
+    negative: {table: wp_usermeta, row: {meta_value: "Leeds", meta_key: "xshipping_city"}}
+  "wordpress.usermeta.meta_value.shipping_postcode":
+    positive: {table: wp_usermeta, row: {meta_value: "LS1 4AP", meta_key: "shipping_postcode"}}
+    negative: {table: wp_usermeta, row: {meta_value: "LS1 4AP", meta_key: "xshipping_postcode"}}
+  "wordpress.usermeta.meta_value.shipping_country":
+    positive: {table: wp_usermeta, row: {meta_value: "x", meta_key: "shipping_country"}}
+    negative: {table: wp_usermeta, row: {meta_value: "x", meta_key: "xshipping_country"}}
+  "wordpress.usermeta.meta_value.shipping_state":
+    positive: {table: wp_usermeta, row: {meta_value: "x", meta_key: "shipping_state"}}
+    negative: {table: wp_usermeta, row: {meta_value: "x", meta_key: "xshipping_state"}}
+  "wordpress.comments.comment_author":
+    positive: {table: wp_comments, row: {comment_author: "Anna Lee"}}
+    negative: {table: wp_12_comments, row: {comment_author: "Anna Lee"}}
+  "wordpress.comments.comment_author_email":
+    positive: {table: wp_2_comments, row: {comment_author_email: "anna.lee@example.com"}}
+    negative: {table: wp_12_comments, row: {comment_author_email: "anna.lee@example.com"}}
+  "wordpress.comments.comment_author_url":
+    positive: {table: wp_comments, row: {comment_author_url: "https://anna.example.com/"}}
+    negative: {table: wp_12_comments, row: {comment_author_url: "https://anna.example.com/"}}
+  "wordpress.comments.comment_author_IP":
+    positive: {table: wp_11_comments, row: {comment_author_IP: "203.0.113.9"}}
+    negative: {table: wp_12_comments, row: {comment_author_IP: "203.0.113.9"}}
+  "wordpress.comments.comment_agent":
+    positive: {table: wp_comments, row: {comment_agent: "Mozilla/5.0"}}
+    negative: {table: wp_12_comments, row: {comment_agent: "Mozilla/5.0"}}
+  "wordpress.comments.comment_content":
+    positive: {table: wp_2_comments, row: {comment_content: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_comments, row: {comment_content: "Call Anna on +44 7700 900123"}}
+  "wordpress.commentmeta.meta_value":
+    positive: {table: wp_commentmeta, row: {meta_value: "Call Anna on +44 7700 900123"}}
+    negative: {table: wp_12_commentmeta, row: {meta_value: "Call Anna on +44 7700 900123"}}
+  "wordpress.options.option_value.admin_email":
+    positive: {table: wp_11_options, row: {option_value: "anna.lee@example.com", option_name: "admin_email"}}
+    negative: {table: wp_2_options, row: {option_value: "anna.lee@example.com", option_name: "xadmin_email"}}
+  "wordpress.options.option_value.new_admin_email":
+    positive: {table: wp_options, row: {option_value: "anna.lee@example.com", option_name: "new_admin_email"}}
+    negative: {table: wp_options, row: {option_value: "anna.lee@example.com", option_name: "xnew_admin_email"}}
+  "wordpress.options.option_value.siteurl":
+    positive: {table: wp_2_options, row: {option_value: "https://shop.example.com", option_name: "siteurl"}}
+    negative: {table: wp_2_options, row: {option_value: "https://shop.example.com", option_name: "xsiteurl"}}
+  "wordpress.options.option_value.home":
+    positive: {table: wp_options, row: {option_value: "https://shop.example.com", option_name: "home"}}
+    negative: {table: wp_options, row: {option_value: "https://shop.example.com", option_name: "xhome"}}
+  "wordpress.options.option_value.wc_subscriptions_siteurl":
+    positive: {table: wp_11_options, row: {option_value: "x", option_name: "wc_subscriptions_siteurl"}}
+    negative: {table: wp_2_options, row: {option_value: "x", option_name: "xwc_subscriptions_siteurl"}}
+  "wordpress.options.option_value._transient_*":
+    positive: {table: wp_options, row: {option_value: "x", option_name: "_transient_x"}}
+    negative: {table: wp_options, row: {option_value: "x", option_name: "x_transient_x"}}
+  "wordpress.options.option_value._site_transient_*":
+    positive: {table: wp_2_options, row: {option_value: "x", option_name: "_site_transient_x"}}
+    negative: {table: wp_2_options, row: {option_value: "x", option_name: "x_site_transient_x"}}

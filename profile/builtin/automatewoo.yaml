@@ -1,0 +1,20 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# AutomateWoo (paid): queued emails and abandoned carts are cleared so
+# nothing is sent from the copy; guests and logs are pseudonymised.
+id: automatewoo
+name: AutomateWoo
+stack: wordpress
+checked_against: "docs: https://woocommerce.com/document/automatewoo/regenerate-automatewoo-database-tables/"
+detect:
+  tables_any: ["{prefix}{site}automatewoo_queue", "{prefix}{site}automatewoo_guests"]
+  files: [wp-content/plugins/automatewoo/automatewoo.php]
+rules:
+  - {table: "{prefix}{site}automatewoo_guests", column: email, rule: email, explain: "a guest's email captured at checkout"}
+  - {table: "{prefix}{site}automatewoo_guest_meta", column: meta_value, rule: text, explain: "guest details such as names and phones"}
+  - {table: "{prefix}{site}automatewoo_log_meta", column: meta_value, rule: text, explain: "workflow log details that can name customers"}
+truncate:
+  - "{prefix}{site}automatewoo_queue"
+  - "{prefix}{site}automatewoo_queue_meta"
+  - "{prefix}{site}automatewoo_abandoned_carts"
