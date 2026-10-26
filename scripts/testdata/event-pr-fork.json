@@ -1,0 +1,9 @@
+{
+  "number": 7,
+  "pull_request": {
+    "number": 7,
+    "head": {"repo": {"full_name": "someone-else/roadie"}},
+    "base": {"repo": {"full_name": "example-org/shop"}}
+  },
+  "repository": {"full_name": "example-org/shop", "private": false, "visibility": "public"}
+}

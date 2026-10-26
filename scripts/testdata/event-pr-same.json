@@ -1,0 +1,9 @@
+{
+  "number": 9,
+  "pull_request": {
+    "number": 9,
+    "head": {"repo": {"full_name": "example-org/shop"}},
+    "base": {"repo": {"full_name": "example-org/shop"}}
+  },
+  "repository": {"full_name": "example-org/shop", "private": true, "visibility": "private"}
+}
