@@ -115,15 +115,17 @@ func (e *SyntaxError) Error() string { return fmt.Sprintf("line %d: %s", e.Line,
 // pos are consumed but not yet appended to *dst; flush appends them and
 // counts their lines.
 type scanner struct {
-	r    io.Reader
-	buf  []byte
-	pos  int
-	end  int
-	mark int
-	base int64 // input offset of buf[0]
-	dst  *[]byte
-	line int64 // line of buf[mark]
-	err  error
+	r     io.Reader
+	buf   []byte
+	pos   int
+	end   int
+	mark  int
+	base  int64 // input offset of buf[0]
+	dst   *[]byte
+	line  int64 // line of buf[mark]
+	err   error
+	qAt   int64 // input offset of the next quote nextQuote found, or -1
+	qUpto int64 // input offset nextQuote searched up to
 }
 
 var newline = []byte{'\n'}
@@ -198,6 +200,33 @@ func (s *scanner) ensure(n int) bool {
 func (s *scanner) peek(n int) []byte {
 	s.ensure(n)
 	return s.buf[s.pos:min(s.end, s.pos+n)]
+}
+
+// resetQuote forgets where the last quote search ended, for a new string.
+func (s *scanner) resetQuote() { s.qAt, s.qUpto = -1, 0 }
+
+// nextQuote is the index from pos of the next q in the window, or -1. It
+// remembers how far it searched, in input offsets, so a long string with
+// many escapes isn't searched again from each escape to the window end.
+func (s *scanner) nextQuote(q byte) int {
+	abs := s.base + int64(s.pos)
+	if s.qAt >= abs {
+		if s.qAt < s.base+int64(s.end) {
+			return int(s.qAt - abs)
+		}
+	}
+	from := max(abs, s.qUpto)
+	if from >= s.base+int64(s.end) {
+		return -1
+	}
+	i := bytes.IndexByte(s.buf[from-s.base:s.end], q)
+	if i < 0 {
+		s.qAt, s.qUpto = -1, s.base+int64(s.end)
+		return -1
+	}
+	s.qAt = from + int64(i)
+	s.qUpto = s.qAt
+	return int(s.qAt - abs)
 }
 
 // readErr is the read error to report, or nil at a clean end of input.
@@ -557,19 +586,30 @@ func (l *Lexer) escapes(q byte) bool {
 	return q != '`' && !l.mode.NoBackslashEscapes && (q != '"' || !l.mode.ANSIQuotes)
 }
 
+// firstBackslash is the index of the first backslash in b before the
+// quote at i (all of b when i < 0), or -1. Searching only up to the quote
+// keeps a short string from scanning the whole buffer for a backslash.
+func firstBackslash(b []byte, i int) int {
+	if i >= 0 {
+		b = b[:i]
+	}
+	return bytes.IndexByte(b, '\\')
+}
+
 // skipQuoted consumes the rest of a quoted string or identifier opened by
 // q. A doubled q is part of it.
 func (l *Lexer) skipQuoted(q byte) bool {
 	s := &l.s
 	esc := l.escapes(q)
+	s.resetQuote()
 	for {
 		if !s.ensure(1) {
 			return false
 		}
 		b := s.buf[s.pos:s.end]
-		i := bytes.IndexByte(b, q)
+		i := s.nextQuote(q)
 		if esc {
-			if j := bytes.IndexByte(b, '\\'); j >= 0 && (i < 0 || j < i) {
+			if j := firstBackslash(b, i); j >= 0 {
 				s.pos += j
 				if !s.ensure(2) {
 					s.pos = s.end
@@ -1002,6 +1042,7 @@ func (l *Lexer) str(a *Arena, kind core.ValueKind) (span, error) {
 	copied := contentStart
 	rawStart := len(a.Raw)
 	escaped := false
+	s.resetQuote()
 	for {
 		if !s.ensure(1) {
 			return span{}, l.truncated()
@@ -1010,12 +1051,12 @@ func (l *Lexer) str(a *Arena, kind core.ValueKind) (span, error) {
 			return span{}, &TooLargeError{Line: s.lineAt(), Limit: l.max}
 		}
 		b := s.buf[s.pos:s.end]
-		i := bytes.IndexByte(b, q)
+		i := s.nextQuote(q)
 		j := -1
 		if esc {
-			j = bytes.IndexByte(b, '\\')
+			j = firstBackslash(b, i)
 		}
-		if j >= 0 && (i < 0 || j < i) {
+		if j >= 0 {
 			s.pos += j
 			a.Raw = s.appendSince(a.Raw, copied)
 			escaped = true
