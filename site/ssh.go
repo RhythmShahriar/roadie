@@ -39,13 +39,19 @@ type sshSite struct {
 	// same plugin files each time pass 1 sees new tables; each ask is an
 	// ssh round trip. Anything that may change the files clears it.
 	exists map[string]bool
+	// reads caches ReadFile the same way: the kill switch and the guards
+	// read wp-config.php and .env more than once. nil holds a file that
+	// isn't there.
+	reads map[string][]byte
+	// cmu guards exists and reads; mu is held across config's reads.
+	cmu sync.Mutex
 }
 
 // forget clears the Exists cache before the site's files may change.
 func (s *sshSite) forget() {
-	s.mu.Lock()
-	s.exists = nil
-	s.mu.Unlock()
+	s.cmu.Lock()
+	s.exists, s.reads = nil, nil
+	s.cmu.Unlock()
 }
 
 func openSSH(ctx context.Context, e core.Endpoint, o Options) (core.Site, error) {
@@ -96,11 +102,30 @@ func (s *sshSite) ReadFile(ctx context.Context, rel string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	b, err := s.r.Output(ctx, nil, remote.Cat, p)
-	if missing(err) {
+	s.cmu.Lock()
+	b, seen := s.reads[p]
+	s.cmu.Unlock()
+	if !seen {
+		b, err = s.r.Output(ctx, nil, remote.Cat, p)
+		if err != nil && !missing(err) {
+			return nil, err
+		}
+		if err != nil {
+			b = nil
+		} else if b == nil {
+			b = []byte{}
+		}
+		s.cmu.Lock()
+		if s.reads == nil {
+			s.reads = map[string][]byte{}
+		}
+		s.reads[p] = b
+		s.cmu.Unlock()
+	}
+	if b == nil {
 		return nil, &fs.PathError{Op: "read", Path: rel, Err: fs.ErrNotExist}
 	}
-	return b, err
+	return bytes.Clone(b), nil
 }
 
 // WriteFile streams b into a temp file next to rel with umask 077 and
@@ -198,20 +223,20 @@ func (s *sshSite) Exists(ctx context.Context, rel string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	s.mu.Lock()
+	s.cmu.Lock()
 	ok, seen := s.exists[p]
-	s.mu.Unlock()
+	s.cmu.Unlock()
 	if seen {
 		return ok, nil
 	}
 	ok, err = s.exists1(ctx, p)
 	if err == nil {
-		s.mu.Lock()
+		s.cmu.Lock()
 		if s.exists == nil {
 			s.exists = map[string]bool{}
 		}
 		s.exists[p] = ok
-		s.mu.Unlock()
+		s.cmu.Unlock()
 	}
 	return ok, err
 }
@@ -335,6 +360,10 @@ func (s *sshSite) WP(ctx context.Context, args ...string) ([]byte, error) {
 	t, a, ok := wpTemplate(args)
 	if !ok {
 		return nil, fmt.Errorf("%w: wp %s", remote.ErrNotAllowed, strings.Join(args, " "))
+	}
+	if !s.ro {
+		// A WP-CLI command on a target may change its files.
+		defer s.forget()
 	}
 	out, err := s.r.Output(ctx, nil, t, a...)
 	return bytes.TrimRight(out, "\r\n"), err

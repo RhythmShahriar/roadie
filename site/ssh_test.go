@@ -735,3 +735,53 @@ func TestSSHExistsCached(t *testing.T) {
 		t.Errorf("%d calls, want 4 (the remove, then test and find again)", n)
 	}
 }
+
+// ReadFile asks the host once per path until the site's files change,
+// a file that isn't there included; the bytes handed out are a copy.
+func TestSSHReadFileCached(t *testing.T) {
+	sh := remotetest.New(t)
+	s := openSSHT(t, sh, Options{})
+	ctx := context.Background()
+	count := func(name string) int {
+		n := 0
+		for _, c := range sh.Calls() {
+			if strings.Contains(remoteCmd(c), name) {
+				n++
+			}
+		}
+		return n
+	}
+	sh.Reply([]byte("<?php define('DB_NAME', 'shop');"), "", 0)
+	for range 3 {
+		b, err := s.ReadFile(ctx, "wp-config.php")
+		if err != nil || string(b) != "<?php define('DB_NAME', 'shop');" {
+			t.Fatalf("read %q %v", b, err)
+		}
+		b[0] = 'X' // the cache keeps its own bytes
+	}
+	if n := count("cat -- '/srv/shop/wp-config.php'"); n != 1 {
+		t.Errorf("%d reads, want 1", n)
+	}
+	sh.Reply(nil, "cat: /srv/shop/.env: No such file or directory\n", 1)
+	for range 2 {
+		if _, err := s.ReadFile(ctx, ".env"); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf(".env: %v", err)
+		}
+	}
+	if n := count("cat -- '/srv/shop/.env'"); n != 1 {
+		t.Errorf("%d reads of a missing file, want 1", n)
+	}
+	// A change to the files forgets what was read.
+	sh.Reply(nil, "", 0)
+	if err := s.Remove(ctx, "wp-content/old.txt"); err != nil {
+		t.Fatal(err)
+	}
+	before := count("cat -- '/srv/shop/.env'")
+	sh.Reply([]byte("APP_ENV=staging\n"), "", 0)
+	if b, err := s.ReadFile(ctx, ".env"); err != nil || string(b) != "APP_ENV=staging\n" {
+		t.Errorf("after the write: %q %v", b, err)
+	}
+	if n := count("cat -- '/srv/shop/.env'"); n != before+1 {
+		t.Errorf("the write didn't clear the cache: %d reads, want %d", n, before+1)
+	}
+}
