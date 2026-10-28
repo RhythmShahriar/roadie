@@ -332,7 +332,9 @@ func TestRunCopyToDumpFile(t *testing.T) {
 		t.Errorf("email %q", v)
 	}
 	v := f.verifyJob
-	if v == nil || v.Known == nil || v.Target.Raw != out || v.Site != nil || len(v.Rules) == 0 || len(v.Steps) != 0 {
+	// A dump has no step of its own: it gets the stack's kill-switch
+	// steps, for verify to run those that read only rows.
+	if v == nil || v.Known == nil || v.Target.Raw != out || v.Site != nil || len(v.Rules) == 0 || len(v.Steps) == 0 {
 		t.Fatalf("verify job %+v", v)
 	}
 	if len(v.ProductionPairs) != 1 || v.ProductionPairs[0].Name != "DB_NAME" {

@@ -81,6 +81,9 @@ type run struct {
 	// unparsed counts serialized-looking values that didn't parse, by
 	// column (table, NUL, column).
 	unparsed map[string]int64
+	// capt keeps the rows the data checks read on a target with no files;
+	// nil when no step has a data check or the target has files.
+	capt *capture
 }
 
 // add records a finding unless the baseline or an ignore entry hides it.
@@ -141,6 +144,8 @@ func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 	}
 	if st != nil {
 		r.configs = readConfigs(ctx, st)
+	} else if hasDataSteps(j.Steps) {
+		r.capt = newCapture()
 	}
 	samples, tables, err := r.stream(ctx, src)
 	if err != nil {
@@ -151,9 +156,10 @@ func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 	if st != nil {
 		r.siteChecks(ctx, st)
 	} else {
-		// A database target (a DSN) has no files: its one step says so
-		// (side-effect.not-applicable), as a copy to it does.
-		r.databaseSteps(ctx)
+		// A database or dump target has no files: the checks that read
+		// only rows run on what the scan kept, the rest are skipped;
+		// a DSN's own step says so (side-effect.not-applicable).
+		r.databaseSteps(ctx, tables)
 	}
 	r.extraChecks(ctx)
 	if r.res.Coverage.RowsScanned == 0 {
@@ -421,6 +427,9 @@ func (r *run) stream(ctx context.Context, src core.Source) (map[string]map[strin
 			if r.j.Progress != nil {
 				r.j.Progress.Table(t.Name, t.RowsEstimate)
 			}
+		}
+		if r.capt != nil {
+			r.capt.add(b)
 		}
 		var rows []int
 		for i := range b.Rows {

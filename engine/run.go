@@ -1367,6 +1367,9 @@ func (r *runner) verify(ctx context.Context, out *output, checks []core.Step) er
 	}
 	vj := verify.Job{Target: r.j.To, Known: out.Known, Production: production(r.cfg, r.res.Production),
 		Rules: compiledRules(out.Compiled), Steps: checks, Opts: r.verifyOptions(), Progress: r.j.Progress}
+	if out.Compiled != nil {
+		vj.Steps = append(slices.Clip(vj.Steps), noFilesSteps(r.to, out.Compiled.Stack(), r.killOptions())...)
+	}
 	if r.mode == Copy {
 		vj.ProductionPairs = productionPairs(ctx, r.from, r.cfg)
 	}

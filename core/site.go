@@ -101,3 +101,11 @@ type KeyStep interface {
 	Step
 	AppliedKeys() []KeyHit
 }
+
+// DataStep is a Step whose check can also run on a target with no files,
+// a dump or a database: CheckData reads only the target's rows; its
+// findings' fixes don't ask for prepare on files that aren't there.
+type DataStep interface {
+	Step
+	CheckData(ctx context.Context, s Site) (SideEffect, []Finding, error)
+}

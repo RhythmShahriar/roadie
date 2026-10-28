@@ -303,13 +303,13 @@ func subscriptionsStep(o Options) core.Step {
 	}
 	if o.kept("subscriptions") {
 		st.plan = keptPlan(id, "subscriptions")
-		return st
+		return withData(st, onlyData(subscriptionsData(o)))
 	}
 	if o.URL == "" {
 		st.plan = func(context.Context, core.Site) ([]core.PlannedEdit, error) {
 			return []core.PlannedEdit{{Step: id, File: MuPluginPath, What: "woocommerce_subscriptions_is_duplicate_site returns true; wc_subscriptions_siteurl left as it is"}}, nil
 		}
-		return st
+		return withData(st, onlyData(subscriptionsData(o)))
 	}
 	plan, apply := configEdit(id,
 		func(f *wpconfig.File) []string {
@@ -349,7 +349,7 @@ func subscriptionsStep(o Options) core.Step {
 		edits, err := plan(ctx, s)
 		return append([]core.PlannedEdit{{Step: id, File: MuPluginPath, What: "woocommerce_subscriptions_is_duplicate_site returns true; wc_subscriptions_siteurl left as it is"}}, edits...), err
 	}
-	return st
+	return withData(st, onlyData(subscriptionsData(o)))
 }
 
 // sameSite compares two site URLs by host and path.
@@ -676,7 +676,7 @@ func schedulerStep(o Options) core.Step {
 		fd.Detail = strconv.FormatInt(pending, 10) + " pending actions"
 		return se, []core.Finding{fd}, nil
 	}
-	return st
+	return withData(st, schedulerData)
 }
 
 // jetpackStep is check only: the mu-plugin puts Jetpack offline and a
@@ -710,7 +710,7 @@ func jetpackStep() core.Step {
 // webhooksStep is check only: a DataRule pauses wc_webhooks.
 func webhooksStep(o Options) core.Step {
 	id := core.FindingSideEffectWebhooks
-	return &step{id: id,
+	st := &step{id: id,
 		plan: func(ctx context.Context, s core.Site) ([]core.PlannedEdit, error) {
 			if o.kept("webhooks") {
 				return keptPlan(id, "webhooks")(ctx, s)
@@ -743,6 +743,7 @@ func webhooksStep(o Options) core.Step {
 			fd.Count, fd.Locations[0].Count = active, active
 			return se, []core.Finding{fd}, nil
 		}}
+	return withData(st, onlyData(st.check))
 }
 
 // wcpayID is WooPayments' gateway ID.
@@ -779,7 +780,7 @@ func gatewayOption(id string) string { return "woocommerce_" + id + "_settings" 
 // and disable unknown ones.
 func gatewaysStep(o Options) core.Step {
 	id := core.FindingSideEffectGateways
-	return &step{id: id,
+	st := &step{id: id,
 		plan: func(ctx context.Context, s core.Site) ([]core.PlannedEdit, error) {
 			if o.kept("gateways") {
 				return keptPlan(id, "gateways")(ctx, s)
@@ -848,6 +849,9 @@ func gatewaysStep(o Options) core.Step {
 			}
 			return se, out, nil
 		}}
+	// No data check: on a dump or a database, key.live-mode in the
+	// data scan reads the gateways, as Gateway.Mode does.
+	return st
 }
 
 // knownGateway reports a gateway ID the list has, by its ID or by its
@@ -875,7 +879,7 @@ func unknownGateways(o Options) []string {
 // automatewooStep is check only: a DataRule truncates the queue.
 func automatewooStep() core.Step {
 	id := core.FindingSideEffectAutomateWoo
-	return &step{id: id,
+	st := &step{id: id,
 		plan: func(context.Context, core.Site) ([]core.PlannedEdit, error) {
 			return []core.PlannedEdit{{Step: id, File: "automatewoo_queue", What: "queue truncated; workflows run through Action Scheduler, which is paused"}}, nil
 		},
@@ -899,4 +903,5 @@ func automatewooStep() core.Step {
 			fd.Count, fd.Locations[0].Count = n, n
 			return se, []core.Finding{fd}, nil
 		}}
+	return withData(st, onlyData(st.check))
 }

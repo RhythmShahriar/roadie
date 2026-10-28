@@ -13,6 +13,7 @@ import (
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/profile"
 	"github.com/RhythmShahriar/roadie/pseudo"
+	"github.com/RhythmShahriar/roadie/site/killswitch"
 	"github.com/RhythmShahriar/roadie/verify"
 )
 
@@ -94,10 +95,11 @@ func VerifyJob(ctx context.Context, j Job, target core.Endpoint, from *core.Endp
 	} else if err := in.close(); err != nil {
 		return verify.Job{}, err
 	}
+	ko := r.killOptions()
 	if r.to != nil {
-		ko := r.killOptions()
 		vj.Steps = append(killSteps(r.to.Stack(), ko), exposureSteps(ko)...)
 	}
+	vj.Steps = append(vj.Steps, noFilesSteps(r.to, c.Stack(), ko)...)
 	if from == nil {
 		return vj, nil
 	}
@@ -111,6 +113,18 @@ func VerifyJob(ctx context.Context, j Job, target core.Endpoint, from *core.Endp
 	vj.Known, vj.ProductionPairs = known, pairs
 	vj.Production = production(cfg, found)
 	return vj, nil
+}
+
+// noFilesSteps are the kill-switch steps of the stack a dump or database
+// target holds, for verify to run the checks that read only rows
+// (core.DataStep) and list the rest as skipped: a target with no files
+// has no step of its own beyond side-effect.not-applicable. A site with
+// files has its steps already, so it gets none.
+func noFilesSteps(to core.Site, stack core.Stack, ko killswitch.Options) []core.Step {
+	if to != nil && to.Stack() != core.StackSQL || stack == core.StackSQL || stack == "" {
+		return nil
+	}
+	return killSteps(stack, ko)
 }
 
 // closerFunc turns a func into an io.Closer.

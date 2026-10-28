@@ -19,6 +19,7 @@ import (
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/keys"
 	"github.com/RhythmShahriar/roadie/site/dotenv"
+	"github.com/RhythmShahriar/roadie/site/killswitch"
 	"github.com/RhythmShahriar/roadie/site/wpconfig"
 )
 
@@ -550,14 +551,38 @@ func (r *run) uploads(ctx context.Context, s core.Site) {
 
 // databaseSteps runs the steps a target without a site has: only the
 // database-only step, whose check reads no files.
-func (r *run) databaseSteps(ctx context.Context) {
+func (r *run) databaseSteps(ctx context.Context, tables []*core.Table) {
 	var steps []core.Step
+	var data []core.DataStep
 	for _, st := range r.j.Steps {
-		if st.ID() == core.FindingSideEffectNotApplicable {
+		switch ds, ok := st.(core.DataStep); {
+		case st.ID() == core.FindingSideEffectNotApplicable:
 			steps = append(steps, st)
+		case ok && r.capt != nil:
+			data = append(data, ds)
+		default:
+			r.skipCheck(st.ID(), killswitch.NoFilesReasonFor(st.ID()))
 		}
 	}
 	r.runSteps(ctx, nil, steps)
+	if len(data) == 0 {
+		return
+	}
+	s := newDataSite(r.j.Target, r.j.Stack.Name, tables, r.capt)
+	r.runChecks(len(data), func(i int) (string, func() (core.SideEffect, []core.Finding, error)) {
+		ds := data[i]
+		return ds.ID(), func() (core.SideEffect, []core.Finding, error) { return ds.CheckData(ctx, s) }
+	})
+}
+
+// hasDataSteps reports a step whose check can run on rows alone.
+func hasDataSteps(steps []core.Step) bool {
+	for _, st := range steps {
+		if _, ok := st.(core.DataStep); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // steps runs each Step's check and records its side effect and findings.
@@ -565,18 +590,32 @@ func (r *run) steps(ctx context.Context, s core.Site) { r.runSteps(ctx, s, r.j.S
 
 // runSteps runs the checks of steps on s.
 func (r *run) runSteps(ctx context.Context, s core.Site, steps []core.Step) {
-	for _, st := range steps {
-		if why := r.skipReason(st.ID()); why != "" {
-			r.skipCheck(st.ID(), why)
+	r.runChecks(len(steps), func(i int) (string, func() (core.SideEffect, []core.Finding, error)) {
+		st := steps[i]
+		return st.ID(), func() (core.SideEffect, []core.Finding, error) { return st.Check(ctx, s) }
+	})
+}
+
+// runChecks runs n checks, each an ID and its check; it records the side
+// effect and findings of each.
+func (r *run) runChecks(n int, at func(i int) (string, func() (core.SideEffect, []core.Finding, error))) {
+	for i := range n {
+		id, check := at(i)
+		if why := r.skipReason(id); why != "" {
+			r.skipCheck(id, why)
 			continue
 		}
-		r.count(st.ID(), 1)
-		se, found, err := st.Check(ctx, s)
+		r.count(id, 1)
+		se, found, err := check()
 		if err != nil {
-			se = core.SideEffect{ID: st.ID(), Status: "unknown", How: "the check failed: " + err.Error()}
+			se = core.SideEffect{ID: id, Status: "unknown", How: "the check failed: " + err.Error()}
 		}
 		if se.ID == "" {
-			se.ID = st.ID()
+			se.ID = id
+		}
+		if se.Status == "unknown" && se.How != "" && r.note[id] == "" {
+			// The check ran and couldn't tell: its line says why.
+			r.note[id] = se.How
 		}
 		r.res.SideEffects = append(r.res.SideEffects, se)
 		for _, f := range found {
