@@ -91,7 +91,7 @@ var checkLabels = map[string]string{
 	core.FindingURLProduction:            "No production URLs",
 	core.FindingURLProductionSiteURL:     "Site URL is the copy's",
 	"side-effects":                       "Side effects off",
-	core.FindingConfigEnvironment:        "WP_ENVIRONMENT_TYPE is staging",
+	core.FindingConfigEnvironment:        "The site says it is staging", // WP_ENVIRONMENT_TYPE or APP_ENV
 	core.FindingSearchIndexable:          "Kept out of search engines",
 	core.FindingUploadsPersonal:          "No personal files in uploads",
 	core.FindingUncoveredColumn:          "Every personal-looking column covered",
@@ -124,7 +124,7 @@ var checkNames = map[string]string{
 	core.FindingURLProduction:            "Production URLs",
 	core.FindingURLProductionSiteURL:     "Site URL",
 	"side-effects":                       "Side effects",
-	core.FindingConfigEnvironment:        "WP_ENVIRONMENT_TYPE",
+	core.FindingConfigEnvironment:        "Environment",
 	core.FindingSearchIndexable:          "Search engines",
 	core.FindingUploadsPersonal:          "Files in uploads",
 	core.FindingUncoveredColumn:          "Personal-looking columns",
@@ -177,7 +177,7 @@ func CheckLabel(id string) string {
 // effectLabels name the side effects, long and short.
 var effectLabels = map[string][2]string{
 	core.FindingSideEffectMail:            {"Echo connector, sealed", "Echo seal"},
-	core.FindingConfigEnvironment:         {"WP_ENVIRONMENT_TYPE", "WP_ENVIRONMENT_TYPE"},
+	core.FindingConfigEnvironment:         {"Environment", "environment"}, // WP_ENVIRONMENT_TYPE or APP_ENV
 	core.FindingSideEffectCron:            {"WP-Cron", "cron"},
 	core.FindingSideEffectActionScheduler: {"Action Scheduler", "Action Scheduler"},
 	core.FindingSideEffectWebhooks:        {"WooCommerce webhooks", "webhooks"},

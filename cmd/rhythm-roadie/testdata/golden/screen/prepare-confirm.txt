@@ -7,7 +7,7 @@ Plan: 3 tables pseudonymised, 2 live keys, 4 side effects (plan -v for all)
 
 [ok] Data: 152,624 values pseudonymised in 3 tables, 3,912 URLs rewritten
 [ok] Keys: 1 swapped to a test key, 1 blanked
-[ok] Side effects: Echo seal, WP_ENVIRONMENT_TYPE, cron, webhooks
+[ok] Side effects: Echo seal, environment, cron, webhooks
 [ok] Search: noindex, robots.txt
 [ok] Backup: .roadie/backups/2026-10-26T14-02-11.sql.gz; to undo: gunzip -c .roadie/backups/2026-10-26T14-02-11.sql.gz | wp db import -
 [ok] Import: 5 tables into /var/www/staging

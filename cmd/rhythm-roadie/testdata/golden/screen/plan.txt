@@ -24,7 +24,7 @@ KEYS  2 live keys
 
 SIDE EFFECTS  4
 [ok] Echo connector, sealed: wp-content/mu-plugins/rhythm-echo.php
-[ok] WP_ENVIRONMENT_TYPE: 'staging' in wp-config.php (the seal needs it)
+[ok] Environment: 'staging' in wp-config.php (the seal needs it)
 [ok] WP-Cron: DISABLE_WP_CRON true; 38 events kept, none run
 [ok] WooCommerce webhooks: 6 active → paused
 

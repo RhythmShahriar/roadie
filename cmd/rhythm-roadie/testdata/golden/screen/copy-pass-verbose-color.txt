@@ -32,7 +32,7 @@ $ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/sta
   [38;2;16;185;129m✓[0m Data           152,624 values pseudonymised in 3 tables, 3,912 URLs
                    rewritten
   [38;2;16;185;129m✓[0m Keys           1 swapped to a test key, 1 blanked
-  [38;2;16;185;129m✓[0m Side effects   Echo seal, WP_ENVIRONMENT_TYPE, cron, webhooks
+  [38;2;16;185;129m✓[0m Side effects   Echo seal, environment, cron, webhooks
   [38;2;16;185;129m✓[0m Search         noindex, robots.txt
   [38;2;16;185;129m✓[0m Import         5 tables into /var/www/staging
 

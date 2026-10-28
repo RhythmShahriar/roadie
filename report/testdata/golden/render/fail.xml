@@ -13,7 +13,7 @@
       <failure message="3 real-looking emails" type="pii.email">pii.email high: 3 real-looking emails at wp_users.user_email ID=42 2 · wp_postmeta.meta_value meta_key=_billing_email 1 (e.g. ad•••@gm•••.com)</failure>
     </testcase>
     <testcase name="No real-looking phones (pii.phone)" classname="roadie.verify"></testcase>
-    <testcase name="WP_ENVIRONMENT_TYPE is staging (config.environment)" classname="roadie.verify">
+    <testcase name="The site says it is staging (config.environment)" classname="roadie.verify">
       <system-out>warning: 1 hit under --fail-on high&#xA;config.environment medium: WP_ENVIRONMENT_TYPE is unset</system-out>
     </testcase>
     <testcase name="No live keys (keys)" classname="roadie.verify">

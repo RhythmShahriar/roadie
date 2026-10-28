@@ -24,7 +24,7 @@ text { font-family: 'DejaVu Sans Mono', monospace; font-size: 14px; fill: #e7e4d
 <text x="24.00" y="320.00" xml:space="preserve">  <tspan fill="#10b981">✓</tspan> Data           152,624 values pseudonymised in 3 tables, 3,912 URLs</text>
 <text x="24.00" y="340.00" xml:space="preserve">                   rewritten</text>
 <text x="24.00" y="360.00" xml:space="preserve">  <tspan fill="#10b981">✓</tspan> Keys           1 swapped to a test key, 1 blanked</text>
-<text x="24.00" y="380.00" xml:space="preserve">  <tspan fill="#10b981">✓</tspan> Side effects   Echo seal, WP_ENVIRONMENT_TYPE, cron, webhooks</text>
+<text x="24.00" y="380.00" xml:space="preserve">  <tspan fill="#10b981">✓</tspan> Side effects   Echo seal, environment, cron, webhooks</text>
 <text x="24.00" y="400.00" xml:space="preserve">  <tspan fill="#10b981">✓</tspan> Search         noindex, robots.txt</text>
 <text x="24.00" y="420.00" xml:space="preserve">  <tspan fill="#10b981">✓</tspan> Import         5 tables into /var/www/staging</text>
 <text x="24.00" y="440.00" xml:space="preserve"></text>

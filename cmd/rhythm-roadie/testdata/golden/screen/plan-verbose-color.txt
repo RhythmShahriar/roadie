@@ -46,7 +46,7 @@ $ rhythm-roadie plan --from ssh://deploy@shop.com/var/www/shop --to /var/www/sta
 
   [38;2;16;185;129m✓[0m Echo connector, sealed   wp-content/mu-plugins/rhythm-echo.php (undo:
                              delete the file)
-  [38;2;16;185;129m✓[0m WP_ENVIRONMENT_TYPE      'staging' in wp-config.php (the seal needs it)
+  [38;2;16;185;129m✓[0m Environment              'staging' in wp-config.php (the seal needs it)
   [38;2;16;185;129m✓[0m WP-Cron                  DISABLE_WP_CRON true; 38 events kept, none run
                              (undo: set DISABLE_WP_CRON to false)
   [38;2;16;185;129m✓[0m WooCommerce webhooks     6 active → paused
