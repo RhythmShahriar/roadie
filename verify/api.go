@@ -38,6 +38,10 @@ type Job struct {
 	// Stack is what a standalone verify found the copy to be, for the
 	// report; verify itself doesn't read it.
 	Stack core.StackInfo
+	// URL is the URL a standalone verify's site calls itself (siteurl or
+	// APP_URL), "" when it says none: the screen names the copy by its
+	// host. verify itself doesn't read it.
+	URL string
 }
 
 // Options are verify's flags and config.

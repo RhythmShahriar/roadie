@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -15,8 +16,10 @@ import (
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/engine"
 	"github.com/RhythmShahriar/roadie/internal/demo"
 	"github.com/RhythmShahriar/roadie/internal/testutil"
+	"github.com/RhythmShahriar/roadie/verify"
 )
 
 // realShop writes the demo shop's dump in a temp project, with the real
@@ -167,5 +170,30 @@ func TestVerifyWording(t *testing.T) {
 	}
 	if verifyWording(nil) != nil {
 		t.Error("nil")
+	}
+}
+
+// A standalone verify of a site names it by the host it calls itself, as
+// copy and prepare do; a dump keeps its file name.
+func TestVerifyBoxNamesSiteByHost(t *testing.T) {
+	site := filepath.Join(t.TempDir(), "site")
+	if err := os.MkdirAll(site, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ target, url, want string }{
+		{site, "https://staging.shop.test", "PASS   staging.shop.test is a pseudonymised copy"},
+		{site, "", "PASS   site is a pseudonymised copy"},
+		{"staging.sql", "", "PASS   staging.sql is a pseudonymised copy"},
+	} {
+		fx := &verifyFixture{results: []*core.VerifyResult{heuristicPass()}}
+		useVerify(t, fx, func(d *deps) {
+			d.verifyJob = func(_ context.Context, _ engine.Job, target core.Endpoint, _ *core.Endpoint) (verify.Job, error) {
+				return verify.Job{Target: target, URL: c.url}, nil
+			}
+		})
+		out, errOut, code := runCmd(t, "verify", c.target, "--no-config", "--plain")
+		if code != 0 || !strings.Contains(out, c.want) {
+			t.Errorf("%s %q: exit %d\n%s\n%s", c.target, c.url, code, out, errOut)
+		}
 	}
 }

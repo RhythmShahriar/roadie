@@ -4,11 +4,13 @@
 package engine
 
 import (
+	"context"
 	"slices"
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/internal/testutil"
+	"github.com/RhythmShahriar/roadie/roadiecfg"
 	"github.com/RhythmShahriar/roadie/site/killswitch"
 )
 
@@ -73,5 +75,28 @@ func TestDataEffects(t *testing.T) {
 	})
 	if len(merged) != 3 || merged[0].Status != "on" || merged[1].How == "read back" || merged[2].ID != core.FindingSideEffectSubscriptions {
 		t.Errorf("merged %+v", merged)
+	}
+}
+
+// ownURL is siteurl for WordPress, APP_URL for Laravel, "" for a dump.
+func TestOwnURL(t *testing.T) {
+	old := siteURLOf
+	t.Cleanup(func() { siteURLOf = old })
+	siteURLOf = func(context.Context, core.Site) string { return "https://staging.shop.test" }
+	ctx := context.Background()
+	r := &runner{cfg: roadiecfg.Default(), to: testutil.FakeSite(nil)}
+	if got := r.ownURL(ctx, core.StackWordPress); got != "https://staging.shop.test" {
+		t.Errorf("wordpress %q", got)
+	}
+	r.to = testutil.FakeSite(map[string][]byte{".env": []byte("APP_ENV=staging\nAPP_URL=https://staging.app.test\n")})
+	if got := r.ownURL(ctx, core.StackLaravel); got != "https://staging.app.test" {
+		t.Errorf("laravel %q", got)
+	}
+	if got := r.ownURL(ctx, core.StackSQL); got != "" {
+		t.Errorf("sql %q", got)
+	}
+	r.to = nil
+	if got := r.ownURL(ctx, core.StackWordPress); got != "" {
+		t.Errorf("dump %q", got)
 	}
 }

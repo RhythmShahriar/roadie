@@ -64,6 +64,11 @@ func runVerify(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 		}
 		job.Progress = bar
 		r.Stack = job.Stack
+		if ej.Opts.URL == "" {
+			// The screen names a site by the host it calls itself, as
+			// copy and prepare do; a dump keeps its file name.
+			ej.Opts.URL = job.URL
+		}
 		r.Verify, err = dep.verify(ctx, job)
 		bar.Done()
 		if r.Verify != nil {

@@ -95,6 +95,7 @@ func VerifyJob(ctx context.Context, j Job, target core.Endpoint, from *core.Endp
 	} else if err := in.close(); err != nil {
 		return verify.Job{}, err
 	}
+	vj.URL = r.ownURL(ctx, c.Stack())
 	ko := r.killOptions()
 	if r.to != nil {
 		vj.Steps = append(killSteps(r.to.Stack(), ko), exposureSteps(ko)...)
@@ -113,6 +114,29 @@ func VerifyJob(ctx context.Context, j Job, target core.Endpoint, from *core.Endp
 	vj.Known, vj.ProductionPairs = known, pairs
 	vj.Production = production(cfg, found)
 	return vj, nil
+}
+
+// ownURL is the URL the target site calls itself: siteurl for WordPress,
+// APP_URL in .env for Laravel; "" for a dump or when the site says none.
+func (r *runner) ownURL(ctx context.Context, stack core.Stack) string {
+	if r.to == nil {
+		return ""
+	}
+	switch stack {
+	case core.StackWordPress:
+		return siteURLOf(ctx, r.to)
+	case core.StackLaravel:
+		env := r.cfg.Laravel.EnvFile
+		if env == "" {
+			env = ".env"
+		}
+		if b, err := r.to.ReadFile(ctx, env); err == nil {
+			if v, ok := dotenvValue(b, "APP_URL"); ok {
+				return printable(v)
+			}
+		}
+	}
+	return ""
 }
 
 // noFilesSteps are the kill-switch steps of the stack a dump or database
