@@ -42,17 +42,35 @@ func onTable(t toks, i int, kind string) Decision {
 }
 
 // renamesTable reports whether the ALTER TABLE clause c (RENAME [TO|AS]
-// x) moves the table to a name with a database. RENAME COLUMN, INDEX and
-// KEY rename parts of the table and never move it.
+// x) gives the table another name. RENAME COLUMN, INDEX and KEY rename
+// parts of the table and keep it where it is.
 func renamesTable(c toks) bool {
-	k := 1
 	switch c.w(1) {
 	case "column", "index", "key":
 		return false
-	case "to", "as":
-		k = 2
 	}
-	return qualified(c, k)
+	return true
+}
+
+// renameTarget is the index in the clause c of the new table name.
+func renameTarget(c toks) int {
+	if c.w(1) == "to" || c.w(1) == "as" {
+		return 2
+	}
+	return 1
+}
+
+// whyRename is the danger of an ALTER TABLE that renames a table.
+var whyRename = why{"would give a table the dump fills another name, so the copy's tables wouldn't be the ones Roadie pseudonymised and checked", adviceLeaveOut}
+
+// renameTable refuses an ALTER TABLE ... RENAME [TO|AS] x: a name with a
+// database sends the table elsewhere, any other name moves it out of
+// what Roadie checked (PRD 10.5: never a rename to another table).
+func renameTable(c toks) Decision {
+	if qualified(c, renameTarget(c)) {
+		return otherDB("ALTER TABLE ... RENAME")
+	}
+	return refuse("an ALTER TABLE ... RENAME TO statement", whyRename)
 }
 
 // mergeUnion reports whether t[k] starts a MERGE table's UNION=(...)

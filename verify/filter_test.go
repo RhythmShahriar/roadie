@@ -320,6 +320,11 @@ func TestBaselineOfTheSameRunHidesEverything(t *testing.T) {
 	if res.Hidden != total {
 		t.Errorf("Hidden %d, want %d", res.Hidden, total)
 	}
+	// The hidden hits are counted as the findings they make too, grouped
+	// as the run without the baseline grouped them.
+	if res.HiddenFindings != int64(len(first.Findings)) || res.HiddenFindings >= res.Hidden {
+		t.Errorf("HiddenFindings %d, want %d (of %d hits)", res.HiddenFindings, len(first.Findings), res.Hidden)
+	}
 
 	j = everything("")
 	j.Source = source(people(), comments(), batch(table("wp_wc_orders", "id", "billing_email"), []string{"1", "dee.novak@gmail.com"}))

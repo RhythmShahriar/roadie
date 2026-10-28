@@ -533,6 +533,20 @@ func TestExplainGolden(t *testing.T) {
 	}
 }
 
+// explain import names the export that refreshes a PostgreSQL target
+// twice; explain dump-refused names the renames and drops it refuses.
+func TestExplainImportAndRefused(t *testing.T) {
+	testDeps(t, nil)
+	out, _, code := runCmd(t, "explain", "import")
+	if code != 0 || !strings.Contains(out, "pg_dump --clean --if-exists") || !strings.Contains(out, "42710") {
+		t.Errorf("explain import: exit %d %q", code, out)
+	}
+	out, _, code = runCmd(t, "explain", "dump-refused")
+	if code != 0 || !strings.Contains(out, "ALTER TABLE ... RENAME TO another table") || !strings.Contains(out, "DROP TABLE without IF EXISTS") {
+		t.Errorf("explain dump-refused: exit %d %q", code, out)
+	}
+}
+
 // Every ID of core/ids.go has an explain text and every text names a
 // known ID, a profile or "pseudonymised".
 func TestExplainCoversEveryID(t *testing.T) {

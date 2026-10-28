@@ -146,6 +146,13 @@ func TestRefused(t *testing.T) {
 		{"ALTER TABLE `t` ADD COLUMN c int, RENAME TO mysql.user;", "holds an ALTER TABLE ... RENAME statement that names a table with its database"},
 		{"ALTER TABLE t RENAME mysql.user;", "holds an ALTER TABLE ... RENAME statement"},
 		{"ALTER TABLE t RENAME AS `prod`.`t`;", "holds an ALTER TABLE ... RENAME statement"},
+		{"ALTER TABLE t RENAME TO t2;", "holds an ALTER TABLE ... RENAME TO statement, which would give a table the dump fills another name"},
+		{"ALTER TABLE wp_users RENAME TO other;", "holds an ALTER TABLE ... RENAME TO statement"},
+		{"ALTER TABLE wp_users RENAME other;", "holds an ALTER TABLE ... RENAME TO statement"},
+		{"ALTER TABLE wp_users RENAME AS other;", "holds an ALTER TABLE ... RENAME TO statement"},
+		{"ALTER TABLE wp_users RENAME COLUMN user_email TO e, RENAME TO other;", "holds an ALTER TABLE ... RENAME TO statement"},
+		{"DROP TABLE wp_users;", "holds a DROP TABLE statement without IF EXISTS, which isn't the DROP TABLE IF EXISTS dump tools write"},
+		{"DROP TEMPORARY TABLE `t`;", "holds a DROP TABLE statement without IF EXISTS"},
 		{"ALTER TABLE mysql.user ADD COLUMN c int;", "holds an ALTER TABLE statement that names a table with its database"},
 		{"ALTER TABLE m UNION=(mysql.user);", "holds an ALTER TABLE ... UNION statement"},
 		{"CREATE INDEX i ON mysql.user (a);", "holds a CREATE INDEX statement that names a table with its database"},
@@ -289,7 +296,6 @@ func TestKept(t *testing.T) {
 		"CREATE TABLE v LIKE t;",
 		"CREATE TABLE v (LIKE `t`);",
 		"CREATE TABLE m (a int) ENGINE=MERGE UNION=(t1, t2);",
-		"ALTER TABLE t RENAME TO t2;",
 		"ALTER TABLE t RENAME COLUMN a TO b, RENAME INDEX i TO j;",
 		"LOCK TABLES `t` WRITE, `u` AS x READ;",
 		"ALTER TABLE `t` ADD CONSTRAINT `fk` FOREIGN KEY (`a`) REFERENCES `u` (`id`);",
@@ -425,6 +431,38 @@ func TestFilterDropWithoutCreate(t *testing.T) {
 	var ce *core.Error
 	if !errors.As(err, &ce) || ce.Line != 1 {
 		t.Fatalf("line: %v", err)
+	}
+}
+
+// A DROP TABLE IF EXISTS after the CREATE of the same table removes the
+// table the dump filled: it is refused at the end. A DROP of a table
+// mysqldump made as a view's placeholder, followed by the view, is kept.
+func TestFilterDropAfterCreate(t *testing.T) {
+	run := func(in string, o Options) error {
+		t.Helper()
+		bs, modes := statements(t, []byte(in))
+		f := NewFilter(o)
+		for i, b := range bs {
+			if _, err := f.Add(b, modes[i]); err != nil {
+				return err
+			}
+		}
+		return f.Finish()
+	}
+	in := "DROP TABLE IF EXISTS `wp_users`;\nCREATE TABLE `wp_users` (`a` int);\nINSERT INTO `wp_users` VALUES (1);\nDROP TABLE IF EXISTS `wp_users`;\n"
+	err := run(in, Options{Name: "prod.sql"})
+	want := "dump-refused: prod.sql line 4 holds a DROP TABLE statement, which removes a table the dump has already created and filled. " + adviceLeaveOut
+	if err == nil || err.Error() != want {
+		t.Fatalf("got  %v\nwant %s", err, want)
+	}
+	// Negative: dropped before its CREATE, or made again after the drop.
+	for _, ok := range []string{
+		"DROP TABLE IF EXISTS `t`;\nCREATE TABLE `t` (`a` int);\n",
+		"CREATE TABLE `v` (`a` int);\nDROP TABLE IF EXISTS `v`;\n/*!50001 DROP VIEW IF EXISTS `v`*/;\n/*!50001 CREATE VIEW `v` AS SELECT 1 AS `a` */;\n",
+	} {
+		if err := run(ok, Options{Name: "prod.sql", KeepRoutines: true}); err != nil {
+			t.Errorf("%q: %v", ok, err)
+		}
 	}
 }
 

@@ -120,8 +120,12 @@ func capital(s string) string {
 
 // prepareFix is the fix of a finding a kill-switch step's check makes:
 // prepare --only side-effects on the target, named as the run names it.
+// A database has no files for that to install, so its fix is dataFix.
 func prepareFix(s core.Site) string {
 	where := "<staging>"
+	if s != nil && s.Endpoint().Kind == core.DSN {
+		return dataFix
+	}
 	if s != nil {
 		if d := s.Endpoint().Display; d != "" {
 			where = d

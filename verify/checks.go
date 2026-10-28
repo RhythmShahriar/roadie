@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -25,6 +24,7 @@ import (
 	"github.com/RhythmShahriar/rhythm/kit/httpx"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/roadiecfg"
 )
 
 // Limits of the --site fetch (PRD 15.1).
@@ -77,21 +77,18 @@ func siteURL(s string) (*url.URL, error) {
 	return u, nil
 }
 
-// echoURL parses the Echo URL and checks it is loopback or private
-// unless it is https (security N6).
+// echoURL parses the Echo URL and checks it with the same rule as
+// --echo-url and side_effects.echo.url (roadiecfg.ValidateEchoURL,
+// security N6): https, or plain http to this machine or a private network.
 func echoURL(s string) (*url.URL, error) {
-	if strings.TrimSpace(s) == "" {
+	s = strings.TrimSpace(s)
+	if s == "" {
 		s = DefaultEchoURL
 	}
-	u, err := url.Parse(strings.TrimSpace(s))
-	if err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") {
-		return nil, core.Errorf(core.ErrConfig, cli.ExitUsage, "verify --echo: %q isn't a URL; Echo listens on http://127.0.0.1:8025 by default", s)
+	if err := roadiecfg.ValidateEchoURL(s); err != nil {
+		return nil, core.Errorf(core.ErrConfig, cli.ExitUsage, "verify --echo: the Echo URL %s. Echo listens on http://127.0.0.1:8025 by default.", err)
 	}
-	if u.Scheme == "https" || localHost(u.Hostname()) {
-		return u, nil
-	}
-	return nil, core.Errorf(core.ErrConfig, cli.ExitUsage,
-		"verify --echo: %s is plain http beyond this machine and its network, where anyone on the way could read or fake its answers. Use https:// for an Echo elsewhere.", u.Redacted())
+	return url.Parse(s)
 }
 
 // echoClient is the client for --echo. Redirects stay on Echo's own
@@ -126,17 +123,6 @@ func printable(s string, n int) string {
 		n--
 	}
 	return b.String()
-}
-
-// localHost reports whether host is localhost or a loopback, private or
-// link-local address.
-func localHost(host string) bool {
-	h := strings.ToLower(host)
-	if h == "localhost" || strings.HasSuffix(h, ".localhost") {
-		return true
-	}
-	a, err := netip.ParseAddr(h)
-	return err == nil && httpx.AddrClass(a) != ""
 }
 
 // extraChecks runs the checks that talk to services: the staging site

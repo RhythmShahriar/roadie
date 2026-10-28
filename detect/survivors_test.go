@@ -286,6 +286,42 @@ func TestSurvivorsWordOfAFake(t *testing.T) {
 	}
 }
 
+// A real surname that is also a word of Roadie's fake email domain
+// (Ada Example, u1f2@example.invalid) is no survivor inside the fake
+// email; the same name in a person's text, or in a real email, is.
+func TestSurvivorsWordOfAFakeEmail(t *testing.T) {
+	f, err := pseudo.NewFaker(pseudo.Key{}, pseudo.Options{})
+	if errors.Is(err, core.ErrNotBuilt) {
+		t.Skip("needs the values lane")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake, err := f.Fake(core.KEmail, []byte("ada@shop.test"), core.FakeOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pseudo.IsFake(core.KEmail, fake) || !strings.HasSuffix(string(fake), "@example.invalid") {
+		t.Fatalf("fake email %q", fake)
+	}
+	k := newKnown(t)
+	k.Add(core.KFullName, []byte("Ada Example"))
+	k.Add(core.KLastName, []byte("Example"))
+	k.Seal()
+	d := Survivors(k)
+	for _, leaf := range []string{string(fake), "Mail " + string(fake) + " today", base64.StdEncoding.EncodeToString(fake)} {
+		if hits := scanAll(d, leaf, core.ScanContext{Column: "email"}); len(hits) != 0 {
+			t.Errorf("%q: %d hits, want none", leaf, len(hits))
+		}
+	}
+	// Negative: the surname in a note and in a real email still is.
+	for _, leaf := range []string{"Ask Ada Example about it", "ada@example.co.uk"} {
+		if hits := scanAll(d, leaf, core.ScanContext{}); len(hits) == 0 {
+			t.Errorf("%q: no hit", leaf)
+		}
+	}
+}
+
 // A fake first name that Known holds as another customer's city is a
 // Roadie fake all the same; a real word no list has is still reported.
 func TestSurvivorsFakeOfAnotherKind(t *testing.T) {

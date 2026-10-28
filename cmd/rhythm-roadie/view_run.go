@@ -773,8 +773,8 @@ func verdict(r *core.Result, failOn core.Severity, name string) (word, line stri
 	case below > 0:
 		parts = append(parts, plural(below, "finding", "findings")+" below --fail-on "+failOn.String())
 	}
-	if h := r.Verify.Hidden; h > 0 {
-		parts = append(parts, plural(h, "finding", "findings")+" hidden by --baseline or ignore entries")
+	if r.Verify.Hidden > 0 {
+		parts = append(parts, hiddenText(r.Verify, " hidden by --baseline or ignore entries"))
 	}
 	if len(parts) > 0 {
 		return word, name + ": " + strings.Join(parts, "; "), lipgloss.Color(ui.Ok)

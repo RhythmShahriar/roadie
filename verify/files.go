@@ -5,6 +5,7 @@ package verify
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -607,7 +608,6 @@ func (r *run) runChecks(n int, at func(i int) (string, func() (core.SideEffect, 
 			r.skipCheck(id, why)
 			continue
 		}
-		r.count(id, 1)
 		se, found, err := check()
 		if err != nil {
 			se = core.SideEffect{ID: id, Status: "unknown", How: "the check failed: " + err.Error()}
@@ -615,12 +615,19 @@ func (r *run) runChecks(n int, at func(i int) (string, func() (core.SideEffect, 
 		if se.ID == "" {
 			se.ID = id
 		}
-		if se.Status == "unknown" {
+		switch {
+		case se.Status == "unknown" && len(found) == 0:
+			// The check couldn't tell (a file it needs isn't there, its
+			// read failed): it looked at nothing, so it didn't run.
+			r.skipCheck(id, cmp.Or(se.How, "status unknown"))
+		case se.Status == "unknown":
+			r.count(id, 1)
 			r.unknown[id] = true
 			if se.How != "" && r.note[id] == "" {
-				// The check ran and couldn't tell: its line says why.
 				r.note[id] = se.How
 			}
+		default:
+			r.count(id, 1)
 		}
 		r.res.SideEffects = append(r.res.SideEffects, se)
 		for _, f := range found {

@@ -705,7 +705,7 @@ func TestRunSteps(t *testing.T) {
 	if c := checkByID(res, core.FindingSideEffectCron); c.Status != "fail" || c.Checked != 1 {
 		t.Errorf("cron check %+v", c)
 	}
-	if c := checkByID(res, core.FindingSideEffectWebhooks); c.Status != "skip" || c.Detail != "the check failed: no table" {
+	if c := checkByID(res, core.FindingSideEffectWebhooks); c.Status != "skip" || c.Checked != 0 || c.Detail != "the check failed: no table" {
 		t.Errorf("webhooks check %+v", c)
 	}
 	if c := checkByID(res, core.FindingUploadsPersonal); c.Status != "pass" || c.Checked == 0 {

@@ -416,6 +416,21 @@ func duration(d time.Duration) string {
 }
 
 // plural writes "1 table" or "3 tables".
+// hiddenText counts what a baseline or ignore entries hid as findings,
+// grouped as the shown ones are, with the hits they hold when there are
+// more: "27 findings hidden by ... (1,055 hits)".
+func hiddenText(vr *core.VerifyResult, what string) string {
+	n := vr.HiddenFindings
+	if n == 0 {
+		n = vr.Hidden
+	}
+	s := plural(n, "finding", "findings") + what
+	if vr.Hidden > n {
+		s += " (" + plural(vr.Hidden, "hit", "hits") + ")"
+	}
+	return s
+}
+
 func plural(n int64, one, many string) string {
 	if n == 1 {
 		return "1 " + one

@@ -97,6 +97,10 @@ type survivorScan struct {
 	// enum says the column holds a schema's own codes (type, status),
 	// where a word that is also a customer's name is the code.
 	enum bool
+	// fakes are the leaf ranges of Roadie's own fake emails: a word of
+	// one (example of u1f2@example.invalid) is the fake's, never a
+	// customer's name that survived (PRD 15.2).
+	fakes [][2]int
 }
 
 // enumColumn reports whether a column holds a schema's codes rather
@@ -128,6 +132,17 @@ func (s *survivorScan) covered(start, end int) bool {
 	return i < len(s.hits) && s.hits[i].Start < end
 }
 
+// inFake reports whether start..end lies inside one of Roadie's fake
+// emails.
+func (s *survivorScan) inFake(start, end int) bool {
+	for _, f := range s.fakes {
+		if start >= f[0] && end <= f[1] {
+			return true
+		}
+	}
+	return false
+}
+
 // check looks token up and records a hit over start..end of the text,
 // mapped to the leaf by at.
 func (s *survivorScan) check(token []byte, start, end int, at mapper, enc string) bool {
@@ -135,7 +150,7 @@ func (s *survivorScan) check(token []byte, start, end int, at mapper, enc string
 		return false
 	}
 	ls, le := at(start, end)
-	if ls >= le || s.covered(ls, le) {
+	if ls >= le || s.covered(ls, le) || s.inFake(ls, le) {
 		return false
 	}
 	kind, how, ok := s.k.Contains(token)
@@ -222,6 +237,11 @@ func (s *survivorScan) pass(t []byte, at mapper, enc string, depth int) {
 		s.check(whole, start, start+len(whole), at, enc)
 	}
 	scanEmails(t, func(m emailMatch) {
+		if addr := []byte(m.addr()); pseudo.IsFake(core.KEmail, addr) {
+			ls, le := at(m.start, m.end)
+			s.fakes = append(s.fakes, [2]int{ls, le})
+			return
+		}
 		e := enc
 		if m.encoding != "raw" {
 			e = m.encoding

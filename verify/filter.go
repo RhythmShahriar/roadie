@@ -246,11 +246,17 @@ type filtered struct {
 	agg    *core.Aggregator
 	f      *filter
 	hidden *int64
+	// hid groups the hidden findings, so they are counted as findings
+	// and not only as hits.
+	hid *core.Aggregator
 }
 
 func (s filtered) add(f core.Finding) bool {
 	if s.f.hides(f) {
 		*s.hidden += max(f.Count, 1)
+		if s.hid != nil {
+			s.hid.Add(f)
+		}
 		return false
 	}
 	s.agg.Add(f)

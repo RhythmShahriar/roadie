@@ -75,8 +75,11 @@ type VerifyResult struct {
 	SideEffects []SideEffect
 	Coverage    Coverage
 	Uncovered   []Uncovered
-	Hidden      int64 // findings hidden by a baseline or an ignore entry
-	Soundcheck  *SoundcheckResult
+	Hidden      int64 // hits hidden by a baseline or an ignore entry
+	// HiddenFindings counts the findings those hits make, grouped as
+	// Findings groups the shown ones.
+	HiddenFindings int64
+	Soundcheck     *SoundcheckResult
 	// Input fingerprints what verify read, once it read it whole: the
 	// dump's SHA-256 or the database's tables. A report check --input
 	// ties the report to the file it checked.

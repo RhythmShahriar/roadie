@@ -140,6 +140,12 @@ func TestFindingTitleAndFix(t *testing.T) {
 	if got := prepareFix(nil); got != "rhythm-roadie prepare <staging> --only side-effects" {
 		t.Errorf("no site: %q", got)
 	}
+	// A database has no files for prepare --only side-effects to install.
+	dsn := fixtureSite(nil, prodDB())
+	dsn.EP.Kind = core.DSN
+	if got := prepareFix(dsn); got != dataFix || strings.Contains(got, "--only side-effects") {
+		t.Errorf("database target: %q", got)
+	}
 	for _, st := range Steps(core.StackWordPress, fixtureOptions()) {
 		_, found, err := st.Check(context.Background(), fixtureSite(prodFiles(), prodDB()))
 		if err != nil {

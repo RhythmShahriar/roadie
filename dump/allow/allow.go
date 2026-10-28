@@ -149,6 +149,8 @@ var (
 	whyHiddenSQL  = why{"could run a query hidden in a string on the staging database", adviceNever}
 	whyServer     = why{"could stop or reconfigure the staging server", adviceNever}
 	whyDropOther  = why{"removes something the dump doesn't create", adviceLeaveOut}
+	whyDropBare   = why{"isn't the DROP TABLE IF EXISTS dump tools write before a CREATE TABLE", "Export the dump again with mysqldump --add-drop-table or mariadb-dump, which write DROP TABLE IF EXISTS."}
+	whyDropFilled = why{"removes a table the dump has already created and filled", adviceLeaveOut}
 	whyCascade    = why{"could remove objects the dump doesn't create", "Export without --clean, or with pg_dump --clean --if-exists, which never cascades."}
 )
 

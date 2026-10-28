@@ -451,6 +451,11 @@ func mysqlDrop(t toks) Decision {
 		if obj == "package" && t.w(j) == "body" {
 			j++
 		}
+		if obj == "table" && t.w(j) != "if" && !qualified(t, j) {
+			// A DROP TABLE without IF EXISTS isn't one a dump tool writes
+			// before its CREATE (PRD 10.5).
+			return refuse("a DROP TABLE statement without IF EXISTS", whyDropBare)
+		}
 		d := keep()
 		for j = afterIfExists(t, j); ; j++ {
 			if qualified(t, j) {
@@ -552,7 +557,7 @@ func mysqlAlterTable(t toks, i int) Decision {
 			return refuse("an ALTER TABLE ... "+label(c, 1)+" statement", whyUnknown)
 		}
 		if c.w(0) == "rename" && renamesTable(c) {
-			return otherDB("ALTER TABLE ... RENAME")
+			return renameTable(c)
 		}
 		for k := range c {
 			if mergeUnion(c, k) {

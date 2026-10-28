@@ -573,6 +573,11 @@ func pgAlter(t toks, o Options) Decision {
 			if len(c) > 0 && !pgAlterClauses[c.w(0)] {
 				return refuse("an ALTER TABLE ... "+label(c, 1)+" statement", whyUnknown)
 			}
+			if c.is(0, "rename", "to") {
+				// RENAME [COLUMN] a TO b and RENAME CONSTRAINT keep the
+				// table; RENAME TO gives it another name.
+				return refuse("an ALTER TABLE ... RENAME TO statement", whyRename)
+			}
 			if c.is(0, "set", "tablespace") {
 				return refuse("an ALTER TABLE ... SET TABLESPACE statement", whyWrites)
 			}

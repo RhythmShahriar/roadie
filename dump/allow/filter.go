@@ -5,6 +5,7 @@ package allow
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -21,6 +22,9 @@ type Filter struct {
 	mode    mysql.Mode // the sql_mode before the statement being judged
 	created map[object]bool
 	drops   []pendingDrop
+	// emptied are the DROPs of an object the dump had already created,
+	// each waiting for a CREATE that makes it again.
+	emptied []pendingDrop
 	notes   []*planNote
 	byNote  map[string]*planNote
 	verb    string // INSERT or REPLACE, for the row statement being read
@@ -78,11 +82,16 @@ func (f *Filter) Add(b *core.Batch, m mysql.Mode) (*core.Batch, error) {
 	if err != nil {
 		return nil, err
 	}
+	for _, x := range d.drops {
+		if f.made(x) {
+			f.emptied = append(f.emptied, pendingDrop{x, b.Pass.Line})
+			continue
+		}
+		f.drops = append(f.drops, pendingDrop{x, b.Pass.Line})
+	}
 	if d.creates != nil {
 		f.created[*d.creates] = true
-	}
-	for _, x := range d.drops {
-		f.drops = append(f.drops, pendingDrop{x, b.Pass.Line})
+		f.emptied = slices.DeleteFunc(f.emptied, func(p pendingDrop) bool { return sameName(p.obj, *d.creates) })
 	}
 	switch d.txn {
 	case 1:
@@ -159,9 +168,36 @@ func (f *Filter) note(d Decision, line int64, each bool) {
 	f.notes = append(f.notes, n)
 }
 
-// Finish ends the dump: a DROP whose object no CREATE in the dump makes
-// is refused now, before the sink commits anything.
+// made reports whether the dump has created x already: a table and a
+// view share one namespace.
+func (f *Filter) made(x object) bool {
+	for o := range f.created {
+		if sameName(o, x) {
+			return true
+		}
+	}
+	return false
+}
+
+// sameName reports whether a and b name one object: the same kind and
+// name, or a table and a view of the same name.
+func sameName(a, b object) bool {
+	if a.name != b.name {
+		return false
+	}
+	tv := func(k string) bool { return k == "table" || k == "view" }
+	return a.kind == b.kind || tv(a.kind) && tv(b.kind)
+}
+
+// Finish ends the dump: a DROP whose object no CREATE in the dump makes,
+// or that removes what the dump created and filled without making it
+// again, is refused now, before the sink commits anything (PRD 10.5:
+// DROP TABLE IF EXISTS only before the CREATE of the same table).
 func (f *Filter) Finish() error {
+	for _, d := range f.emptied {
+		kind := "DROP " + strings.ToUpper(d.obj.kind)
+		return refusal(core.Statement{Line: d.line}, f.o, refuse(kind, whyDropFilled))
+	}
 	for _, d := range f.drops {
 		if f.created[d.obj] {
 			continue

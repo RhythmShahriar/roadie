@@ -64,6 +64,7 @@ type run struct {
 	j    Job
 	res  *core.VerifyResult
 	agg  core.Aggregator
+	hid  core.Aggregator // the findings the filter hid
 	skip skipper
 	site core.Site
 	// keySeen dedupes Keys by finding ID and location without the row.
@@ -96,7 +97,7 @@ func (r *run) add(f core.Finding) bool {
 
 // sink is the run's aggregator behind its filter.
 func (r *run) sink() sink {
-	return filtered{agg: &r.agg, f: r.filter, hidden: &r.res.Hidden}
+	return filtered{agg: &r.agg, f: r.filter, hidden: &r.res.Hidden, hid: &r.hid}
 }
 
 // Run scans the copy.
@@ -131,6 +132,12 @@ func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 		return nil, err
 	}
 	defer closeAll()
+	if st != nil && st.Endpoint().Kind == core.DSN {
+		// A database has no files: a copy into one hands verify the
+		// database's site, which reads no file, so it is checked as a
+		// standalone verify checks it, by its rows alone (PRD 13.4).
+		st = nil
+	}
 	r := &run{j: j, skip: newSkipper(j.Opts.Skip), site: st, keySeen: map[string]bool{}, start: time.Now(),
 		checked: map[string]int64{}, why: map[string]string{}, note: map[string]string{}, unknown: map[string]bool{}}
 	if j.Opts.Clock != nil {
@@ -168,6 +175,7 @@ func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 	if r.res.Coverage.RowsScanned == 0 {
 		return nil, nothingScanned(j, r.res.Coverage)
 	}
+	r.res.HiddenFindings = int64(len(r.hid.Findings()))
 	r.res.Findings = append(r.agg.Findings(), expiredFindings(expired)...)
 	sortFindings(r.res.Findings)
 	r.res.Checks = r.checks()
@@ -322,6 +330,7 @@ type result struct {
 	findings []core.Finding
 	keys     []core.KeyHit
 	hidden   int64
+	hid      []core.Finding // the findings the filter hid
 	rows     int64
 	bytes    int64
 	// unparsed counts serialized-looking values that didn't parse, by
@@ -484,6 +493,9 @@ func (r *run) merge(res result) {
 	r.res.Coverage.RowsScanned += res.rows
 	r.res.Coverage.BytesScanned += res.bytes
 	r.res.Hidden += res.hidden
+	for _, f := range res.hid {
+		r.hid.Add(f)
+	}
 	for col, n := range res.unparsed {
 		if r.unparsed == nil {
 			r.unparsed = map[string]int64{}

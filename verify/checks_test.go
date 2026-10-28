@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/roadiecfg"
 )
 
 // listen opens a listener on the first free port of Roadie's verify test range
@@ -424,7 +425,13 @@ func TestEchoURLMustBeLocal(t *testing.T) {
 		"": true, "http://127.0.0.1:8025": true, "http://localhost:8025": true, "http://10.1.2.3:8025": true,
 		"http://[::1]:8025": true, "https://echo.example.com": true,
 		"http://echo.example.com:8025": false, "http://8.8.8.8:8025": false, "ftp://127.0.0.1": false,
+		// The same rule as --echo-url: a LAN, mDNS or Docker name is local.
+		"http://echo.lan:8025": true, "http://echo.local:8025": true, "http://echo:8025": true,
+		"http://echo.internal:8025": true, "http://user:pw@127.0.0.1:8025": false,
 	} {
+		if (roadiecfg.ValidateEchoURL(u) == nil) != ok && u != "" {
+			t.Errorf("roadiecfg.ValidateEchoURL(%q) disagrees", u)
+		}
 		_, err := echoURL(u)
 		if (err == nil) != ok {
 			t.Errorf("echoURL(%q) = %v", u, err)

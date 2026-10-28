@@ -228,7 +228,7 @@ func (v *view) verifyView(r *core.Result, j engine.Job, exact bool, reportPath s
 		v.setting("Skipped", s.Table+": "+s.Reason)
 	}
 	if vr.Hidden > 0 {
-		v.setting("Hidden", plural(vr.Hidden, "finding", "findings")+" by --baseline or ignore entries")
+		v.setting("Hidden", hiddenText(vr, " by --baseline or ignore entries"))
 	}
 	if len(vr.Checks) > 0 {
 		v.section("CHECKS", len(vr.Checks), "", ui.Signal)

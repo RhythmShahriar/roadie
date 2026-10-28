@@ -124,9 +124,41 @@ func importError(err error, st importState) error {
 	if st.current != "" {
 		where = "import: table " + st.current
 	}
+	if msg, ok := duplicateObject(err); ok {
+		// The target already holds the schema the dump creates: pg_dump
+		// without --clean writes CREATE only, so a second refresh clashes.
+		e := core.Errorf(code, 3, "%s: %s. The target already has the schema this dump creates. Export with pg_dump --clean --if-exists, or empty the target's schema first, then run the same command again. %s",
+			where, msg, stateSentence(st, false))
+		e.State = state
+		return e
+	}
 	e := core.Errorf(code, 3, "%s: %s. %s", where, describe(err), stateSentence(st, true))
 	e.State = state
 	return e
+}
+
+// reDuplicate is PostgreSQL's message for an object a CREATE makes that
+// already exists, such as type "status" already exists.
+var reDuplicate = regexp.MustCompile(`^[a-z ]{2,40} "[A-Za-z0-9_$.\- ]{1,128}" already exists$`)
+
+// duplicateObject words PostgreSQL's duplicate_object (42710),
+// duplicate_table (42P07), duplicate_schema (42P06) and
+// duplicate_function (42723) with the object's name unmasked: the name
+// comes from the dump's CREATE, the schema, never from a row.
+func duplicateObject(err error) (string, bool) {
+	var pe *pgconn.PgError
+	if !errors.As(err, &pe) {
+		return "", false
+	}
+	switch pe.Code {
+	case "42710", "42P07", "42P06", "42723":
+	default:
+		return "", false
+	}
+	if !reDuplicate.MatchString(pe.Message) {
+		return "PostgreSQL error " + pe.Code + ": " + mask(pe.Message, nil), true
+	}
+	return "PostgreSQL error " + pe.Code + ": " + pe.Message, true
 }
 
 // undefinedTable reports whether err is PostgreSQL's undefined_table: a

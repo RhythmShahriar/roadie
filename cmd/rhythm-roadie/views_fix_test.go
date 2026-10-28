@@ -39,18 +39,21 @@ func TestVerdictBelowGate(t *testing.T) {
 	for _, c := range []struct {
 		findings []core.Finding
 		hidden   int64
+		groups   int64
 		failOn   core.Severity
 		word     string
 		line     string
 	}{
-		{nil, 0, core.SeverityHigh, "PASS", "x.sql is a pseudonymised copy"},
-		{[]core.Finding{info}, 0, core.SeverityHigh, "PASS", "x.sql is a pseudonymised copy"},
-		{[]core.Finding{high, high}, 0, core.SeverityNone, "PASS", "x.sql: 2 findings, none fails the run (--fail-on none)"},
-		{[]core.Finding{{Severity: core.SeverityMedium}}, 0, core.SeverityHigh, "PASS", "x.sql: 1 finding below --fail-on high"},
-		{nil, 27, core.SeverityHigh, "PASS", "x.sql: 27 findings hidden by --baseline or ignore entries"},
-		{[]core.Finding{high}, 0, core.SeverityHigh, "FAIL", "x.sql is not a safe copy yet"},
+		{nil, 0, 0, core.SeverityHigh, "PASS", "x.sql is a pseudonymised copy"},
+		{[]core.Finding{info}, 0, 0, core.SeverityHigh, "PASS", "x.sql is a pseudonymised copy"},
+		{[]core.Finding{high, high}, 0, 0, core.SeverityNone, "PASS", "x.sql: 2 findings, none fails the run (--fail-on none)"},
+		{[]core.Finding{{Severity: core.SeverityMedium}}, 0, 0, core.SeverityHigh, "PASS", "x.sql: 1 finding below --fail-on high"},
+		{nil, 27, 27, core.SeverityHigh, "PASS", "x.sql: 27 findings hidden by --baseline or ignore entries"},
+		// Hidden counts hits; the box counts the findings they make.
+		{nil, 1055, 27, core.SeverityHigh, "PASS", "x.sql: 27 findings hidden by --baseline or ignore entries (1,055 hits)"},
+		{[]core.Finding{high}, 0, 0, core.SeverityHigh, "FAIL", "x.sql is not a safe copy yet"},
 	} {
-		r := &core.Result{Kind: "verify", Verify: &core.VerifyResult{Findings: c.findings, Hidden: c.hidden}}
+		r := &core.Result{Kind: "verify", Verify: &core.VerifyResult{Findings: c.findings, Hidden: c.hidden, HiddenFindings: c.groups}}
 		word, line, _ := verdict(r, c.failOn, "x.sql")
 		if word != c.word || line != c.line {
 			t.Errorf("%v hidden %d fail-on %v: %s %q", c.findings, c.hidden, c.failOn, word, line)

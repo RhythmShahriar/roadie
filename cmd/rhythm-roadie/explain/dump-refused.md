@@ -9,9 +9,9 @@ Why it matters: Dumps are code: these statements could run on the staging
 database, read or write files on its server or reach another server.
 
 Kept (MySQL and MariaDB): CREATE TABLE with a known engine, CREATE INDEX,
-CREATE SEQUENCE, DROP TABLE or DROP INDEX of an object the dump creates,
-LOCK and UNLOCK TABLES, ALTER TABLE that adds keys or changes columns and
-table options, transactions, DELIMITER lines, SET NAMES and the session
+CREATE SEQUENCE, DROP TABLE IF EXISTS before the CREATE of the same table,
+DROP INDEX of an object the dump creates, LOCK and UNLOCK TABLES, ALTER TABLE
+that adds keys, changes or renames columns and keys or changes table options, transactions, DELIMITER lines, SET NAMES and the session
 settings dump tools write (character sets, time_zone, sql_mode,
 foreign_key_checks, unique_checks, autocommit and user variables).
 
@@ -36,7 +36,9 @@ sql_mode Roadie can't follow, a call to set_config() of another setting, the
 server admin and file functions (pg_read_file(), lo_import(), dblink), names or
 strings with Unicode escapes (U&), CREATE SCHEMA that creates objects inside
 it, table names that carry their database (db.t), FEDERATED or CONNECT tables,
-foreign servers and subscriptions. With --keep-routines triggers, procedures,
+foreign servers and subscriptions, ALTER TABLE ... RENAME TO another table,
+DROP TABLE without IF EXISTS and a DROP of a table the dump already created and
+filled. With --keep-routines triggers, procedures,
 functions and views are kept with DEFINER=CURRENT_USER; SONAME functions and
 untrusted languages are refused even then.
 

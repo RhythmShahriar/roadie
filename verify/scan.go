@@ -60,8 +60,8 @@ func (s *scanner) batch(w work) result {
 	res := result{idx: w.idx}
 	b := w.b
 	t := b.Table
-	var acc core.Aggregator
-	out := filtered{agg: &acc, f: s.filter, hidden: &res.hidden}
+	var acc, hid core.Aggregator
+	out := filtered{agg: &acc, f: s.filter, hidden: &res.hidden, hid: &hid}
 	idx := newColIndex(b)
 	f := newField(s, out, &res.keys)
 	for _, ri := range w.rows {
@@ -85,6 +85,7 @@ func (s *scanner) batch(w work) result {
 		}
 	}
 	res.findings = acc.Findings()
+	res.hid = hid.Findings()
 	res.unparsed = f.unparsed
 	if w.ddl {
 		res.rows, res.bytes = 0, 0
