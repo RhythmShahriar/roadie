@@ -105,6 +105,18 @@ func TestKnownCaseKeptKinds(t *testing.T) {
 			t.Errorf("Contains(%q) = %s %s %v, want %s raw", token, kind, enc, ok, want)
 		}
 	}
+	// Non-ASCII spellings: a decomposed letter and a full case fold.
+	k2 := sealedKnown(t, map[core.FakeKind][]string{
+		core.KUsername: {"Jo\u0308rgSchmidt", "StraßeNutzer"}, core.KURL: {"https://müller.example/Straße"},
+	})
+	for _, token := range []string{
+		"JörgSchmidt", "JÖRGSCHMIDT", "Jo\u0308rgSchmidt", "STRASSENUTZER", "strassenutzer", "straßenutzer",
+		"https://MÜLLER.example/STRASSE", "https://müller.example/straße",
+	} {
+		if _, _, ok := k2.Contains([]byte(token)); !ok {
+			t.Errorf("Contains(%q) = not found", token)
+		}
+	}
 	for _, token := range []string{"JaneDoe98", "SW1A 1AB", "https://jane.example/", "1980-02-04"} {
 		if kind, _, ok := k.Contains([]byte(token)); ok {
 			t.Errorf("Contains(%q) = %s, want not found", token, kind)

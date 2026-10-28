@@ -268,6 +268,14 @@ func (kn *known) Add(kind core.FakeKind, original []byte) {
 		{1, kn.hash(hex.AppendEncode(nil, m[:])), 0, kb | wholeValue},
 		{2, kn.hash(hex.AppendEncode(nil, s[:])), 0, kb | wholeValue},
 	}
+	if !foldedKind(kind) {
+		// Contains also tries the NFC case-folded text form, which
+		// differs from plain lower case for decomposed letters and full
+		// folds ("STRASSE" for "Straße"): store that form too.
+		if t := appendNormText(nil, n); !bytes.Equal(t, whole) {
+			toks = append(toks, raw(t, kb|wholeValue))
+		}
+	}
 	if isNameKind(kind) {
 		words := nameWords(n)
 		for i, w := range words {
