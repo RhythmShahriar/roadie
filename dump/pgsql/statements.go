@@ -305,6 +305,8 @@ func Classify(text []byte) (core.StmtKind, string) {
 		}
 	case t.is(0, "begin"), t.is(0, "start"), t.is(0, "commit"), t.is(0, "end"), t.is(0, "rollback"), t.is(0, "abort"):
 		return core.StmtTransaction, ""
+	case t.is(0, "comment") && t.is(1, "on"):
+		return core.StmtCommentOn, core.DDLTable(text)
 	case t.is(0, "lock"):
 		name, _ := t.objName(1)
 		if t.is(1, "table") {

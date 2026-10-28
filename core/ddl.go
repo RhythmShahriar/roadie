@@ -9,8 +9,9 @@ import "bytes"
 // DEFAULT, a COMMENT) are kept in the copy as written: copy scrubs them
 // and verify scans them like row values, since a production email can
 // sit in a DEFAULT as well as in a row. "alter-table" is MySQL's ALTER
-// TABLE other than DISABLE and ENABLE KEYS.
-var DDLKinds = []StmtKind{StmtCreateTable, "alter-table"}
+// TABLE other than DISABLE and ENABLE KEYS; StmtCommentOn is
+// PostgreSQL's COMMENT ON.
+var DDLKinds = []StmtKind{StmtCreateTable, "alter-table", StmtCommentOn}
 
 // IsDDL reports whether a passthrough statement kind is one of DDLKinds.
 func IsDDL(k StmtKind) bool {
@@ -79,6 +80,9 @@ func DDLLiterals(text []byte) [][2]int {
 // DDLTable is the table a CREATE TABLE or ALTER TABLE statement names,
 // without quotes or a schema; "" when it can't tell.
 func DDLTable(text []byte) string {
+	if t, ok := commentOnTable(text); ok {
+		return t
+	}
 	low := bytes.ToLower(text)
 	i := bytes.Index(low, []byte("table"))
 	if i < 0 {
@@ -114,4 +118,59 @@ func DDLTable(text []byte) string {
 		rest = rest[1:]
 	}
 	return string(name)
+}
+
+// commentOnTable is the table a PostgreSQL COMMENT ON statement is about:
+// the object of COMMENT ON TABLE (or VIEW, FOREIGN TABLE, MATERIALIZED
+// VIEW), the table of COMMENT ON COLUMN table.column; "" for another
+// object. ok is false when text isn't a COMMENT ON.
+func commentOnTable(text []byte) (string, bool) {
+	rest := bytes.TrimSpace(text)
+	word := func() string {
+		j := bytes.IndexAny(rest, " \t\r\n")
+		if j < 0 {
+			j = len(rest)
+		}
+		w := string(bytes.ToLower(rest[:j]))
+		rest = bytes.TrimSpace(rest[j:])
+		return w
+	}
+	if word() != "comment" || word() != "on" {
+		return "", false
+	}
+	kind := word()
+	switch kind {
+	case "foreign", "materialized":
+		kind = word()
+	case "table", "column", "view":
+	default:
+		return "", true
+	}
+	var parts []string
+	for len(rest) > 0 {
+		if rest[0] == '"' {
+			j := bytes.IndexByte(rest[1:], '"')
+			if j < 0 {
+				return "", true
+			}
+			parts, rest = append(parts, string(rest[1:j+1])), rest[j+2:]
+		} else {
+			j := bytes.IndexAny(rest, " \t\r\n.;")
+			if j < 0 {
+				j = len(rest)
+			}
+			parts, rest = append(parts, string(rest[:j])), rest[j:]
+		}
+		if len(rest) == 0 || rest[0] != '.' {
+			break
+		}
+		rest = rest[1:]
+	}
+	switch {
+	case kind == "column" && len(parts) >= 2:
+		return parts[len(parts)-2], true
+	case kind != "column" && len(parts) >= 1:
+		return parts[len(parts)-1], true
+	}
+	return "", true
 }

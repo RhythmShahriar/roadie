@@ -30,6 +30,9 @@ func TestClassify(t *testing.T) {
 		{"BEGIN;", core.StmtTransaction, ""},
 		{"LOCK TABLE public.t IN ACCESS EXCLUSIVE MODE;", core.StmtLock, "t"},
 		{"GRANT ALL ON t TO x;", core.StmtOther, ""},
+		{`COMMENT ON TABLE public."User" IS 'jane@example.com';`, core.StmtCommentOn, "User"},
+		{`COMMENT ON COLUMN public."User".email IS 'x';`, core.StmtCommentOn, "User"},
+		{"COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL';", core.StmtCommentOn, ""},
 	} {
 		k, tb := Classify([]byte(c.sql))
 		if k != c.kind || tb != c.table {

@@ -35,12 +35,18 @@ func TestDDLTable(t *testing.T) {
 		"ALTER TABLE `wp_users` ADD COLUMN `z` varchar(9)":     "wp_users",
 		`ALTER TABLE ONLY public."customers" ADD CONSTRAINT x`: "customers",
 		"SELECT 1": "",
+		`COMMENT ON TABLE public."User" IS 'jane@example.com';`:               "User",
+		`comment on column public."User".email is 'x';`:                       "User",
+		"COMMENT ON COLUMN orders.note IS 'x';":                               "orders",
+		`COMMENT ON MATERIALIZED VIEW public.v IS 'table';`:                   "v",
+		"COMMENT ON FUNCTION public.f() IS 'a table';":                        "",
+		"COMMENT ON SCHEMA public IS 'standard public schema with no table';": "",
 	} {
 		if got := DDLTable([]byte(in)); got != want {
 			t.Errorf("%s: %q, want %q", in, got, want)
 		}
 	}
-	if !IsDDL(StmtCreateTable) || !IsDDL("alter-table") || IsDDL(StmtAlterKeys) {
+	if !IsDDL(StmtCreateTable) || !IsDDL("alter-table") || !IsDDL(StmtCommentOn) || IsDDL(StmtAlterKeys) {
 		t.Error("IsDDL")
 	}
 }

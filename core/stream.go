@@ -57,7 +57,10 @@ const (
 	StmtCreateIndex StmtKind = "create-index"
 	StmtSequence    StmtKind = "sequence"
 	StmtRoutine     StmtKind = "routine"
-	StmtOther       StmtKind = "other"
+	// StmtCommentOn is PostgreSQL's COMMENT ON, whose text is a literal
+	// kept in the copy like a MySQL column COMMENT.
+	StmtCommentOn StmtKind = "comment-on"
+	StmtOther     StmtKind = "other"
 )
 
 // Statement is a statement passed through as text.

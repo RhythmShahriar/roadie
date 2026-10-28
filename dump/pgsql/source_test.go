@@ -190,7 +190,7 @@ func TestStatements(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The comment after the SELECT's ';' is a statement of its own.
-	kinds := []core.StmtKind{core.StmtSet, core.StmtRoutine, core.StmtRoutine, core.StmtOther, core.StmtComment, core.StmtOther, core.StmtComment, KindMeta}
+	kinds := []core.StmtKind{core.StmtSet, core.StmtRoutine, core.StmtRoutine, core.StmtCommentOn, core.StmtComment, core.StmtOther, core.StmtComment, KindMeta}
 	lines := []int64{1, 2, 3, 4, 5, 6, 6, 7}
 	if len(bs) != len(kinds) {
 		for _, b := range bs {
