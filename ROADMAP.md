@@ -16,3 +16,15 @@ Roadie 1.0 leaves these out on purpose. Each comes later; `plan` names the first
 - **An in-place `UPDATE` mode for `prepare`.** 1.0 exports, pseudonymises and imports the whole database.
 - **`--jsonl` progress events.** 1.0 has the JSON report at the end of a run.
 - **Keyless report signing.** Reports are signed with a local Ed25519 key in 1.0; signing with cosign through a CI identity comes later.
+
+## Next
+
+In the order they are planned. None has a date; each ships when it is tested on the testbed.
+
+1. **Fleet runs and scheduled refresh (1.1).** One `sites.yaml` for many sites, one report per site and a summary, with notifications when a refresh fails.
+2. **`--jsonl` progress events.** One JSON line per phase and table on stderr, for CI dashboards that want more than the final report.
+3. **Speed on large dumps.** The benchmark's targets are measured on a shared machine so far; a run on a quiet one comes first, then work on what it shows.
+4. **`demo --keep <dir>`.** Keep the demo's files in a folder you name, not only in the cache.
+5. **Keyless report signing.** Sign with cosign through the CI job's identity, so a report names the workflow that made it.
+
+Ideas outside this list are welcome as issues; a use case helps more than a feature name.

@@ -53,7 +53,7 @@ rhythm install roadie
 rhythm roadie demo
 ```
 
-`rhythm install roadie` needs rhythm 0.9.0 or later (`rhythm update` first on an older one). `demo` builds a small WooCommerce shop with fake customers, a live-looking Stripe key, an active webhook and production URLs in serialized and JSON-escaped forms. It plans and copies it, verifies the copy (PASS), then verifies the untouched input (FAIL) and deletes everything again. No network, no database server, a few seconds. Then follow [Getting started](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Getting-Started) for your own first copy.
+`rhythm install roadie` needs rhythm 0.9.0 or later (`rhythm update` first on an older one). `demo` builds a small WooCommerce shop with fake customers, a live-looking Stripe key, an active webhook and production URLs in serialized and JSON-escaped forms. It plans and copies it, verifies the copy (PASS), then verifies the untouched input (FAIL) and deletes everything again. No network, no database server, about a second. Then follow [Getting started](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Getting-Started) for your own first copy.
 
 New to rhythm? Install it first:
 
@@ -63,7 +63,15 @@ irm https://rythm.sh/install.ps1 | iex                 # Windows (PowerShell)
 go install github.com/RhythmShahriar/roadie/cmd/rhythm-roadie@latest
 ```
 
-`rhythm roadie` and `rhythm-roadie` are the same command: the `rhythm` CLI runs the `rhythm-roadie` binary for you.
+From a checkout (Go 1.27.3 or later):
+
+```sh
+git clone https://github.com/RhythmShahriar/roadie && cd roadie
+make build                     # bin/rhythm-roadie, stamped with the version and commit
+bin/rhythm-roadie demo
+```
+
+`rhythm roadie` and `rhythm-roadie` are the same command: the `rhythm` CLI runs the `rhythm-roadie` binary for you. A source build isn't known to `rhythm`, so run it as `rhythm-roadie` (or `bin/rhythm-roadie`). Between release tags it reports its version as `dev` with the commit; that is expected.
 
 ## Safety promises
 
@@ -151,7 +159,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: RhythmShahriar/roadie@v1
+      - uses: RhythmShahriar/roadie@v1.0.0
         with:
           mode: copy
           source: ssh://deploy@shop.com/var/www/shop
@@ -163,12 +171,13 @@ jobs:
           args: --yes
         env:
           ROADIE_SIGNING_KEY: ${{ secrets.ROADIE_SIGNING_KEY }}
-          ROADIE_STRIPE_TEST_SECRET: ${{ secrets.STRIPE_TEST_SECRET }}   # read by keys.test_keys in .roadie/config.yaml
+          ROADIE_KEY: ${{ secrets.ROADIE_KEY }}                          # stable fakes across refreshes
+          ROADIE_STRIPE_TEST_SECRET: ${{ secrets.STRIPE_TEST_SECRET }}  # read by keys.test_keys in .roadie/config.yaml
       - uses: RhythmShahriar/soundcheck@v1
         with: {url: https://staging.shop.com, mode: run}
 ```
 
-`mode` is `verify` (the default), `copy`, `prepare` or `plan`. The job summary holds counts only unless `summary-details: "true"`; reports are uploaded only with `upload: "true"`. `copy` and `prepare` are refused in a pull request from a fork. Every input and output is in [Roadie-CI](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-CI) and [action.yml](action.yml).
+Pin the Action by a release tag (as here) or a commit SHA: at `@v1` it installs the latest release and warns. `mode` is `verify` (the default), `copy`, `prepare` or `plan`. The job summary holds counts only unless `summary-details: "true"`; reports are uploaded only with `upload: "true"`. `copy` and `prepare` are refused in a pull request from a fork. Every input and output is in [Roadie-CI](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-CI) and [action.yml](action.yml).
 
 ## Verify a download
 
@@ -213,6 +222,7 @@ All of it lives in the **[Rhythm documentation wiki](https://github.com/RhythmSh
 
 ```sh
 git clone https://github.com/RhythmShahriar/roadie && cd roadie
+make build   # bin/rhythm-roadie
 make hooks   # Conventional Commits check
 make check   # lint + tests
 ```

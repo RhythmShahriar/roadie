@@ -5,6 +5,7 @@ Setup, commit messages and the review process are shared by every Rhythm tool an
 This page covers what is particular to Roadie.
 
 ```sh
+make build   # bin/rhythm-roadie, stamped with the version and commit
 make hooks   # Conventional Commits check
 make check   # lint + tests (the PHP oracle tests need php on PATH)
 ```
