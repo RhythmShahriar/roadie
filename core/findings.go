@@ -114,18 +114,24 @@ type Aggregator struct {
 	order  []aggKey
 }
 
-type aggKey struct{ id, table, column, file string }
+type aggKey struct{ id, table, column, file, title string }
 
 // Add merges f into its group. A finding with Count 0 counts as one hit.
 // Locations beyond MaxExamples add to Count but aren't listed.
 // The group keeps the highest severity and the first non-empty title,
-// fix and detail.
+// fix and detail. key.live-mode groups by title too, so each gateway in
+// live mode is its own finding.
 func (a *Aggregator) Add(f Finding) {
 	var first Location
 	if len(f.Locations) > 0 {
 		first = f.Locations[0].Location
 	}
-	k := aggKey{f.ID, first.Table, first.Column, first.File}
+	k := aggKey{f.ID, first.Table, first.Column, first.File, ""}
+	if f.ID == FindingKeyLiveMode {
+		// One group per gateway: its title names the provider while
+		// Stripe's and PayPal's options share option_value.
+		k.title = f.Title
+	}
 	if f.Count == 0 {
 		f.Count = 1
 	}

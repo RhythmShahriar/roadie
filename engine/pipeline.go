@@ -350,6 +350,12 @@ type pipeline struct {
 	// stop in pass 1 (an uncovered column, a url-map error) leaves the
 	// target untouched. nil keeps the sink set at the start.
 	beforeWrite func(ctx context.Context) error
+	// afterIndex runs once pass 1 has read the source's own site URLs
+	// (siteurl, home, APP_URL), before anything is written; plan runs
+	// it too, so a plan stops where the copy would.
+	afterIndex func(ctx context.Context, sourceURLs []string) error
+	// sourceURLs are the source's site URLs pass 1 found.
+	sourceURLs []string
 	// aborted is set once the sink was told to take its writes back.
 	aborted bool
 	// samePlace is a run that reads and writes one staging (prepare):
@@ -480,6 +486,13 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 		if err := checkPairs(plan, p.parts); err != nil {
 			return out, err
 		}
+		// The target guard again, now that the source's own site URL is
+		// known: a target that answers to it is production.
+		if p.afterIndex != nil {
+			if err := p.afterIndex(ctx, p.sourceURLs); err != nil {
+				return out, err
+			}
+		}
 		p.fill(out, idx, final, schema, plan, uncov, nil)
 		if len(uncov.Uncovered) > 0 && p.mode != Plan && !p.opts.AllowUncovered {
 			return out, uncoveredError(uncov.Uncovered)
@@ -508,6 +521,11 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 	}
 	if words := hostWords(plan.Production); len(words) > 0 {
 		known = &hostWordKnown{Known: known, words: words}
+	}
+	if p.samePlace {
+		if own := p.ownSiteURLs(); len(own) > 0 {
+			known = &ownURLKnown{Known: known, own: own}
+		}
 	}
 	t, src, err := p.transform(ctx, idx, final, plan, known, faker, out)
 	if src != nil {
@@ -700,6 +718,7 @@ func (p *pipeline) urlPlan(ctx context.Context, idx *indexer, c *profile.Compile
 			}
 		}
 	}
+	p.sourceURLs = slices.Clone(src.SiteURLs)
 	if p.samePlace {
 		src.SiteURLs = ownURLs(src.SiteURLs, p.opts.URL, p.cfg.Production)
 	}
@@ -1088,6 +1107,50 @@ func (k *hostWordKnown) Contains(token []byte) (core.FakeKind, string, bool) {
 		}
 	}
 	return kind, enc, ok
+}
+
+// ownURLKnown is Known without the staging's own site URLs on a
+// prepare: an admin's user_url is often the site URL, which makes the
+// staging's siteurl and home a known personal URL. They are the site's,
+// so neither the scrubber nor verify treats them as a person's.
+type ownURLKnown struct {
+	core.Known
+	own map[string]bool
+}
+
+// Contains is Known.Contains except for one of the staging's own URLs.
+func (k *ownURLKnown) Contains(token []byte) (core.FakeKind, string, bool) {
+	kind, enc, ok := k.Known.Contains(token)
+	if ok && kind == core.KURL && enc == "raw" && k.own[siteURLKey(string(token))] {
+		return "", "", false
+	}
+	return kind, enc, ok
+}
+
+// siteURLKey is a site URL as ownURLKnown compares it: lower case,
+// without the scheme and a trailing slash.
+func siteURLKey(u string) string {
+	u = strings.ToLower(strings.TrimSpace(u))
+	if i := strings.Index(u, "://"); i >= 0 {
+		u = u[i+3:]
+	}
+	return strings.TrimRight(u, "/")
+}
+
+// ownSiteURLs are a prepare's own site URLs: --url and the siteurl and
+// home the rewrite leaves alone because they are the staging's (ownURLs).
+func (p *pipeline) ownSiteURLs() map[string]bool {
+	own := map[string]bool{}
+	if p.opts.URL != "" {
+		own[siteURLKey(p.opts.URL)] = true
+	}
+	kept := ownURLs(p.sourceURLs, p.opts.URL, p.cfg.Production)
+	for _, u := range p.sourceURLs {
+		if !slices.Contains(kept, u) && u != "" {
+			own[siteURLKey(u)] = true
+		}
+	}
+	return own
 }
 
 // hostWords are the words of the production hosts: the labels of 3 or

@@ -54,6 +54,11 @@ func guard(ctx context.Context, in GuardInput) error {
 	if err := targetIsProduction(in, t); err != nil {
 		return err
 	}
+	if in.Mode != modePrepare {
+		if err := targetIsSourceSite(in, t); err != nil {
+			return err
+		}
+	}
 	if err := targetSaysProduction(in, t); err != nil {
 		return err
 	}
@@ -460,6 +465,43 @@ func targetIsProduction(in GuardInput, t *targetFacts) error {
 		if matchHost(h.host, globs) {
 			return core.Errorf(core.ErrTargetIsProduction, 3,
 				"target-is-production: %s %s %s, which production: lists. Roadie never writes to production. Point --to at the staging copy.",
+				in.To.Display, h.what, h.host)
+		}
+	}
+	return nil
+}
+
+// SourceHosts are the hosts of the source's site URLs that a copy's
+// target must not answer to: production's own, so not one on this
+// machine and not the host --url names (a staging refreshed from its own
+// backup).
+func SourceHosts(urls []string, staging string) []string {
+	own := normHost(urlHost(staging))
+	var out []string
+	for _, u := range urls {
+		h := normHost(urlHost(u))
+		if h == "" || loopback(h) || h == own || slices.Contains(out, h) {
+			continue
+		}
+		out = append(out, h)
+	}
+	return out
+}
+
+// targetIsSourceSite refuses a copy whose target answers to the source's
+// own site URL: the source is production, so a target that calls itself
+// by production's URL is production (an ssh tunnel to its database looks
+// like 127.0.0.1), whatever production: says.
+func targetIsSourceSite(in GuardInput, t *targetFacts) error {
+	hosts := SourceHosts(in.SourceURLs, in.URL)
+	if len(hosts) == 0 {
+		return nil
+	}
+	globs := productionHosts(hosts)
+	for _, h := range t.hosts {
+		if matchHost(h.host, globs) {
+			return core.Errorf(core.ErrTargetIsProduction, 3,
+				"target-is-production: %s %s %s, the source's own site URL. Roadie never writes to production. Point --to at the staging copy; if this is a staging that still holds a raw copy of production, run prepare on it instead.",
 				in.To.Display, h.what, h.host)
 		}
 	}

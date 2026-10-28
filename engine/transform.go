@@ -137,7 +137,9 @@ func (t *transformer) transform(ctx context.Context, b *core.Batch, c *profile.C
 			continue
 		}
 		if keptRow(t.sh.kept, tb.Name, prefix, get) {
-			t.keepRow(out, tb.Name, isUsers, row, pos)
+			if err := t.keepRow(out, tb.Name, isUsers, row, pos, cols); err != nil {
+				return nil, err
+			}
 			continue
 		}
 		rc := rowCtx{table: tb.Name, get: get, loc: rowLocation(tb, get)}
@@ -176,18 +178,43 @@ func (t *transformer) transform(ctx context.Context, b *core.Batch, c *profile.C
 	return out, nil
 }
 
-// keepRow leaves a kept user's row as it is, except the password when
-// --admin-password-env sets one; it remembers its values so verify
-// doesn't count them as survivors.
-func (t *transformer) keepRow(out *batchOut, table string, isUsers bool, row *core.Row, pos map[string]int) {
+// keepRow leaves a kept user's personal values as they are, except the
+// password when --admin-password-env sets one; it remembers its values
+// so verify doesn't count them as survivors. Production's URLs in the
+// row (a user_url that is the shop's own) still become the staging's:
+// they are the site's, not the person's.
+func (t *transformer) keepRow(out *batchOut, table string, isUsers bool, row *core.Row, pos map[string]int, cols []core.Column) error {
 	out.keptRows++
 	for _, v := range row.Values {
 		if v.Kind == core.String && len(v.Raw) > 0 && len(v.Raw) <= 256 {
 			out.keptValues = append(out.keptValues, bytes.Clone(v.Raw))
 		}
 	}
+	if t.sh.urls != nil {
+		for i := range row.Values {
+			v := &row.Values[i]
+			if v.Kind != core.String && v.Kind != core.BinaryString || len(v.Raw) == 0 || i >= len(cols) {
+				continue
+			}
+			urls := 0
+			nv, changed, err := nestedRewrite(v.Raw, func(_ string, leaf []byte) ([]byte, bool) {
+				nv, n := t.sh.urls.Rewrite(leaf)
+				urls += n
+				return nv, n > 0
+			}, nested.Options{})
+			if err != nil {
+				return err
+			}
+			if changed {
+				setValue(v, nv, false)
+				c := out.change(changeURLs, table, cols[i].Name, core.RewriteURL)
+				c.Rows++
+				c.Values += int64(urls)
+			}
+		}
+	}
 	if !isUsers || t.sh.adminHash == nil {
-		return
+		return nil
 	}
 	if i, ok := pos["user_pass"]; ok {
 		row.Values[i] = core.Value{Kind: core.String, Raw: bytes.Clone(t.sh.adminHash), Dirty: true}
@@ -195,6 +222,7 @@ func (t *transformer) keepRow(out *batchOut, table string, isUsers bool, row *co
 		c.Rows++
 		c.Values++
 	}
+	return nil
 }
 
 // rowLocation is where a row's findings point: option_name or meta_key

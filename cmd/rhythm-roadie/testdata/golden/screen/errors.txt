@@ -420,12 +420,10 @@ Source: ssh://deploy@shop.com/var/www/shop
 Target: /var/www/staging
 
 UNCOVERED  2
-[MEDIUM] wp_loyalty_members.email looks personal and no rule covers it
-  98% of sampled values look personal
-  fix: add it under columns: in .roadie/config.yaml, or --allow-uncovered
-[MEDIUM] wp_loyalty_members.phone looks personal and no rule covers it
-  40% of sampled values look personal
-  fix: add it under columns: in .roadie/config.yaml, or --allow-uncovered
+[MEDIUM] wp_loyalty_members.email looks personal (98% of sampled values) and no rule covers it
+  fix: Add the column under columns: in .roadie/config.yaml (rhythm-roadie explain uncovered-column).
+[MEDIUM] wp_loyalty_members.phone looks personal (40% of sampled values) and no rule covers it
+  fix: Add the column under columns: in .roadie/config.yaml (rhythm-roadie explain uncovered-column).
 
 STOPPED   uncovered; the target is untouched
 

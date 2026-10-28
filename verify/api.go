@@ -45,6 +45,12 @@ type Job struct {
 	// APP_URL), "" when it says none: the screen names the copy by its
 	// host. verify itself doesn't read it.
 	URL string
+	// RulesetSHA256, ConfigSHA256 and ProfilePack say which rules,
+	// config and profile pack a standalone verify judged by, for the
+	// signed report (PRD 18.11); verify itself doesn't read them.
+	RulesetSHA256 string
+	ConfigSHA256  string
+	ProfilePack   string
 }
 
 // Options are verify's flags and config.

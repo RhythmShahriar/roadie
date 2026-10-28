@@ -24,7 +24,13 @@ import (
 // version and commit are set at release time with -ldflags -X.
 var version, commit string
 
-func main() { os.Exit(entry(os.Args[1:], os.Stdout, os.Stderr)) }
+func main() {
+	// A closed pipe on stdout (copy --to - | head) fails the write with
+	// EPIPE instead of killing the process, so the run stops like an
+	// interrupt and removes its spool and temp files.
+	catchSIGPIPE()
+	os.Exit(entry(os.Args[1:], os.Stdout, os.Stderr))
+}
 
 // entry answers what kit's cli.Main can't say Roadie's way, then hands
 // over: no arguments on a terminal open the picker; the top help is PRD 6.1's text rather than kit's generic one;
@@ -42,6 +48,10 @@ func entry(args []string, stdout, stderr io.Writer) int {
 	case len(args) == 1 && (args[0] == "help" || args[0] == "-h" || args[0] == "--help"),
 		len(args) == 2 && args[0] == "help" && args[1] == "help":
 		printTopHelp(stdout)
+		return cli.ExitOK
+	case args[0] == "update" && helpAsked(args[1:]), len(args) == 2 && args[0] == "help" && args[1] == "update":
+		// update is kit's command; its help is Roadie's, with --clear.
+		fmt.Fprint(stdout, updateHelpText())
 		return cli.ExitOK
 	case args[0] == "update" && cli.HasFlag(args[1:], "clear"):
 		return clearProfiles(stdout, stderr)

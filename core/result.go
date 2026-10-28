@@ -101,11 +101,14 @@ type Result struct {
 	Target      EndpointInfo
 	TargetState TargetState
 	Production  []string
-	URL         string
-	Stack       StackInfo
-	Consistency ConsistencyInfo
-	Input       *Fingerprint
-	Output      *Fingerprint
+	// TargetChecked are the production hosts the target guard compared
+	// the target with; nil when there was no site or database to check.
+	TargetChecked []string
+	URL           string
+	Stack         StackInfo
+	Consistency   ConsistencyInfo
+	Input         *Fingerprint
+	Output        *Fingerprint
 
 	RulesetSHA256       string
 	ConfigSHA256        string

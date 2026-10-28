@@ -55,6 +55,11 @@ func runVerify(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 		r.Source = core.EndpointInfo{Kind: vj.from.Kind, Display: vj.from.Display}
 	}
 	job, err := dep.verifyJob(ctx, ej, ej.To, vj.from)
+	if err == nil && job.Source != nil {
+		// A copy read from stdin is spooled; closing its source removes
+		// the spool, whatever verify found.
+		defer func() { _ = job.Source.Close() }()
+	}
 	if err == nil {
 		job.Opts = vj.opts
 		job.Production = dedupe(append(job.Production, vj.prod...))
@@ -64,6 +69,9 @@ func runVerify(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 		}
 		job.Progress = bar
 		r.Stack = job.Stack
+		// Which rules, config and pack judged the copy, as a copy's
+		// report says: the signature covers them.
+		r.RulesetSHA256, r.ConfigSHA256, r.ProfilePack = job.RulesetSHA256, job.ConfigSHA256, job.ProfilePack
 		if ej.Opts.URL == "" {
 			// The screen names a site by the host it calls itself, as
 			// copy and prepare do; a dump keeps its file name.

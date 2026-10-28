@@ -31,6 +31,12 @@ var siteFileChecks = []string{core.FindingConfigSalts, core.FindingConfigPointsA
 // httpChecks need --site.
 var httpChecks = []string{core.FindingSearchIndexable, core.FindingAuthNone}
 
+// CheckIDs are the check IDs verify lists in data.checks beyond the
+// finding IDs: key.live stands for every key.<provider>-live.
+func CheckIDs() []string {
+	return slices.Concat(dataChecks, siteFileChecks, httpChecks)
+}
+
 // count adds n to what check id looked at, which also marks it as run.
 func (r *run) count(id string, n int64) {
 	r.checked[id] += n

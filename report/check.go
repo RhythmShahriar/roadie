@@ -77,6 +77,12 @@ func CheckReport(name string, b []byte, pinned []byte, input io.Reader) (string,
 			return "", err
 		}
 		if !slices.Contains(ids, sig.keyID) {
+			if isSeedOf(pinned, sig.keyID) {
+				// Never trusted as a pin (see pinnedKeyIDs): the same
+				// bytes may be a real public key a forger used as a seed.
+				// The hint only says what a signing.key file is.
+				return "", edited("is signed by %s, not by the key you pinned (%s). If --key is a signing.key file, that is a private key, not a public one: pin a key ID (roadie:...) or a report's public_key you trust; keep signing.key private.", sig.keyID, ids[0])
+			}
 			return "", edited("is signed by %s, not by the key you pinned (%s).", sig.keyID, ids[0])
 		}
 	}
@@ -195,6 +201,14 @@ func pinnedKeyIDs(pinned []byte) ([]string, error) {
 		return nil, bad
 	}
 	return []string{KeyID(raw)}, nil
+}
+
+// isSeedOf reports whether pinned is base64 of the 32-byte seed of the key
+// keyID names: a signing.key file given as --key by mistake, or a public
+// key a forger used as a seed.
+func isSeedOf(pinned []byte, keyID string) bool {
+	raw, ok := decodeBase64(strings.TrimSpace(string(pinned)))
+	return ok && len(raw) == ed25519.SeedSize && newSigner(raw).keyID == keyID
 }
 
 // checkInput compares data.input with the SHA-256 of input.

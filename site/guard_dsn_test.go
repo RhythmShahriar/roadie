@@ -93,3 +93,43 @@ func TestGuardHostSpellings(t *testing.T) {
 		}
 	}
 }
+
+// A copy's target that answers to the source's own site URL is
+// production even when production: is empty: the guard reads the
+// source's siteurl once pass 1 has it. A prepare (same place), a staging
+// refreshed from its own backup (--url is that host) and a source on
+// this machine pass.
+func TestGuardSourceSiteURL(t *testing.T) {
+	ctx := context.Background()
+	to := sqliteWP(t, map[string]string{"wp_": "https://www.shop.example.com"})
+	s, err := Open(ctx, to, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	in := GuardInput{From: dumpEP(), To: to, ToSite: s, URL: "https://staging.shop.test", Mode: "copy",
+		SourceURLs: []string{"https://shop.example.com", "https://shop.example.com/"}}
+	wantCode(t, Guard(ctx, in), core.ErrTargetIsProduction, 3,
+		"target-is-production: "+to.Display+" is www.shop.example.com, the source's own site URL. Roadie never writes to production. Point --to at the staging copy; if this is a staging that still holds a raw copy of production, run prepare on it instead.")
+	in.Mode = "plan"
+	wantCode(t, Guard(ctx, in), core.ErrTargetIsProduction, 3, "")
+	for name, mod := range map[string]func(*GuardInput){
+		"prepare": func(g *GuardInput) { g.Mode = "prepare"; g.URL = "https://www.shop.example.com" },
+		"own backup": func(g *GuardInput) {
+			g.URL = "https://www.shop.example.com"
+			g.SourceURLs = []string{g.URL}
+		},
+		"local": func(g *GuardInput) { g.SourceURLs = []string{"http://localhost:8080"} },
+		"other": func(g *GuardInput) { g.SourceURLs = []string{"https://other.example.net"} },
+	} {
+		g := in
+		g.Mode = "copy"
+		mod(&g)
+		if err := Guard(ctx, g); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if got := SourceHosts([]string{"https://A.example.com/", "http://127.0.0.1", "https://a.example.com", "https://staging.shop.test"}, "https://staging.shop.test"); len(got) != 1 || got[0] != "a.example.com" {
+		t.Errorf("SourceHosts = %v", got)
+	}
+}

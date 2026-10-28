@@ -153,7 +153,7 @@ func demoDir() (string, error) {
 // writeDemoShop writes the built-in shop's dump, 0600. Every customer in
 // it is a fake made from the fixed seed.
 func writeDemoShop(path string) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) // #nosec G304 -- a file in the demo's own folder
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) // #nosec G304 G703 -- a file in the demo's own folder
 	if err != nil {
 		return err
 	}

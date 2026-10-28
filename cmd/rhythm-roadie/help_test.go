@@ -58,3 +58,34 @@ func TestHelpWidth(t *testing.T) {
 		}
 	}
 }
+
+// update is kit's command; its help is Roadie's: the same title line
+// as every other command, --clear, --json and --pin, by every spelling.
+func TestUpdateHelp(t *testing.T) {
+	var first string
+	for _, args := range [][]string{{"update", "--help"}, {"update", "-h"}, {"help", "update"}, {"update", "--clear", "--help"}} {
+		var out, errb bytes.Buffer
+		if code := entry(args, &out, &errb); code != 0 || errb.Len() != 0 {
+			t.Fatalf("%q: exit %d %s", args, code, errb.String())
+		}
+		if first == "" {
+			first = out.String()
+			testutil.Golden(t, "help-update.txt", out.Bytes())
+		} else if out.String() != first {
+			t.Errorf("%q differs from update --help", args)
+		}
+	}
+	if !strings.HasPrefix(first, "rhythm roadie update: ") {
+		t.Errorf("update help starts %q", strings.SplitN(first, "\n", 2)[0])
+	}
+	for _, w := range []string{"--clear", "--json", "--pin", "Exit codes (as in Tuner, Soundcheck and Echo):\n"} {
+		if !strings.Contains(first, w) {
+			t.Errorf("update help lacks %q", w)
+		}
+	}
+	for _, line := range strings.Split(first, "\n") {
+		if n := len([]rune(line)); n > 100 {
+			t.Errorf("update help line is %d columns: %q", n, line)
+		}
+	}
+}

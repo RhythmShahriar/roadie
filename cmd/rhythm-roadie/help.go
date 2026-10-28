@@ -272,7 +272,7 @@ const reportHelp = `rhythm roadie report: render saved reports, or check a repor
 
 Usage:
   rhythm-roadie report <report.json>... -o <file> [--brand-name <name>] [--brand-logo <file>]
-  rhythm-roadie report check <report.json> [--key <file>] [--input <dump>]
+  rhythm-roadie report check <report.json> [--key <file|id>] [--input <dump>]
 
   Several reports make one summary page, worst first. The format comes from
   the -o file's extension: .html .md .sarif .xml
@@ -280,7 +280,8 @@ Usage:
 Report:
       --brand-name <name>    a name for the top of the HTML report, e.g. your agency's
       --brand-logo <file>    a PNG, SVG or JPEG logo for the HTML report (under 512 KiB)
-      --key <file>           check: the public key the report must be signed with
+      --key <file|id>        check: the public key or key ID (roadie:..., which report
+                             check prints) the report must be signed with
       --input <dump>         check: the dump the report describes; its fingerprint must match
 `
 
@@ -317,6 +318,26 @@ Demo:
       --keep                 keep the demo's dumps and reports (default: delete them)
 `
 
+// updateHelp is update's own help: kit runs the command, so its generic
+// text would leave out --clear.
+const updateHelp = `rhythm roadie update: refresh the signed profile pack
+
+Usage:
+  rhythm-roadie update [--clear] [--json] [--pin profiles=<version>]
+
+  Downloads the latest signed profile pack, checks its signature and keeps it
+  in the cache; copy, prepare, plan and verify use it when it is newer than
+  the built-in one. Offline (--offline or RHYTHM_OFFLINE=1) it downloads
+  nothing and reports the pack in use.
+
+Update:
+      --clear                drop the downloaded pack and use the built-in one
+      --json                 print the rhythm-data/v1 JSON document
+      --pin <name=version>   download these versions instead of the latest,
+                             as name=version,... (profiles=<version>)
+      --offline              download nothing; report the pack in use
+`
+
 // commandHelp maps each command to its own help block.
 var commandHelp = map[string]string{
 	"copy": copyHelp, "prepare": prepareHelp, "plan": planHelp, "verify": verifyHelp,
@@ -328,6 +349,11 @@ var commandHelp = map[string]string{
 // Output and Settings blocks and the exit codes.
 func helpFor(cmd string) string {
 	return strings.Join([]string{commandHelp[cmd], outputHelp, settingsHelp, exitHelp}, "\n")
+}
+
+// updateHelpText is update's whole help: its block and the exit codes.
+func updateHelpText() string {
+	return updateHelp + "\n" + exitHelp
 }
 
 // printTopHelp writes the top help with the version.

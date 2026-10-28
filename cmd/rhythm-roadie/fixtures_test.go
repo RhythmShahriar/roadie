@@ -83,7 +83,7 @@ func baseResult(kind string) *core.Result {
 		Kind: kind, Started: testNow, Duration: 82 * time.Second,
 		Source:     core.EndpointInfo{Kind: core.SSHSite, Display: "ssh://deploy@shop.com/var/www/shop", Engine: "MySQL", Server: "8.0", Bytes: 2_400_000_000},
 		Target:     core.EndpointInfo{Kind: core.LocalSite, Display: "/var/www/staging", Engine: "MariaDB", Server: "10.11"},
-		Production: []string{"shop.com", "*.shop.com"}, URL: "https://shop.com",
+		Production: []string{"shop.com", "*.shop.com"}, TargetChecked: []string{"shop.com", "*.shop.com"}, URL: "https://shop.com",
 		Stack: wpStack(), Consistency: core.ConsistencyInfo{Mode: "per-run"},
 		Input:  &core.Fingerprint{Kind: "sha256-file", Value: "ab12", Bytes: 2_400_000_000},
 		Tables: sampleTables(), Changes: sampleChanges(), FailOn: core.SeverityHigh,

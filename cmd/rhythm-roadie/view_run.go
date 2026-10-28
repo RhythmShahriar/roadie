@@ -19,6 +19,7 @@ import (
 	"github.com/RhythmShahriar/rhythm/kit/ui"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/detect"
 	"github.com/RhythmShahriar/roadie/engine"
 	"github.com/RhythmShahriar/roadie/site/killswitch"
 )
@@ -465,20 +466,36 @@ func wouldStop(r *core.Result, j engine.Job) bool {
 	return len(r.Uncovered) > 0 && !j.Opts.AllowUncovered
 }
 
-// uncoveredSection prints UNCOVERED with a ▌ block for each column.
-func (v *view) uncoveredSection(us []core.Uncovered) {
+// uncoveredSection prints UNCOVERED with a ▌ block for each column,
+// titled and fixed as the uncovered-column finding is everywhere else
+// (PRD 11.3): by its name or with the sampled rate.
+func (v *view) uncoveredSection(us []core.Uncovered, fs []core.Finding) {
 	if len(us) == 0 {
 		return
 	}
 	v.section("UNCOVERED", len(us), "", sevColor(core.SeverityMedium))
 	for _, u := range us {
-		title := u.Table + "." + u.Column + " looks personal and no rule covers it"
-		var details []string
-		if u.Rate > 0 && u.Rate < 100 {
-			details = append(details, fmt.Sprintf("%d%% of sampled values look personal", u.Rate))
-		}
-		v.card(core.SeverityMedium, title, "", details, "add it under columns: in .roadie/config.yaml, or --allow-uncovered")
+		v.card(core.SeverityMedium, uncoveredTitle(u, fs), "", nil, core.UncoveredFix)
 	}
+}
+
+// uncoveredTitle is the title of u's uncovered-column finding, or the
+// same sentence without the sample counts when the run has none.
+func uncoveredTitle(u core.Uncovered, fs []core.Finding) string {
+	for _, f := range fs {
+		if f.ID != core.FindingUncoveredColumn {
+			continue
+		}
+		for _, l := range f.Locations {
+			if l.Table == u.Table && l.Column == u.Column {
+				return f.Title
+			}
+		}
+	}
+	if u.Rate >= detect.UncoveredRate {
+		return fmt.Sprintf("%s.%s looks personal (%d%% of sampled values) and no rule covers it", u.Table, u.Column, u.Rate)
+	}
+	return detect.UncoveredTitle(u, nil)
 }
 
 // planView is plan's screen (product.md 5.2) after the banner.
@@ -487,8 +504,9 @@ func (v *view) planView(r *core.Result, j engine.Job, tm *timings) {
 	if r.Target.Display != "" && r.Target.Display != r.Source.Display {
 		v.setting("Target", endpointLine(r.Target, 0))
 	}
-	if len(r.Production) > 0 {
-		v.setting("Target check", "not in production: ["+strings.Join(r.Production, ", ")+"]")
+	if len(r.TargetChecked) > 0 {
+		// Only the hosts the target guard compared the target with.
+		v.setting("Target check", "not in production: ["+strings.Join(r.TargetChecked, ", ")+"]")
 	}
 	v.setting("Stack", stackLine(r.Stack))
 	if r.URL != "" || j.Opts.URL != "" {
@@ -537,7 +555,7 @@ func (v *view) planView(r *core.Result, j engine.Job, tm *timings) {
 			v.item(a)
 		}
 	}
-	v.uncoveredSection(r.Uncovered)
+	v.uncoveredSection(r.Uncovered, r.Findings)
 	var others []core.Finding
 	for _, f := range r.Findings {
 		if f.ID != core.FindingUncoveredColumn {
@@ -735,10 +753,33 @@ func verdict(r *core.Result, failOn core.Severity, name string) (word, line stri
 	if r.Verify.Coverage.Unread() {
 		return "INCOMPLETE", name + " couldn't be read whole; coverage lists what wasn't", lipgloss.Color(ui.Warn)
 	}
+	word = "PASS"
 	if r.Verify.Coverage.Sample > 0 {
-		return "PASS (sample)", name + " is a pseudonymised copy", lipgloss.Color(ui.Ok)
+		word = "PASS (sample)"
 	}
-	return "PASS", name + " is a pseudonymised copy", lipgloss.Color(ui.Ok)
+	// The box claims a pseudonymised copy only when the checks found
+	// nothing: findings below --fail-on or hidden by a baseline are named
+	// instead (an info note doesn't count).
+	var below int64
+	for _, f := range r.AllFindings() {
+		if f.Severity > core.SeverityInfo {
+			below++
+		}
+	}
+	var parts []string
+	switch {
+	case below > 0 && failOn == core.SeverityNone:
+		parts = append(parts, plural(below, "finding", "findings")+", none fails the run (--fail-on none)")
+	case below > 0:
+		parts = append(parts, plural(below, "finding", "findings")+" below --fail-on "+failOn.String())
+	}
+	if h := r.Verify.Hidden; h > 0 {
+		parts = append(parts, plural(h, "finding", "findings")+" hidden by --baseline or ignore entries")
+	}
+	if len(parts) > 0 {
+		return word, name + ": " + strings.Join(parts, "; "), lipgloss.Color(ui.Ok)
+	}
+	return word, name + " is a pseudonymised copy", lipgloss.Color(ui.Ok)
 }
 
 // preparedParts are prepare --only's parts, nil for all of them.
@@ -948,7 +989,7 @@ func writeSecretFile(path, text string) error {
 func (v *view) stopView(r *core.Result, j engine.Job) {
 	e := r.Err
 	if e.Code == core.ErrUncovered {
-		v.uncoveredSection(r.Uncovered)
+		v.uncoveredSection(r.Uncovered, r.Findings)
 	}
 	if e.Code == core.ErrKeyManual || e.Code == core.ErrKillSwitch {
 		v.findingGroups(r.AllFindings())

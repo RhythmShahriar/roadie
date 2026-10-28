@@ -2,7 +2,7 @@ rhythm roadie report: render saved reports, or check a report's signature
 
 Usage:
   rhythm-roadie report <report.json>... -o <file> [--brand-name <name>] [--brand-logo <file>]
-  rhythm-roadie report check <report.json> [--key <file>] [--input <dump>]
+  rhythm-roadie report check <report.json> [--key <file|id>] [--input <dump>]
 
   Several reports make one summary page, worst first. The format comes from
   the -o file's extension: .html .md .sarif .xml
@@ -10,7 +10,8 @@ Usage:
 Report:
       --brand-name <name>    a name for the top of the HTML report, e.g. your agency's
       --brand-logo <file>    a PNG, SVG or JPEG logo for the HTML report (under 512 KiB)
-      --key <file>           check: the public key the report must be signed with
+      --key <file|id>        check: the public key or key ID (roadie:..., which report
+                             check prints) the report must be signed with
       --input <dump>         check: the dump the report describes; its fingerprint must match
 
 Output:

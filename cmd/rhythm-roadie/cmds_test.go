@@ -543,6 +543,8 @@ func TestExplainCoversEveryID(t *testing.T) {
 	}
 	ids = append(ids, profileIDs...)
 	ids = append(ids, engineRules...)
+	// Every check ID verify lists (data.checks, JUnit) has a page too.
+	ids = append(ids, verify.CheckIDs()...)
 	for _, id := range ids {
 		found, text, ok := explainText(id)
 		if !ok || found != id {
@@ -554,7 +556,7 @@ func TestExplainCoversEveryID(t *testing.T) {
 		}
 	}
 	for _, id := range explainIDs() {
-		if !core.KnownID(id) && !slices.Contains(profileIDs, id) && !slices.Contains(engineRules, id) && id != "pseudonymised" {
+		if !core.KnownID(id) && !slices.Contains(profileIDs, id) && !slices.Contains(engineRules, id) && !slices.Contains(verify.CheckIDs(), id) && id != "pseudonymised" {
 			t.Errorf("explain/%s.md names no known ID", id)
 		}
 	}

@@ -1,0 +1,25 @@
+rhythm roadie update: refresh the signed profile pack
+
+Usage:
+  rhythm-roadie update [--clear] [--json] [--pin profiles=<version>]
+
+  Downloads the latest signed profile pack, checks its signature and keeps it
+  in the cache; copy, prepare, plan and verify use it when it is newer than
+  the built-in one. Offline (--offline or RHYTHM_OFFLINE=1) it downloads
+  nothing and reports the pack in use.
+
+Update:
+      --clear                drop the downloaded pack and use the built-in one
+      --json                 print the rhythm-data/v1 JSON document
+      --pin <name=version>   download these versions instead of the latest,
+                             as name=version,... (profiles=<version>)
+      --offline              download nothing; report the pack in use
+
+Exit codes (as in Tuner, Soundcheck and Echo):
+  0    ok: done and verify found nothing at or above --fail-on
+  1    findings: verify found something at or above --fail-on, plan would stop,
+       or a report's signature doesn't match
+  2    usage error: a wrong command line or a bad .roadie/config.yaml
+  3    couldn't run: source or target unreachable, a dump that ends early, a
+       target refused as production, nothing to scan
+  130  interrupted

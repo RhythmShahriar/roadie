@@ -78,10 +78,9 @@ $ rhythm-roadie plan --from ssh://deploy@shop.com/var/www/shop --to /var/www/sta
 
   [1;38;2;234;179;8mUNCOVERED  1[0m [38;2;107;113;128m───────────────────────────────────────────────────────────────[0m
 
- [38;2;234;179;8m▌[0m [1;38;2;11;11;12;48;2;234;179;8m MEDIUM   [0m  [1mwp_loyalty_members.email looks personal and no rule covers it[0m
- [38;2;234;179;8m▌[0m             [38;2;107;113;128m98% of sampled values look personal[0m                          
- [38;2;234;179;8m▌[0m             [1;38;2;255;124;81m→[0m add it under columns: in .roadie/config.yaml, or           
- [38;2;234;179;8m▌[0m               --allow-uncovered                                          
+ [38;2;234;179;8m▌[0m [1;38;2;11;11;12;48;2;234;179;8m MEDIUM   [0m  [1mwp_loyalty_members.email looks personal (98% of 1,000 sampled…[0m
+ [38;2;234;179;8m▌[0m             [1;38;2;255;124;81m→[0m Add the column under columns: in .roadie/config.yaml        
+ [38;2;234;179;8m▌[0m               (rhythm-roadie explain uncovered-column).                   
 
  [38;2;234;179;8m╭──────────────────────────────────────────────╮[0m
  [38;2;234;179;8m│[0m  [1;38;2;234;179;8mPLAN[0m   [1mcopy would stop: 1 uncovered column[0m  [38;2;234;179;8m│[0m

@@ -362,6 +362,7 @@ func (r *runner) run(ctx context.Context) error {
 		if r.mode != Plan {
 			p.beforeWrite = writeStart
 		}
+		p.afterIndex = r.guardSource
 		// 4, 7 and 8: both passes and the commit.
 		out, err = p.run(ctx)
 		r.endMaintenance(ctx)
@@ -714,6 +715,53 @@ func (r *runner) guard(ctx context.Context) error {
 			r.cfg.Production = append(r.cfg.Production, u)
 		}
 	}
+}
+
+// guardSource runs the target guards once more with the source's own
+// site URLs, which pass 1 has just read: production: may be empty and
+// the target may still be production's database (an ssh tunnel to it
+// looks like 127.0.0.1). It fills the hosts the plan's target check
+// names. A prepare's source is its target, so its siteurl doesn't count.
+func (r *runner) guardSource(ctx context.Context, urls []string) error {
+	k := r.j.To.Kind
+	if k == "" || k == core.Stdio || k == core.DumpFile {
+		return nil
+	}
+	checked := slices.Clone(r.cfg.Production)
+	if r.opts.ProductionURL != "" && !slices.Contains(checked, r.opts.ProductionURL) {
+		checked = append(checked, r.opts.ProductionURL)
+	}
+	if r.mode == Prepare || r.samePlace {
+		r.res.TargetChecked = guardHosts(checked)
+		return nil
+	}
+	src := site.SourceHosts(urls, r.opts.URL)
+	r.res.TargetChecked = guardHosts(append(checked, src...))
+	if len(src) == 0 {
+		return nil
+	}
+	return guardTarget(ctx, site.GuardInput{From: r.j.From, To: r.j.To, FromSite: r.from, ToSite: r.to,
+		Production: r.cfg.Production, ProductionURL: r.opts.ProductionURL,
+		TargetIsStaging: r.opts.TargetIsStaging, Mode: string(r.mode), URL: r.opts.URL, SourceURLs: urls})
+}
+
+// guardHosts are the hosts of production entries, for the plan's target
+// check line.
+func guardHosts(prod []string) []string {
+	var out []string
+	for _, p := range prod {
+		h := p
+		if strings.Contains(p, "://") {
+			if _, oh, ok := parseOrigin(p); ok {
+				h = bareHost(oh)
+			}
+		}
+		h = strings.ToLower(strings.TrimSpace(h))
+		if h != "" && !slices.Contains(out, h) {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 // heldURL reads the URL a staging still calls itself: from the guard's

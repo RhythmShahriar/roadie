@@ -63,6 +63,11 @@ type GuardInput struct {
 	// SiteURL is the target's siteurl when the caller already read it;
 	// "" makes Guard read it through WP-CLI or the options table.
 	SiteURL string
+	// SourceURLs are the source's own site URLs (siteurl, home, APP_URL)
+	// once pass 1 has read them. A copy refuses a target that answers
+	// to one of them: that is production's URL even when production:
+	// is empty. One equal to --url or on this machine doesn't count.
+	SourceURLs []string
 }
 
 // Guard refuses a target that is production or the source, with the

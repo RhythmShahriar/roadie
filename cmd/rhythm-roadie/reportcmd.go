@@ -16,6 +16,7 @@ import (
 
 	"github.com/RhythmShahriar/rhythm/kit/cache"
 	"github.com/RhythmShahriar/rhythm/kit/cli"
+	"github.com/RhythmShahriar/rhythm/kit/config"
 	"github.com/RhythmShahriar/rhythm/kit/term"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -185,6 +186,7 @@ func runReportCheck(_ context.Context, p *parsed, stdout, stderr io.Writer) erro
 		return reportCheckError(stderr, err)
 	}
 	fmt.Fprintln(stdout, report.CheckedLine(keyID))
+	fmt.Fprintf(stdout, "Key ID %s: pin it with --key %s to accept only this signer.\n", keyID, keyID)
 	if input != nil {
 		fmt.Fprintf(stdout, "%s is the input it describes (the sha256 matches).\n", term.SafeText(filepath.Base(p.f.input)))
 	}
@@ -262,11 +264,26 @@ func readPinned(key string) ([]byte, error) {
 	if strings.HasPrefix(key, "roadie:") {
 		return []byte(key), nil
 	}
+	if isSigningKeyFile(key) {
+		return nil, fmt.Errorf("--key %s is Roadie's private signing key, not a public key; pin the key ID report check prints (--key roadie:...)", term.SafeText(key))
+	}
 	b, err := readLimited(key, 64<<10)
 	if err != nil {
 		return nil, fmt.Errorf("--key: %w", err)
 	}
 	return b, nil
+}
+
+// isSigningKeyFile reports whether path is this machine's signing key
+// (report.DefaultKeyPath), the private key Roadie signs with.
+func isSigningKeyFile(path string) bool {
+	dir, err := config.Dir()
+	if err != nil {
+		return false
+	}
+	a, errA := os.Stat(path)
+	b, errB := os.Stat(report.DefaultKeyPath(dir))
+	return errA == nil && errB == nil && os.SameFile(a, b)
 }
 
 // readLimited reads a file the user named, refusing one over limit bytes.

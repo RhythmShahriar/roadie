@@ -289,8 +289,26 @@ func (p *parsed) buildJob(mode engine.Mode, cfg *roadiecfg.Config, stderr io.Wri
 		if j.To, err = parseEndpoint(eps.to, "--to", "ROADIE_TO_PASSWORD", warn); err != nil {
 			return j, endpointError(stderr, p.cmd, err)
 		}
+		if err := writableDump(j.To); err != nil {
+			return j, endpointError(stderr, p.cmd, err)
+		}
 	}
 	return j, nil
+}
+
+// writableDump refuses a dump-file target Roadie reads but can't write
+// (.sql.bz2) before anything is read, not after the whole source.
+func writableDump(e core.Endpoint) error {
+	if e.Kind != core.DumpFile {
+		return nil
+	}
+	switch e.Compression {
+	case "", "gzip", "zstd":
+		return nil
+	}
+	return core.Errorf(core.ErrDumpFormat, 2,
+		"dump-format: --to %s: Roadie reads %s dumps but doesn't write them. Name the copy .sql, .sql.gz or .sql.zst.",
+		e.Display, e.Compression)
 }
 
 // endpointError reports an endpoint that didn't parse. A *core.Error

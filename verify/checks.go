@@ -213,6 +213,14 @@ type page struct {
 	body   []byte
 }
 
+// pageURL is the URL fetch GETs for path p of the target, without a
+// password, as the coverage names it.
+func pageURL(target *url.URL, p string) string {
+	u := *target
+	u.Path, u.RawPath, u.RawQuery, u.Fragment = p, "", "", ""
+	return u.Redacted()
+}
+
 // fetch GETs one path of the target, reading at most siteMaxBody bytes.
 func fetch(ctx context.Context, c *http.Client, target *url.URL, p string) (*page, error) {
 	u := *target
@@ -243,14 +251,14 @@ func (r *run) siteHTTP(ctx context.Context) {
 	c := siteClient(target, r.j.Opts.InsecureTLS)
 	home, err := fetch(ctx, c, target, "/")
 	if err != nil {
-		r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, core.Skipped{Table: "--site /", Reason: fetchReason(err)})
+		r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, core.Skipped{Table: "--site " + pageURL(target, "/"), Reason: fetchReason(err)})
 		r.skipCheck(core.FindingSearchIndexable, "the home page couldn't be fetched")
 		r.skipCheck(core.FindingAuthNone, "the home page couldn't be fetched")
 		return
 	}
 	robots, err := fetch(ctx, c, target, "/robots.txt")
 	if err != nil {
-		r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, core.Skipped{Table: "--site /robots.txt", Reason: fetchReason(err)})
+		r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, core.Skipped{Table: "--site " + pageURL(target, "/robots.txt"), Reason: fetchReason(err)})
 	}
 	pages := int64(1)
 	if robots != nil {

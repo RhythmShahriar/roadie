@@ -46,9 +46,8 @@ ALSO
 - Object caches and search indexes (Redis, Algolia, ElasticPress) are not copied or cleared
 
 UNCOVERED  1
-[MEDIUM] wp_loyalty_members.email looks personal and no rule covers it
-  98% of sampled values look personal
-  fix: add it under columns: in .roadie/config.yaml, or --allow-uncovered
+[MEDIUM] wp_loyalty_members.email looks personal (98% of 1,000 sampled values are emails) and no rule covers it
+  fix: Add the column under columns: in .roadie/config.yaml (rhythm-roadie explain uncovered-column).
 
 PLAN   copy would stop: 1 uncovered column
 read schema and counts in 3s; no rows changed

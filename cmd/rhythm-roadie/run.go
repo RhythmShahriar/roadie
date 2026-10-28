@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"syscall"
 
 	"github.com/RhythmShahriar/rhythm/kit/cache"
 	"github.com/RhythmShahriar/rhythm/kit/cli"
@@ -197,6 +198,10 @@ func asCoreError(err error) *core.Error {
 		return core.Errorf(core.ErrInterrupted, cli.ExitInterrupted,
 			"interrupted: the run was stopped by Ctrl-C or a signal. Run it again when you're ready.")
 	}
+	if errors.Is(err, syscall.EPIPE) {
+		return core.Errorf(core.ErrInterrupted, cli.ExitInterrupted,
+			"interrupted: the program reading Roadie's output closed it before the end. Run it again when you're ready.")
+	}
 	var pe *fs.PathError
 	if errors.Is(err, fs.ErrNotExist) && errors.As(err, &pe) {
 		return core.Errorf(core.ErrNotFound, cli.ExitUsage,
@@ -375,11 +380,11 @@ func openFile(path string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("open", path) // #nosec G204 -- a report path Roadie wrote
+		cmd = exec.Command("open", path) // #nosec G204 G702 -- a report path Roadie wrote
 	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", path) // #nosec G204 -- as above
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", path) // #nosec G204 G702 -- as above
 	default:
-		cmd = exec.Command("xdg-open", path) // #nosec G204 -- as above
+		cmd = exec.Command("xdg-open", path) // #nosec G204 G702 -- as above
 	}
 	cmd.Stdout, cmd.Stderr = nil, nil
 	if err := cmd.Start(); err != nil {

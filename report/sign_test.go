@@ -296,7 +296,7 @@ func TestCheckPinned(t *testing.T) {
 	// A bare 32-byte value is a public key, never a seed: a signing.key
 	// file pins the key its bytes would be, not the key it makes.
 	ce = wantCode(t, Check(rep, []byte(base64.StdEncoding.EncodeToString(seedOf(2))+"\n"), nil), core.ErrReportEdited, 1)
-	if !strings.Contains(ce.Msg, theirs.KeyID()) {
+	if !strings.Contains(ce.Msg, theirs.KeyID()) || !strings.Contains(ce.Msg, "If --key is a signing.key file, that is a private key") {
 		t.Error(ce.Msg)
 	}
 	for _, pin := range []string{"roadie:7Q3kXc2…", "hello", "-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n"} {
@@ -322,8 +322,9 @@ func TestCheckPinnedPublicKeyIsNotASeed(t *testing.T) {
 		"raw public": victim.PublicKey(),
 	} {
 		ce := wantCode(t, Check(rep, pin, nil), core.ErrReportEdited, 1)
+		// The hint never tells the user to pin the forger's key.
 		want := "report check: report.json is signed by " + forger.KeyID() + ", not by the key you pinned (" + victim.KeyID() + ")."
-		if ce.Msg != want {
+		if !strings.HasPrefix(ce.Msg, want) || strings.Contains(ce.Msg, "--key "+forger.KeyID()) {
 			t.Errorf("%s: %q, want %q", name, ce.Msg, want)
 		}
 	}

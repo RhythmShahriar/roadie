@@ -65,7 +65,7 @@ func TestReportCheck(t *testing.T) {
 	os.WriteFile(dumpPath, dump, 0o600)
 
 	out, errOut, code := runCmd(t, "report", "check", path)
-	if code != 0 || out != report.CheckedLine(id)+"\n" || errOut != "" {
+	if code != 0 || out != report.CheckedLine(id)+"\nKey ID "+id+": pin it with --key "+id+" to accept only this signer.\n" || errOut != "" {
 		t.Fatalf("valid: exit %d %q %q", code, out, errOut)
 	}
 	if !strings.HasPrefix(out, "signed by "+id[:14]+"… and unchanged since. It shows this Roadie run found these results; it doesn't prove the checks covered everything.") {

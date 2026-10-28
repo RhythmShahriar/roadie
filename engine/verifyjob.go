@@ -54,7 +54,7 @@ func VerifyJob(ctx context.Context, j Job, target core.Endpoint, from *core.Endp
 		return verify.Job{}, core.Errorf(core.ErrConfig, 2,
 			"verify can't read both the copy and --from from stdin (-); name a file or a site for one of them")
 	}
-	defs, _, err := loadProfiles(ctx, r.opts.Offline)
+	defs, pack, err := loadProfiles(ctx, r.opts.Offline)
 	if err != nil {
 		return verify.Job{}, err
 	}
@@ -83,7 +83,8 @@ func VerifyJob(ctx context.Context, j Job, target core.Endpoint, from *core.Endp
 		return verify.Job{}, err
 	}
 	vj := verify.Job{Target: target, Rules: c.All(), Production: production(cfg, nil), Opts: r.verifyOptions(), Progress: j.Progress,
-		Stack: core.StackInfo{Name: c.Stack(), Profiles: c.Profiles()}}
+		Stack:         core.StackInfo{Name: c.Stack(), Profiles: c.Profiles()},
+		RulesetSHA256: c.SHA256(), ConfigSHA256: configHash(cfg), ProfilePack: pack}
 	if si, ok := in.(*streamInput); ok && target.Kind == core.Stdio {
 		// verify reads the spool pass 1 wrote; closing it removes it.
 		src, err := si.open(ctx, 2)
