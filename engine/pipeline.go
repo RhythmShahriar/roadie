@@ -328,6 +328,9 @@ type pipeline struct {
 	// gatewayIDs are the WooCommerce gateways of the source's options,
 	// from pass 1, for the kill switch's data rules.
 	gatewayIDs []string
+	// presence is what the source holds once pass 1 has read every row;
+	// nil for --one-pass and plan --schema-only.
+	presence *killswitch.Presence
 	// dialect is the source dump's dialect once pass 1 has read it; ""
 	// for --one-pass, a database source and before pass 1.
 	dialect core.Dialect
@@ -471,6 +474,7 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 			out.Known = known
 			return out, nil
 		}
+		p.presence = &killswitch.Presence{Options: idx.options, Rows: idx.rows, Prefix: idx.prefix}
 	} else if !p.parts.noURLs {
 		if plan, err = buildURLPlan(urlSources{Production: p.cfg.Production}, p.opts.URL, p.cfg.URLMap); err != nil {
 			return out, err

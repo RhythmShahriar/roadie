@@ -100,3 +100,31 @@ func TestOwnURL(t *testing.T) {
 		t.Errorf("dump %q", got)
 	}
 }
+
+// plan's side effects follow what the source holds once pass 1 has read
+// it: one the source lacks is not-present, as copy's read-back says;
+// with no presence known every side-effect step is planned off.
+func TestPlannedEffectsPresence(t *testing.T) {
+	s := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\n")})
+	o := killswitch.Options{URL: "https://s.test", Source: &killswitch.Presence{
+		Options: map[string]bool{"siteurl": true, "woocommerce_stripe_settings": true}, Rows: map[string]int64{"wp_options": 2}, Prefix: "wp_"}}
+	status := map[string]string{}
+	for _, se := range plannedEffects(context.Background(), s, killswitch.Steps(core.StackWordPress, o)) {
+		status[se.ID] = se.Status
+	}
+	for id, want := range map[string]string{
+		core.FindingSideEffectSubscriptions: "not-present", core.FindingSideEffectJetpack: "not-present",
+		core.FindingSideEffectWebhooks: "not-present", core.FindingSideEffectAutomateWoo: "not-present",
+		core.FindingSideEffectGateways: "off", core.FindingSideEffectMail: "off", core.FindingSideEffectCron: "off",
+	} {
+		if status[id] != want {
+			t.Errorf("%s: %q, want %q", id, status[id], want)
+		}
+	}
+	o.Source = nil
+	for _, se := range plannedEffects(context.Background(), s, killswitch.Steps(core.StackWordPress, o)) {
+		if se.Status != "off" {
+			t.Errorf("no presence: %s %s", se.ID, se.Status)
+		}
+	}
+}

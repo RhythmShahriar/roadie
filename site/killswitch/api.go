@@ -39,6 +39,9 @@ type Options struct {
 	// woocommerce_<id>_settings options. DataRules disables each one the
 	// gateway list doesn't know.
 	GatewayIDs []string
+	// Source is what the source holds, from pass 1, for plan; nil is
+	// unknown (see Presence).
+	Source *Presence
 	// AppKey makes one Laravel APP_KEY; nil is pseudo.AppKey. Tests pass a
 	// fixed one for golden files.
 	AppKey func() string

@@ -270,13 +270,31 @@ func (r *runner) run(ctx context.Context) error {
 			}
 		}
 	}
-	if r.mode == Plan {
-		r.planSteps(ctx, applied)
-	}
 	// The side effects the kill switch turns off, from each step's plan,
 	// so plan, the screen and --no-verify name them; verify's read-back
-	// replaces them.
+	// replaces them. plan plans again once pass 1 knows what the source
+	// holds (replan).
+	planned := r.mode == Plan
 	r.res.SideEffects = plannedEffects(ctx, r.to, applied)
+	replan := func(pr *killswitch.Presence) {
+		if !planned || r.to == nil || r.opts.NoKillSwitch {
+			return
+		}
+		steps := applied
+		if pr != nil {
+			o := ko
+			o.Source = pr
+			steps = nil
+			if r.part(partSideEffects) {
+				steps = append(steps, killSteps(stack, o)...)
+			}
+			if r.part(partNoindex) {
+				steps = append(steps, exposureSteps(o)...)
+			}
+		}
+		r.planSteps(ctx, steps)
+		r.res.SideEffects = plannedEffects(ctx, r.to, steps)
+	}
 
 	p := &pipeline{mode: r.mode, cfg: cfg, opts: r.opts, defs: defs, site: r.from, key: key,
 		progress: r.j.Progress, result: r.res, indexOnly: r.mode == Plan && r.opts.SchemaOnly,
@@ -356,6 +374,10 @@ func (r *runner) run(ctx context.Context) error {
 			if err := r.checkDialects(p.dialect, stack); err != nil {
 				return err
 			}
+			if p.presence != nil {
+				ko.GatewayIDs = p.gatewayIDs
+			}
+			replan(p.presence)
 		}
 		r.res.Source.Bytes = inputBytes(r.res.Input)
 		if r.j.To.Kind == core.DumpFile && r.mode != Plan {
@@ -371,6 +393,8 @@ func (r *runner) run(ctx context.Context) error {
 		if err := writeStart(ctx); err != nil {
 			return err
 		}
+	} else {
+		replan(nil)
 	}
 	r.res.Keys = append(r.res.Keys, r.fileKeys...)
 	r.fillEndpoints(ctx)
@@ -884,11 +908,17 @@ func mergeEffects(rules, readBack []core.SideEffect) []core.SideEffect {
 }
 
 // plannedEffects lists the side effects steps turn off, one per
-// side-effect step, with what the step does from its plan.
+// side-effect step, with what the step does from its plan. A step whose
+// side effect the source doesn't hold (killswitch.Absent, known to plan
+// after pass 1) is not-present, as the copy's read-back says.
 func plannedEffects(ctx context.Context, s core.Site, steps []core.Step) []core.SideEffect {
 	var out []core.SideEffect
 	for _, st := range steps {
 		if !strings.HasPrefix(st.ID(), "side-effect.") || s == nil {
+			continue
+		}
+		if how, ok := killswitch.Absent(ctx, st, s); ok {
+			out = append(out, core.SideEffect{ID: st.ID(), Status: "not-present", How: how})
 			continue
 		}
 		se := core.SideEffect{ID: st.ID(), Status: "off", How: "turned off"}

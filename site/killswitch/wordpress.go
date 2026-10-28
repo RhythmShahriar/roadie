@@ -19,6 +19,7 @@ import (
 	"github.com/RhythmShahriar/echo/connectors/wordpress"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/keys"
 	"github.com/RhythmShahriar/roadie/site/internal/wpdb"
 	"github.com/RhythmShahriar/roadie/site/wpconfig"
 )
@@ -45,6 +46,10 @@ type step struct {
 	plan  func(ctx context.Context, s core.Site) ([]core.PlannedEdit, error)
 	apply func(ctx context.Context, s core.Site) error
 	check func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error)
+	// missing tells, from Options.Source, that the source doesn't hold
+	// the side effect, with the read-back's words (see Absent); nil when
+	// the step can't tell.
+	missing func(ctx context.Context, s core.Site) (string, bool)
 }
 
 // keyFileStep is a step that changes the live keys of a config file and
@@ -96,9 +101,33 @@ func killErr(id, file string, err error, means string, s core.Site) error {
 		id, file, cause, means, s.Endpoint().Display)
 }
 
-// finding builds one finding at a file or an options row.
+// finding builds one finding at a file or an options row. Its title
+// starts with a capital, as every other finding's does, unless it starts
+// with a name such as wc_subscriptions_siteurl.
 func finding(id string, sev core.Severity, title, fix string, at core.Location) core.Finding {
-	return core.Finding{ID: id, Severity: sev, Title: title, Count: 1, Fix: fix, Locations: []core.LocationCount{{Location: at, Count: 1}}}
+	return core.Finding{ID: id, Severity: sev, Title: capital(title), Count: 1, Fix: fix, Locations: []core.LocationCount{{Location: at, Count: 1}}}
+}
+
+// capital upper-cases the first letter of a sentence whose first word
+// is a plain lower-case word; a name (a_b, a.b, wp-config.php) is kept.
+func capital(s string) string {
+	word, _, _ := strings.Cut(s, " ")
+	if word == "" || word[0] < 'a' || word[0] > 'z' || strings.ContainsAny(word, "_.-/0123456789") {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// prepareFix is the fix of a finding a kill-switch step's check makes:
+// prepare --only side-effects on the target, named as the run names it.
+func prepareFix(s core.Site) string {
+	where := "<staging>"
+	if s != nil {
+		if d := s.Endpoint().Display; d != "" {
+			where = d
+		}
+	}
+	return "rhythm-roadie prepare " + where + " --only side-effects"
 }
 
 func fileAt(line int) core.Location { return core.Location{File: "wp-config.php", Line: line} }
@@ -165,10 +194,10 @@ func wordpressSteps(o Options) []core.Step {
 		saltsStep(o),
 		mailStep(o),
 		schedulerStep(o),
-		jetpackStep(),
+		jetpackStep(o),
 		webhooksStep(o),
 		gatewaysStep(o),
-		automatewooStep(),
+		automatewooStep(o),
 	}
 	return steps
 }
@@ -204,7 +233,7 @@ func environmentStep() core.Step {
 		default:
 			se.Status, se.How = "on", "WP_ENVIRONMENT_TYPE isn't 'staging'"
 		}
-		return se, []core.Finding{finding(id, core.SeverityCritical, se.How, "rhythm-roadie prepare <staging> --only side-effects", fileAt(d.Line))}, nil
+		return se, []core.Finding{finding(id, core.SeverityCritical, se.How, prepareFix(s), fileAt(d.Line))}, nil
 	}}
 }
 
@@ -281,7 +310,7 @@ func subscriptionsStep(o Options) core.Step {
 		var out []core.Finding
 		if !hasHooks(ctx, s, hookDuplicateSite) {
 			se.Status, se.How = "on", "Subscriptions is present and nothing forces its staging mode"
-			out = append(out, finding(id, core.SeverityCritical, se.How, "rhythm-roadie prepare <staging> --only side-effects", core.Location{File: MuPluginPath}))
+			out = append(out, finding(id, core.SeverityCritical, se.How, prepareFix(s), core.Location{File: MuPluginPath}))
 		}
 		here := o.stagingURL()
 		if here == "" {
@@ -300,6 +329,14 @@ func subscriptionsStep(o Options) core.Step {
 			}
 		}
 		return se, out, nil
+	}
+	if o.Source != nil {
+		st.missing = func(ctx context.Context, s core.Site) (string, bool) {
+			if o.Source.option("wc_subscriptions_siteurl") || pluginOnDisk(ctx, s, "woocommerce-subscriptions") {
+				return "", false
+			}
+			return "WooCommerce Subscriptions isn't on this copy", true
+		}
 	}
 	if o.kept("subscriptions") {
 		st.plan = keptPlan(id, "subscriptions")
@@ -428,7 +465,7 @@ func keyStep(o Options) core.Step {
 		var out []core.Finding
 		for _, h := range live(f) {
 			se.Status, se.How = "on", "live keys are still defined in wp-config.php"
-			fd := finding(h.ID, h.Severity, "a live key is defined in wp-config.php", "rhythm-roadie prepare <staging> --only side-effects", fileAt(h.At.Line))
+			fd := finding(h.ID, h.Severity, "a live key is defined in wp-config.php", prepareFix(s), fileAt(h.At.Line))
 			fd.Examples = []string{h.Masked}
 			out = append(out, fd)
 		}
@@ -508,7 +545,14 @@ func mailStep(o Options) core.Step {
 			out = []core.PlannedEdit{{Step: id, What: "Echo connector not installed (side_effects.echo.install: false); roadie-staging.php blocks wp_mail instead"}}
 		}
 		for _, m := range o.mailers() {
-			out = append(out, core.PlannedEdit{Step: id, File: "options " + m.Option, What: m.MailerPath + " to " + m.DefaultMailer + ", credentials blanked"})
+			if !o.Source.option(m.Option) {
+				continue
+			}
+			to := m.MailerPath + " to " + m.DefaultMailer
+			if m.DefaultMailer == "" {
+				to = m.MailerPath + " cleared (the default PHP mailer)"
+			}
+			out = append(out, core.PlannedEdit{Step: id, File: "options " + m.Option, What: to + ", credentials blanked"})
 		}
 		out = append(out, core.PlannedEdit{Step: id, File: "php.ini", What: ManualPrefix + SendmailLine + " (the path of rhythm-echo on this host), so PHP's mail() reaches Echo too"})
 		return out, nil
@@ -551,13 +595,13 @@ func mailStep(o Options) core.Step {
 		case err == nil:
 			if sha256.Sum256(b) != sha256.Sum256(wordpress.Plugin()) {
 				out = append(out, finding(core.FindingSideEffectConnectorChange, core.SeverityHigh,
-					"the installed Echo connector differs from the one Roadie ships", "rhythm-roadie prepare <staging> --only side-effects", core.Location{File: EchoPluginPath}))
+					"the installed Echo connector differs from the one Roadie ships", prepareFix(s), core.Location{File: EchoPluginPath}))
 			}
 		case hasHooks(ctx, s, hookPreMail):
 			se.How, se.Undo = "no Echo connector; roadie-staging.php blocks wp_mail", "delete "+MuPluginPath
 		default:
 			se.Status, se.How = "on", "no Echo connector and nothing blocks wp_mail"
-			out = append(out, finding(id, core.SeverityCritical, se.How, "rhythm-roadie prepare <staging> --only side-effects", core.Location{File: EchoPluginPath}))
+			out = append(out, finding(id, core.SeverityCritical, se.How, prepareFix(s), core.Location{File: EchoPluginPath}))
 		}
 		ms := o.mailers()
 		if len(ms) == 0 {
@@ -587,7 +631,7 @@ func mailStep(o Options) core.Step {
 				if v[p] != "" {
 					se.Status, se.How = "on", "an SMTP or mail API plugin still sends with credentials"
 					out = append(out, finding(id, core.SeverityCritical, "the "+m.ID+" mailer still has credentials and sends past Echo",
-						"rhythm-roadie prepare <staging> --only side-effects", optionAt(ctx, s, m.Option, p)))
+						prepareFix(s), optionAt(ctx, s, m.Option, p)))
 					break
 				}
 			}
@@ -671,7 +715,7 @@ func schedulerStep(o Options) core.Step {
 		if pending == 0 {
 			return se, nil, nil
 		}
-		fd := finding(id, core.SeverityHigh, "Action Scheduler isn't paused and has pending actions", "rhythm-roadie prepare <staging> --only side-effects", core.Location{Table: wpdb.Prefix(ctx, s) + "actionscheduler_actions", Column: "status"})
+		fd := finding(id, core.SeverityHigh, "Action Scheduler isn't paused and has pending actions", prepareFix(s), core.Location{Table: wpdb.Prefix(ctx, s) + "actionscheduler_actions", Column: "status"})
 		fd.Count, fd.Locations[0].Count = pending, pending
 		fd.Detail = strconv.FormatInt(pending, 10) + " pending actions"
 		return se, []core.Finding{fd}, nil
@@ -681,14 +725,15 @@ func schedulerStep(o Options) core.Step {
 
 // jetpackStep is check only: the mu-plugin puts Jetpack offline and a
 // DataRule blanks its tokens.
-func jetpackStep() core.Step {
+func jetpackStep(o Options) core.Step {
 	id := core.FindingSideEffectJetpack
-	return &step{id: id,
+	st := &step{id: id,
 		plan: func(context.Context, core.Site) ([]core.PlannedEdit, error) {
-			return []core.PlannedEdit{
-				{Step: id, File: MuPluginPath, What: "jetpack_offline_mode returns true"},
-				{Step: id, File: "options jetpack_private_options", What: "blog and user tokens blanked"},
-			}, nil
+			out := []core.PlannedEdit{{Step: id, File: MuPluginPath, What: "jetpack_offline_mode returns true"}}
+			if o.Source.option("jetpack_private_options") {
+				out = append(out, core.PlannedEdit{Step: id, File: "options jetpack_private_options", What: "blog and user tokens blanked"})
+			}
+			return out, nil
 		},
 		check: func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
 			se := core.SideEffect{ID: id, Status: "off", How: "roadie-staging.php puts Jetpack in offline mode", Undo: "delete " + MuPluginPath + " and reconnect Jetpack"}
@@ -703,8 +748,17 @@ func jetpackStep() core.Step {
 				return se, nil, nil
 			}
 			se.Status, se.How = "on", "Jetpack is present and not in offline mode"
-			return se, []core.Finding{finding(id, core.SeverityMedium, se.How, "rhythm-roadie prepare <staging> --only side-effects", core.Location{File: MuPluginPath})}, nil
+			return se, []core.Finding{finding(id, core.SeverityMedium, se.How, prepareFix(s), core.Location{File: MuPluginPath})}, nil
 		}}
+	if o.Source != nil {
+		st.missing = func(ctx context.Context, s core.Site) (string, bool) {
+			if o.Source.option("jetpack_options") || pluginOnDisk(ctx, s, "jetpack") {
+				return "", false
+			}
+			return "Jetpack isn't on this copy", true
+		}
+	}
+	return st
 }
 
 // webhooksStep is check only: a DataRule pauses wc_webhooks.
@@ -714,6 +768,9 @@ func webhooksStep(o Options) core.Step {
 		plan: func(ctx context.Context, s core.Site) ([]core.PlannedEdit, error) {
 			if o.kept("webhooks") {
 				return keptPlan(id, "webhooks")(ctx, s)
+			}
+			if n, _ := o.Source.table("wc_webhooks"); o.Source != nil && n == 0 {
+				return nil, nil
 			}
 			return []core.PlannedEdit{{Step: id, File: "wc_webhooks", What: "status to paused, secret blanked"}}, nil
 		},
@@ -739,10 +796,18 @@ func webhooksStep(o Options) core.Step {
 				return se, nil, nil
 			}
 			se.Status, se.How = "on", strconv.FormatInt(active, 10)+" WooCommerce webhooks are active"
-			fd := finding(id, core.SeverityHigh, "active WooCommerce webhooks send this copy's orders to their endpoints", "rhythm-roadie prepare <staging> --only side-effects", core.Location{Table: table, Column: "status"})
+			fd := finding(id, core.SeverityHigh, "active WooCommerce webhooks send this copy's orders to their endpoints", prepareFix(s), core.Location{Table: table, Column: "status"})
 			fd.Count, fd.Locations[0].Count = active, active
 			return se, []core.Finding{fd}, nil
 		}}
+	if o.Source != nil {
+		st.missing = func(context.Context, core.Site) (string, bool) {
+			if n, _ := o.Source.table("wc_webhooks"); n > 0 {
+				return "", false
+			}
+			return "no WooCommerce webhooks", true
+		}
+	}
 	return withData(st, onlyData(st.check))
 }
 
@@ -787,6 +852,9 @@ func gatewaysStep(o Options) core.Step {
 			}
 			var out []core.PlannedEdit
 			for _, g := range o.gateways() {
+				if !o.Source.option(g.Option) {
+					continue
+				}
 				out = append(out, core.PlannedEdit{Step: id, File: "options " + g.Option, What: g.Name + " to test mode, live keys swapped or blanked"})
 			}
 			for _, u := range unknownGateways(o) {
@@ -810,7 +878,7 @@ func gatewaysStep(o Options) core.Step {
 			var out []core.Finding
 			bad := func(opt, leaf, title string) {
 				se.Status, se.How = "on", "a payment gateway can take real payments"
-				out = append(out, finding(id, core.SeverityCritical, title, "rhythm-roadie prepare <staging> --only side-effects", optionAt(ctx, s, opt, leaf)))
+				out = append(out, finding(id, core.SeverityCritical, title, prepareFix(s), optionAt(ctx, s, opt, leaf)))
 			}
 			dev := false
 			if f, err := readConfig(ctx, s); err == nil {
@@ -849,6 +917,16 @@ func gatewaysStep(o Options) core.Step {
 			}
 			return se, out, nil
 		}}
+	if o.Source != nil {
+		st.missing = func(context.Context, core.Site) (string, bool) {
+			for name := range o.Source.Options {
+				if GatewayOptionsMatch(name) || slices.ContainsFunc(o.gateways(), func(g keys.Gateway) bool { return g.Option == name }) {
+					return "", false
+				}
+			}
+			return "no WooCommerce gateways", true
+		}
+	}
 	// No data check: on a dump or a database, key.live-mode in the
 	// data scan reads the gateways, as Gateway.Mode does.
 	return st
@@ -877,10 +955,13 @@ func unknownGateways(o Options) []string {
 }
 
 // automatewooStep is check only: a DataRule truncates the queue.
-func automatewooStep() core.Step {
+func automatewooStep(o Options) core.Step {
 	id := core.FindingSideEffectAutomateWoo
 	st := &step{id: id,
 		plan: func(context.Context, core.Site) ([]core.PlannedEdit, error) {
+			if _, ok := o.Source.table("automatewoo_queue"); !ok {
+				return nil, nil
+			}
 			return []core.PlannedEdit{{Step: id, File: "automatewoo_queue", What: "queue truncated; workflows run through Action Scheduler, which is paused"}}, nil
 		},
 		check: func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
@@ -899,9 +980,17 @@ func automatewooStep() core.Step {
 				return se, nil, nil
 			}
 			se.Status, se.How = "on", strconv.FormatInt(n, 10)+" AutomateWoo workflows are queued"
-			fd := finding(id, core.SeverityHigh, "queued AutomateWoo workflows from production would send to real customers", "rhythm-roadie prepare <staging> --only side-effects", core.Location{Table: table})
+			fd := finding(id, core.SeverityHigh, "Queued AutomateWoo workflows from production would send to real customers", prepareFix(s), core.Location{Table: table})
 			fd.Count, fd.Locations[0].Count = n, n
 			return se, []core.Finding{fd}, nil
 		}}
+	if o.Source != nil {
+		st.missing = func(context.Context, core.Site) (string, bool) {
+			if _, ok := o.Source.table("automatewoo_queue"); ok {
+				return "", false
+			}
+			return "AutomateWoo isn't on this copy", true
+		}
+	}
 	return withData(st, onlyData(st.check))
 }

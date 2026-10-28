@@ -38,9 +38,6 @@ const WorkersLine = "Stop queue workers and the scheduler on this host: jobs fro
 // files (PRD 13.4).
 const DatabaseOnlyLine = "This target is a database only: Roadie can't install the Echo seal or edit config files. Turn mail and jobs off where the app runs."
 
-// fixSideEffects is the command that puts every switch back.
-const fixSideEffects = "rhythm-roadie prepare <staging> --only side-effects"
-
 // envFile is the Laravel .env file, relative to the site root.
 func (o Options) envFile() string {
 	if o.Cfg != nil {
@@ -199,7 +196,7 @@ func laravelEnvironmentStep(o Options) core.Step {
 		default:
 			se.Status, se.How = "on", "APP_ENV isn't staging"
 		}
-		return se, []core.Finding{finding(id, core.SeverityCritical, se.How, fixSideEffects, core.Location{File: rel, Line: p.Line})}, nil
+		return se, []core.Finding{finding(id, core.SeverityCritical, se.How, prepareFix(s), core.Location{File: rel, Line: p.Line})}, nil
 	}}
 }
 
@@ -320,7 +317,7 @@ func laravelMailStep(o Options) core.Step {
 		}
 		on := func(how string, p core.Pair) (core.SideEffect, []core.Finding, error) {
 			se.Status, se.How = "on", how
-			return se, []core.Finding{finding(id, core.SeverityCritical, how, fixSideEffects, core.Location{File: rel, Line: p.Line})}, nil
+			return se, []core.Finding{finding(id, core.SeverityCritical, how, prepareFix(s), core.Location{File: rel, Line: p.Line})}, nil
 		}
 		if p, ok := get("RHYTHM_ECHO_MODE"); ok && p.Value != "seal" {
 			return on("RHYTHM_ECHO_MODE is "+p.Value+", so Echo lets messages out", p)
@@ -425,7 +422,7 @@ func laravelQueueStep(o Options) core.Step {
 			if n == 0 {
 				return se, nil, nil
 			}
-			fd := finding(id, core.SeverityHigh, strconv.FormatInt(n, 10)+" queued jobs from production wait for a worker on this copy", fixSideEffects, core.Location{Table: table})
+			fd := finding(id, core.SeverityHigh, strconv.FormatInt(n, 10)+" queued jobs from production wait for a worker on this copy", prepareFix(s), core.Location{Table: table})
 			fd.Count, fd.Locations[0].Count = n, n
 			fd.Detail = se.How
 			return se, []core.Finding{fd}, nil
@@ -497,7 +494,7 @@ func laravelKeyStep(o Options) core.Step {
 		var out []core.Finding
 		for _, h := range live(f) {
 			se.Status, se.How = "on", "live keys are still in "+rel
-			fd := finding(h.ID, h.Severity, "a live key is set in "+rel, fixSideEffects, core.Location{File: rel, Line: h.At.Line})
+			fd := finding(h.ID, h.Severity, "a live key is set in "+rel, prepareFix(s), core.Location{File: rel, Line: h.At.Line})
 			fd.Examples = []string{h.Masked}
 			out = append(out, fd)
 		}
