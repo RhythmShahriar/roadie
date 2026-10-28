@@ -139,7 +139,8 @@
         ],
         "examples": [
           "sk_l•••••"
-        ]
+        ],
+        "fix": "Swap it for a test key or blank it: rhythm-roadie prepare \u003cstaging\u003e --only keys, or copy again for a dump (rhythm-roadie explain key.stripe-live)."
       },
       {
         "id": "config.environment",
@@ -152,7 +153,8 @@
             "line": 41,
             "count": 1
           }
-        ]
+        ],
+        "fix": "See rhythm-roadie explain config.environment."
       }
     ],
     "checks": [
@@ -170,7 +172,7 @@
         "id": "config.environment",
         "status": "warn",
         "checked": 1,
-        "detail": "1 hit under --fail-on high"
+        "detail": "1 finding below --fail-on high (config.environment)"
       },
       {
         "id": "keys",

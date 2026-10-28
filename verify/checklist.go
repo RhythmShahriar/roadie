@@ -70,7 +70,8 @@ func (r *run) skipReason(id string) string {
 // checks lists one core.Check per detector and site check, sorted by ID:
 // fail when a finding of the check is at or above --fail-on (low when
 // --fail-on is none), warn when it has findings below that, pass when
-// it ran without any, skip with the reason when it didn't run. Checked counts the rows, files, pages or calls it
+// it ran without any, skip with the reason when it didn't run or ran and
+// couldn't tell the state. Checked counts the rows, files, pages or calls it
 // looked at. Hidden findings don't fail a check.
 func (r *run) checks() []core.Check {
 	listed := map[string]bool{}
@@ -133,10 +134,14 @@ func (r *run) checks() []core.Check {
 		c := core.Check{ID: id, Status: "pass", Checked: n, Detail: r.note[id]}
 		if hits, all := r.hits(id); hits > 0 {
 			c.Status = "fail"
-			c.Detail = fmt.Sprintf("%d %s", hits, plural(hits, "hit", "hits"))
+			c.Detail = fmt.Sprintf("%d %s (%s)", hits, plural(hits, "finding", "findings"), id)
 		} else if all > 0 {
 			c.Status = "warn"
-			c.Detail = fmt.Sprintf("%d %s under --fail-on %s", all, plural(all, "hit", "hits"), r.j.Opts.FailOn)
+			c.Detail = fmt.Sprintf("%d %s below --fail-on %s (%s)", all, plural(all, "finding", "findings"), r.j.Opts.FailOn, id)
+		} else if r.unknown[id] {
+			// It ran and couldn't tell the state: not a pass.
+			c.Status = "skip"
+			c.Detail = cmp.Or(c.Detail, "status unknown")
 		}
 		out = append(out, c)
 	}

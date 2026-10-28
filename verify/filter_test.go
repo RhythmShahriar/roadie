@@ -232,7 +232,7 @@ func TestChecksListIsStableAndSorted(t *testing.T) {
 			t.Errorf("%s: %+v, want %s", id, status[id], want)
 		}
 	}
-	if c := status[core.FindingPIIEmail]; c.Checked != 3 || c.Detail != "3 hits" {
+	if c := status[core.FindingPIIEmail]; c.Checked != 3 || c.Detail != "3 findings (pii.email)" {
 		t.Errorf("pii.email %+v", c)
 	}
 	if c := status[core.FindingPIIPhone]; c.Detail != "left out with --skip phones" || c.Checked != 0 {
@@ -261,7 +261,7 @@ func TestChecksListIsStableAndSorted(t *testing.T) {
 	// pass as if there were none.
 	res = runJob(t, Job{Source: source(people()), Opts: Options{FailOn: core.SeverityCritical}})
 	for _, c := range res.Checks {
-		if c.ID == core.FindingPIIEmail && (c.Status != "warn" || c.Detail != "2 hits under --fail-on critical") {
+		if c.ID == core.FindingPIIEmail && (c.Status != "warn" || c.Detail != "2 findings below --fail-on critical (pii.email)") {
 			t.Errorf("--fail-on critical: %+v", c)
 		}
 	}

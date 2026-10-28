@@ -815,6 +815,11 @@ func (r *runner) confirmNames(ctx context.Context, withSite bool) (names []strin
 		what = "the database name"
 		if id, err := r.to.DBIdentity(ctx); err == nil {
 			add(id.Name)
+			if to.Driver == core.SQLite {
+				// A SQLite database is a file: its path or its name.
+				what = "the file path or its name"
+				add(filepath.Base(id.Name))
+			}
 		}
 	} else {
 		what = "the site's host"

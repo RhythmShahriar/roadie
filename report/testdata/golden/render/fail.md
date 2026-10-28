@@ -20,9 +20,9 @@
 
 ### Findings
 
-- **CRITICAL** `key.stripe-live` Stripe live key: wp\_options.option\_value option\_name=woocommerce\_stripe\_settings → serialized:secret\_key 1 (e.g. `sk_l•••••`)
+- **CRITICAL** `key.stripe-live` Stripe live key: wp\_options.option\_value option\_name=woocommerce\_stripe\_settings → serialized:secret\_key 1 (e.g. `sk_l•••••`). Fix: `Swap it for a test key or blank it: rhythm-roadie prepare <staging> --only keys, or copy again for a dump (rhythm-roadie explain key.stripe-live).`
 - **HIGH** `pii.email` 3 real-looking emails: wp\_users.user\_email ID=42 2 · wp\_postmeta.meta\_value meta\_key=\_billing\_email 1 (e.g. `ad•••@gm•••.com`). Fix: `rhythm-roadie prepare staging.sql.gz`
-- **MEDIUM** `config.environment` WP\_ENVIRONMENT\_TYPE is unset: wp-config.php line 41 1
+- **MEDIUM** `config.environment` WP\_ENVIRONMENT\_TYPE is unset: wp-config.php line 41 1. Fix: `See rhythm-roadie explain config.environment.`
 - `wp_loyalty_members.email` looks personal (92% of sampled values) and no rule covers it
 
 <details><summary>What changed (1 key)</summary>

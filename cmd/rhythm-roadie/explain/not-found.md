@@ -7,4 +7,5 @@ Why it matters: Roadie stops before it reads or writes anything; the target is
 untouched.
 
 By hand: Check the path for a typo and that it is relative to the folder you
-run Roadie from, or give it in full.
+run Roadie from, or give it in full. Roadie never creates a SQLite database:
+for a new SQLite target create the empty file first (touch <path>).

@@ -106,7 +106,7 @@ var prdErrors = map[string]string{
 	core.ErrConfirmTarget:         "confirm-target: there's no terminal to confirm on. Pass --confirm-target staging.shop.test (the site's host) to go on.",
 	core.ErrDumpTruncated:         `dump-truncated: prod.sql.gz ends inside table wp_postmeta at 1.7 GB, with no "Dump completed" line. Export it again; the target is untouched.`,
 	core.ErrDumpFormat:            "dump-format: prod.dump is a pg_dump custom-format archive. Roadie reads plain SQL: pg_dump -Fp, mysqldump, mariadb-dump or wp db export.",
-	core.ErrDialectMismatch:       "dialect-mismatch: prod.sql is a MySQL dump and --to is a PostgreSQL database. Roadie copies MySQL to MySQL or MariaDB and PostgreSQL to PostgreSQL.",
+	core.ErrDialectMismatch:       "dialect-mismatch: prod.sql is a MySQL dump and --to is a PostgreSQL database. Roadie copies MySQL to MySQL or MariaDB, PostgreSQL to PostgreSQL and SQLite to SQLite.",
 	core.ErrDumpRefused:           "dump-refused: prod.sql line 4,120 holds a CREATE TRIGGER statement, which could run code on the staging database. Export with --skip-triggers, or pass --keep-routines to keep it without its DEFINER.",
 	core.ErrDumpBomb:              "dump-bomb: prod.sql.gz grew past 20 times its size (40 GB) while reading. If it's real, pass --max-output-ratio 50; the target is untouched.",
 	core.ErrValueTooLarge:         "value-too-large: a value in wp_options at line 88 is over 256 MiB. Pass --max-value 1GiB if it's real; the target is untouched.",
@@ -363,11 +363,17 @@ func TestWorkflowEscape(t *testing.T) {
 func TestOutputs(t *testing.T) {
 	t.Chdir(t.TempDir())
 	fx := useFixture(t, copyPass(), nil, nil)
-	out, _, code := runCmd(t, "copy", args(copyArgs, "--json", "-o", "a.json", "-o", "a.md")...)
+	out, _, code := runCmd(t, "copy", args(copyArgs, "--json", "-o", "a.html", "-o", "a.md")...)
 	if code != 0 || !strings.HasPrefix(out, "{\n  \"schema\": \"rhythm-roadie/v1\"") || strings.Contains(out, "PASS") {
 		t.Errorf("--json stdout: %s", out)
 	}
-	for _, f := range []string{"a.json", "a.md"} {
+	// A format flag with an -o file of the same format writes only the
+	// file: stdout keeps the live view.
+	out, _, code = runCmd(t, "copy", args(copyArgs, "--json", "-o", "a.json")...)
+	if code != 0 || strings.Contains(out, "\"schema\"") || !strings.Contains(out, "PASS") {
+		t.Errorf("--json -o a.json stdout: %s", out)
+	}
+	for _, f := range []string{"a.json", "a.md", "a.html"} {
 		st, err := os.Stat(f)
 		if err != nil || st.Size() == 0 {
 			t.Errorf("-o %s: %v", f, err)
@@ -375,8 +381,8 @@ func TestOutputs(t *testing.T) {
 			t.Errorf("-o %s mode %v, want 0600", f, st.Mode().Perm())
 		}
 	}
-	if len(fx.saved) != 1 {
-		t.Errorf("copy saved %d report folders", len(fx.saved))
+	if len(fx.saved) != 2 {
+		t.Errorf("two copies saved %d report folders", len(fx.saved))
 	}
 	// plan writes only what -o asks for.
 	fx = useFixture(t, planResult(), nil, nil)
@@ -516,7 +522,7 @@ func TestProgressPlain(t *testing.T) {
 	p.Phase("verify", 0)
 	p.Phase("verify", 0) // the engine's and verify's own: one line
 	p.Done()
-	if got := b.String(); got != "Indexing 2.4 GB\nspooling the stream (encrypted)\nStreaming\nVerifying\n" {
+	if got := b.String(); got != "spooling the stream (encrypted)\n" {
 		t.Errorf("plain progress %q", got)
 	}
 	var q bytes.Buffer

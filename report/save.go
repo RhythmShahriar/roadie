@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/RhythmShahriar/rhythm/kit/cache"
@@ -20,18 +21,21 @@ import (
 	"github.com/RhythmShahriar/roadie/core"
 )
 
-// stampLayout names a report folder by its run's start, in UTC.
-const stampLayout = "2006-01-02T15-04-05"
+// stampLayout names a report folder by its run's start, in UTC: the Z
+// says so.
+const stampLayout = "2006-01-02T15-04-05Z"
 
 // now is the clock Save falls back to when a report has no start time;
 // tests replace it.
 var now = time.Now
 
-// Save writes report.json and report.html under dir's .roadie/reports/<ts>/
-// and returns the folder.
+// Save writes report.json and report.html under dir's
+// .roadie/reports/<ts>-<kind>-<target>/ and returns the folder.
 //
-// <ts> is the run's start in UTC (2006-01-02T15-04-05), with -2, -3 ...
-// added when two runs start in the same second. The folders are 0700 and
+// <ts> is the run's start in UTC (2006-01-02T15-04-05Z), <kind> copy,
+// prepare, verify or plan and <target> the last part of the target's
+// name (staging.sql, staging), with -2, -3 ... added when two such runs
+// start in the same second. The folders are 0700 and
 // the files 0600, written atomically through kit's cache.WriteFile:
 // reports describe production. When dir's folder can't be written, the
 // report goes to <config.CacheDir("roadie")>/reports/<ts>/ instead.
@@ -50,6 +54,14 @@ func Save(dir string, e *core.Envelope, html []byte) (string, error) {
 		}
 	}
 	name := stamp.Format(stampLayout)
+	if e.Kind != "" {
+		name += "-" + slug(e.Kind)
+	}
+	if d, err := ParseData(e); err == nil {
+		if t := slug(targetName(d.Target.Display)); t != "" {
+			name += "-" + t
+		}
+	}
 	folder, err := saveIn(filepath.Join(dir, ".roadie", "reports"), name, js, html)
 	if err == nil {
 		return folder, nil
@@ -63,6 +75,42 @@ func Save(dir string, e *core.Envelope, html []byte) (string, error) {
 		return "", errors.Join(err, ferr)
 	}
 	return folder, nil
+}
+
+// targetName is the last part of a target's name: the file of a path,
+// the database of a DSN, the folder of an ssh target. A query or
+// credentials never reach it.
+func targetName(display string) string {
+	if i := strings.IndexAny(display, "?#"); i >= 0 {
+		display = display[:i]
+	}
+	if _, rest, ok := strings.Cut(display, "://"); ok {
+		display = rest
+		if at := strings.LastIndex(display, "@"); at >= 0 {
+			display = display[at+1:]
+		}
+	}
+	display = strings.TrimRight(display, `/\`)
+	if i := strings.LastIndexAny(display, `/\`); i >= 0 {
+		display = display[i+1:]
+	}
+	return display
+}
+
+// slug keeps letters, digits, dots, underscores and dashes of s, turns
+// anything else into a dash and cuts it to 40 bytes, so it is safe in a
+// folder name on every OS.
+func slug(s string) string {
+	b := make([]byte, 0, len(s))
+	for i := 0; i < len(s) && len(b) < 40; i++ {
+		switch c := s[i]; {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '.', c == '_', c == '-':
+			b = append(b, c)
+		default:
+			b = append(b, '-')
+		}
+	}
+	return strings.Trim(string(b), ".-")
 }
 
 // saveIn makes a new folder under root and writes both files into it.

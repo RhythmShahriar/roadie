@@ -110,7 +110,8 @@ var checkLabels = map[string]string{
 
 // checkNames name verify's checks without a verdict, for a check that
 // has findings: "No real-looking emails" above its own findings would
-// read as reassurance.
+// read as reassurance. A label that states what the site should do
+// ("Asks for a password") stays the same in every state.
 var checkNames = map[string]string{
 	core.FindingExactSurvivors:           "Pseudonymised values",
 	core.FindingPIIEmail:                 "Real-looking emails",
@@ -125,7 +126,7 @@ var checkNames = map[string]string{
 	core.FindingURLProductionSiteURL:     "Site URL",
 	"side-effects":                       "Side effects",
 	core.FindingConfigEnvironment:        "Environment",
-	core.FindingSearchIndexable:          "Search engines",
+	core.FindingSearchIndexable:          "Kept out of search engines",
 	core.FindingUploadsPersonal:          "Files in uploads",
 	core.FindingUncoveredColumn:          "Personal-looking columns",
 	core.FindingDataEncrypted:            "Encrypted values",
@@ -136,7 +137,7 @@ var checkNames = map[string]string{
 	core.FindingKeyUnknownEnv:            "Provider keys of unknown mode",
 	core.FindingConfigPointsAtProduction: "Points at production",
 	core.FindingConfigSalts:              "Salts and APP_KEY",
-	core.FindingAuthNone:                 "No password",
+	core.FindingAuthNone:                 "Asks for a password",
 	core.FindingSoundcheckFailed:         "Soundcheck",
 	core.FindingSideEffectNotApplicable:  "Database only",
 }

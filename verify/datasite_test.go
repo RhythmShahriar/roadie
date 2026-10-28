@@ -55,7 +55,9 @@ func TestRunDataStepsOnDump(t *testing.T) {
 	if se := sideEffect(res, core.FindingSideEffectActionScheduler); se.Status != "unknown" || se.How == "" || se.How[:2] != "2 " {
 		t.Errorf("pending actions %+v", se)
 	}
-	if c := checkByID(res, core.FindingSideEffectActionScheduler); c.Status != "pass" || c.Detail == "" {
+	// Unknown is not a pass: the check is a skip with the reason, as
+	// the side effects table says unknown.
+	if c := checkByID(res, core.FindingSideEffectActionScheduler); c.Status != "skip" || c.Detail == "" {
 		t.Errorf("action scheduler check %+v", c)
 	}
 	if se := sideEffect(res, core.FindingSideEffectSubscriptions); se.Status != "off" {

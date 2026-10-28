@@ -9,9 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -176,6 +178,11 @@ func sqliteDSN(e core.Endpoint, m Mode) (string, error) {
 	p, err := filepath.Abs(e.Path)
 	if err != nil {
 		return "", err
+	}
+	if _, err := os.Stat(p); errors.Is(err, fs.ErrNotExist) {
+		// The driver would say only "unable to open database file".
+		return "", core.Errorf(core.ErrNotFound, 2,
+			"not-found: the SQLite file %s doesn't exist. Roadie never creates one: create it (touch %s) or check the path.", p, p)
 	}
 	p = filepath.ToSlash(p)
 	if !strings.HasPrefix(p, "/") {

@@ -76,6 +76,9 @@ type run struct {
 	why     map[string]string
 	// note is a check's detail when it passes, such as a narrower scope.
 	note map[string]string
+	// unknown marks the checks that ran and couldn't tell the state: the
+	// list shows them as skipped, as the side effects table does.
+	unknown map[string]bool
 	// configs are the site's config files, read before the scan.
 	configs map[string]configRead
 	// unparsed counts serialized-looking values that didn't parse, by
@@ -129,7 +132,7 @@ func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 	}
 	defer closeAll()
 	r := &run{j: j, skip: newSkipper(j.Opts.Skip), site: st, keySeen: map[string]bool{}, start: time.Now(),
-		checked: map[string]int64{}, why: map[string]string{}, note: map[string]string{}}
+		checked: map[string]int64{}, why: map[string]string{}, note: map[string]string{}, unknown: map[string]bool{}}
 	if j.Opts.Clock != nil {
 		r.start = j.Opts.Clock()
 	}

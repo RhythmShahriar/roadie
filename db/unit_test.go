@@ -8,6 +8,8 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -74,16 +76,32 @@ func TestPGConfigPassword(t *testing.T) {
 }
 
 func TestSQLiteDSN(t *testing.T) {
-	ro, err := sqliteDSN(core.Endpoint{Path: "/srv/app/db.sqlite"}, ReadOnly)
-	if err != nil || !strings.HasPrefix(ro, "file:///srv/app/db.sqlite?") || !strings.Contains(ro, "mode=ro") || !strings.Contains(ro, "query_only") {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "db.sqlite")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.ToSlash(file)
+	if !strings.HasPrefix(want, "/") {
+		want = "/" + want // C:/x is the URI path /C:/x
+	}
+	ro, err := sqliteDSN(core.Endpoint{Path: file}, ReadOnly)
+	if err != nil || !strings.HasPrefix(ro, "file://"+want+"?") || !strings.Contains(ro, "mode=ro") || !strings.Contains(ro, "query_only") {
 		t.Fatalf("read-only DSN %q %v", ro, err)
 	}
-	rw, err := sqliteDSN(core.Endpoint{Path: "/srv/app/db.sqlite"}, ReadWrite)
+	rw, err := sqliteDSN(core.Endpoint{Path: file}, ReadWrite)
 	if err != nil || !strings.Contains(rw, "mode=rw") || strings.Contains(rw, "query_only") {
 		t.Fatalf("read-write DSN %q %v", rw, err)
 	}
 	if _, err := sqliteDSN(core.Endpoint{}, ReadOnly); err == nil {
 		t.Fatal("an empty path was accepted")
+	}
+	// A missing file is not-found with the way out, not the driver's
+	// "unable to open database file".
+	_, err = sqliteDSN(core.Endpoint{Path: filepath.Join(dir, "new.sqlite")}, ReadWrite)
+	var ce *core.Error
+	if !errors.As(err, &ce) || ce.Code != core.ErrNotFound || ce.Exit != 2 || !strings.Contains(ce.Msg, "create it (touch ") {
+		t.Fatalf("missing file: %v", err)
 	}
 }
 

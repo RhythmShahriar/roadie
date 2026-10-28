@@ -38,6 +38,9 @@ func runVerify(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 		return err
 	}
 	out := newOutputs(p, stdout, stderr, cfg, cfgPath, true)
+	if err := out.checkSigner(); err != nil {
+		return err
+	}
 	vo := setupColor(&p.f.g, dep.stdoutTerminal(), dep.env)
 	v := &view{w: io.Discard, o: vo}
 	if out.live() {
@@ -81,6 +84,10 @@ func runVerify(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 		bar.Done()
 		if r.Verify != nil {
 			r.Input = r.Verify.Input
+			if in := r.Input; in != nil && in.Kind == "sha256-file" && ej.To.Kind == core.DumpFile {
+				// data.target.bytes: the size of the dump verify read.
+				r.Target.Bytes = in.Bytes
+			}
 		}
 	}
 	r.Duration = dep.now().Sub(started)

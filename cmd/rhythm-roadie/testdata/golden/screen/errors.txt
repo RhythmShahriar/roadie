@@ -32,7 +32,7 @@ Target: /var/www/staging
 
 STOPPED   dialect-mismatch; the target is untouched
 
-dialect-mismatch: prod.sql is a MySQL dump and --to is a PostgreSQL database. Roadie copies MySQL to MySQL or MariaDB and PostgreSQL to PostgreSQL.
+dialect-mismatch: prod.sql is a MySQL dump and --to is a PostgreSQL database. Roadie copies MySQL to MySQL or MariaDB, PostgreSQL to PostgreSQL and SQLite to SQLite.
 
 rhythm-roadie explain dialect-mismatch
 --- exit 2
@@ -429,7 +429,7 @@ STOPPED   uncovered; the target is untouched
 
 uncovered: 2 columns look personal and no rule covers them: wp_loyalty_members.email, wp_loyalty_members.phone. Add them under columns: (rhythm-roadie explain uncovered-column), or --allow-uncovered to copy and list them as findings. The target is untouched.
 
-rhythm-roadie explain uncovered
+rhythm-roadie explain uncovered-column
 --- exit 1
 
 $ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain

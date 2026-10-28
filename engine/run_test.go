@@ -1448,6 +1448,8 @@ func TestCheckDialects(t *testing.T) {
 		{"sqlite to sqlite", core.SQLite, core.Endpoint{Kind: core.DSN, Driver: core.SQLite}, false},
 		{"mysql to dump", core.MySQL, core.Endpoint{Kind: core.DumpFile, Path: "out.sql"}, false},
 		{"postgres to mysql", core.Postgres, core.Endpoint{Kind: core.DSN, Driver: core.MySQL}, true},
+		{"mysql to sqlite", core.MySQL, core.Endpoint{Kind: core.DSN, Driver: core.SQLite}, true},
+		{"sqlite to mysql", core.SQLite, core.Endpoint{Kind: core.DSN, Driver: core.MySQL}, true},
 	} {
 		r := &runner{j: Job{From: core.Endpoint{Kind: core.DumpFile, Display: "prod"}, To: c.to}}
 		err := r.checkDialects(c.source, "")
@@ -1455,7 +1457,7 @@ func TestCheckDialects(t *testing.T) {
 		if got := errors.As(err, &ce) && ce.Code == core.ErrDialectMismatch; got != c.stop {
 			t.Errorf("%s: %v", c.name, err)
 		}
-		if c.stop && c.source == core.SQLite && !strings.Contains(err.Error(), "--to sqlite:///") {
+		if c.stop && c.source == core.SQLite && c.to.Kind != core.DSN && !strings.Contains(err.Error(), "--to sqlite:///") {
 			t.Errorf("%s: no next step in %q", c.name, err)
 		}
 	}

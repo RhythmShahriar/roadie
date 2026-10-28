@@ -45,17 +45,32 @@ var dialectNames = map[core.Dialect]string{
 
 // checkDialect is CheckDialect.
 func checkDialect(name string, from, to core.Dialect, db bool) error {
-	pg := func(d core.Dialect) bool { return d == core.Postgres }
-	if from == "" || to == "" || pg(from) == pg(to) {
+	if from == "" || to == "" || dialectFamily(from) == dialectFamily(to) {
 		return nil
+	}
+	src := "dump"
+	if from == core.SQLite {
+		src = "database"
 	}
 	what := "dump"
 	if db {
 		what = "database"
 	}
 	return core.Errorf(core.ErrDialectMismatch, 2,
-		"dialect-mismatch: %s is a %s dump and --to is a %s %s. Roadie copies MySQL to MySQL or MariaDB and PostgreSQL to PostgreSQL.",
-		name, dialectNames[from], dialectNames[to], what)
+		"dialect-mismatch: %s is a %s %s and --to is a %s %s. %s",
+		name, dialectNames[from], src, dialectNames[to], what, dialectRule)
+}
+
+// dialectRule says which copies Roadie makes, for dialect-mismatch.
+const dialectRule = "Roadie copies MySQL to MySQL or MariaDB, PostgreSQL to PostgreSQL and SQLite to SQLite."
+
+// dialectFamily groups the dialects that copy to each other: MySQL and
+// MariaDB are one family.
+func dialectFamily(d core.Dialect) core.Dialect {
+	if d == core.MariaDB {
+		return core.MySQL
+	}
+	return d
 }
 
 // encoder is the dialect writer under a sink.

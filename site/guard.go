@@ -387,9 +387,14 @@ func readSiteURL(ctx context.Context, s core.Site) (string, error) {
 // reached. Only the network error is quoted: it names the host and port,
 // never the password.
 func unreachableErr(s core.Site, err error) error {
+	where := "DB_HOST"
+	if s.Endpoint().Kind == core.DSN {
+		// A DSN has no wp-config.php or .env to hold DB_HOST.
+		where = "the host and port in the DSN"
+	}
 	return core.Errorf(core.ErrUnreachable, 3,
-		"unreachable: the database of %s: %v. Check that the database is running and reachable from here; then check DB_HOST.",
-		s.Endpoint().Display, err)
+		"unreachable: the database of %s: %v. Check that the database is running and reachable from here; then check %s.",
+		s.Endpoint().Display, err, where)
 }
 
 // printableURL drops control and format characters (escape sequences,

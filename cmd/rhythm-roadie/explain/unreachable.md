@@ -8,7 +8,7 @@ is untouched unless the message says otherwise.
 
 By hand: Check that the database is running and reachable from this machine
 (a firewall, a VPN, an SSH tunnel), then the host and port in the DSN or the
-site's config.
+site's config (DB_HOST in wp-config.php or .env).
 
 A server that answers but refuses the connection (an unknown database, a wrong
 password, a user without rights) stops with this code too: check the database

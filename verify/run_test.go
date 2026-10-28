@@ -463,7 +463,7 @@ func TestRunEncrypted(t *testing.T) {
 		t.Errorf("data.encrypted check %+v", c)
 	}
 	res = runJob(t, Job{Source: source(batch(table("users", "id", "ssn"), []string{"1", payload})), Opts: Options{FailOn: core.SeverityInfo}})
-	if c := checkByID(res, core.FindingDataEncrypted); c.Status != "fail" || c.Detail != "1 hit" {
+	if c := checkByID(res, core.FindingDataEncrypted); c.Status != "fail" || c.Detail != "1 finding (data.encrypted)" {
 		t.Errorf("data.encrypted check at --fail-on info %+v", c)
 	}
 }
@@ -705,7 +705,7 @@ func TestRunSteps(t *testing.T) {
 	if c := checkByID(res, core.FindingSideEffectCron); c.Status != "fail" || c.Checked != 1 {
 		t.Errorf("cron check %+v", c)
 	}
-	if c := checkByID(res, core.FindingSideEffectWebhooks); c.Status != "pass" || c.Checked != 1 {
+	if c := checkByID(res, core.FindingSideEffectWebhooks); c.Status != "skip" || c.Detail != "the check failed: no table" {
 		t.Errorf("webhooks check %+v", c)
 	}
 	if c := checkByID(res, core.FindingUploadsPersonal); c.Status != "pass" || c.Checked == 0 {

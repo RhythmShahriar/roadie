@@ -200,13 +200,19 @@ func TestCheckDialect(t *testing.T) {
 	err := CheckDialect("prod.sql", core.MySQL, core.Postgres, true)
 	var ce *core.Error
 	if !errors.As(err, &ce) || ce.Code != core.ErrDialectMismatch || ce.Exit != 2 ||
-		ce.Msg != "dialect-mismatch: prod.sql is a MySQL dump and --to is a PostgreSQL database. Roadie copies MySQL to MySQL or MariaDB and PostgreSQL to PostgreSQL." {
+		ce.Msg != "dialect-mismatch: prod.sql is a MySQL dump and --to is a PostgreSQL database. Roadie copies MySQL to MySQL or MariaDB, PostgreSQL to PostgreSQL and SQLite to SQLite." {
 		t.Errorf("err = %v", err)
 	}
 	if err := CheckDialect("app.sql", core.Postgres, core.MariaDB, false); err == nil || !strings.Contains(err.Error(), "is a PostgreSQL dump and --to is a MariaDB dump.") {
 		t.Errorf("err = %v", err)
 	}
-	for _, c := range [][2]core.Dialect{{core.MySQL, core.MariaDB}, {core.MariaDB, core.MySQL}, {core.Postgres, core.Postgres}, {"", core.Postgres}} {
+	if err := CheckDialect("shop.sql", core.MySQL, core.SQLite, true); err == nil || !strings.Contains(err.Error(), "is a MySQL dump and --to is a SQLite database.") {
+		t.Errorf("mysql to sqlite: %v", err)
+	}
+	if err := CheckDialect("app.sqlite", core.SQLite, core.MariaDB, true); err == nil || !strings.Contains(err.Error(), "is a SQLite database and --to is a MariaDB database.") {
+		t.Errorf("sqlite to mariadb: %v", err)
+	}
+	for _, c := range [][2]core.Dialect{{core.MySQL, core.MariaDB}, {core.MariaDB, core.MySQL}, {core.Postgres, core.Postgres}, {core.SQLite, core.SQLite}, {"", core.Postgres}} {
 		if err := CheckDialect("x.sql", c[0], c[1], true); err != nil {
 			t.Errorf("%s to %s: %v", c[0], c[1], err)
 		}

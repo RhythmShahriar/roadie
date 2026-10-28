@@ -69,13 +69,13 @@ type WriterOptions struct {
 	KeepRoutines bool
 	ExpectBytes  int64 // for the free-disk check; 0 = unknown
 	// Source is the dialect of the dump being copied, when known. A
-	// PostgreSQL dump to a MySQL or MariaDB target (or the other way)
+	// dump to a target of another dialect (MySQL and MariaDB are one)
 	// gives dialect-mismatch when the sink is made.
 	Source core.Dialect
 }
 
-// CheckDialect refuses a copy between PostgreSQL and MySQL or MariaDB
-// with dialect-mismatch (exit 2). name is the dump's file name, from
+// CheckDialect refuses a copy between two of PostgreSQL, SQLite and
+// MySQL or MariaDB with dialect-mismatch (exit 2). name is the dump's file name, from
 // and to the dialects of the dump and the target, db whether --to is a
 // database rather than a dump file. MySQL and MariaDB copy to each
 // other; an empty dialect is not checked.

@@ -15,7 +15,7 @@ import (
 
 // progress shows the engine's progress (core.Progress). On a terminal it
 // redraws two lines, the PRD 10.2 bar and the current table, at most ten
-// times a second; elsewhere it prints one line per phase. It also keeps
+// times a second; elsewhere it prints only its notes. It also keeps
 // each phase's duration for --debug.
 type progress struct {
 	mu       sync.Mutex
@@ -76,11 +76,8 @@ func (p *progress) Phase(name string, total int64) {
 		return
 	}
 	if !p.terminal {
-		line := phaseName(name)
-		if total > 0 {
-			line += " " + size(total)
-		}
-		fmt.Fprintln(p.w, line)
+		// Plain output (CI, a pipe) gets no phase lines: they are noise
+		// in a log and in anything that reads stdout.
 		return
 	}
 	p.draw(now)

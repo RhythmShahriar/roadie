@@ -15,7 +15,8 @@ Output:
       --junit                JUnit XML for CI test views (verify only)
   -o, --output <file>        write the report to a file (format from the extension:
                              .json .md .html .sarif .xml), keep the live view;
-                             repeat it for several files
+                             repeat it for several files. With a file of the same
+                             format, --json, --md and the others write only the file
       --open                 open the HTML report when done
   -q, --quiet                results only
       --plain                no color, boxes or glyphs (screen readers, logs)
@@ -30,9 +31,13 @@ Settings:
 
 Exit codes (as in Tuner, Soundcheck and Echo):
   0    ok: done and verify found nothing at or above --fail-on
-  1    findings: verify found something at or above --fail-on, plan would stop,
-       or a report's signature doesn't match
-  2    usage error: a wrong command line or a bad .roadie/config.yaml
+  1    findings: verify found something at or above --fail-on, a copy stopped on
+       uncovered columns, plan --fail-on would stop, or report check found an
+       edited report, another input or another key
+  2    usage error: a wrong command line, a bad .roadie/config.yaml, a signing
+       key that can't be read, or a target to confirm with no terminal
+       (pass --confirm-target)
   3    couldn't run: source or target unreachable, a dump that ends early, a
-       target refused as production, nothing to scan
+       target refused as production, nothing to scan, an incomplete verify,
+       an unsigned report (report check)
   130  interrupted

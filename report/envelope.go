@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
@@ -91,7 +92,7 @@ func buildData(r *core.Result) *Data {
 		Uncovered:           rates(r.Uncovered),
 		Keys:                []KeyData{},
 		SideEffects:         []SideEffect{},
-		Findings:            nonNil(r.AllFindings()),
+		Findings:            withFix(nonNil(r.AllFindings())),
 		Checks:              []CheckData{},
 		RemoteCommands:      nonNil(r.RemoteCommands),
 		NotCovered:          notCoveredList(r.NotCovered),
@@ -198,6 +199,24 @@ func rates(us []core.Uncovered) []ColumnRate {
 		out = append(out, ColumnRate(u))
 	}
 	return out
+}
+
+// withFix fills the fix its detector left empty of each finding of low
+// or above, so every one in data.findings says what to do: a live key
+// points to prepare --only keys, anything else to its explain page.
+func withFix(fs []core.Finding) []core.Finding {
+	for i := range fs {
+		if fs[i].Fix != "" || fs[i].Severity < core.SeverityLow {
+			// An info finding is a note: nothing to fix.
+			continue
+		}
+		if strings.HasPrefix(fs[i].ID, "key.") && strings.HasSuffix(fs[i].ID, "-live") {
+			fs[i].Fix = "Swap it for a test key or blank it: rhythm-roadie prepare <staging> --only keys, or copy again for a dump (rhythm-roadie explain " + fs[i].ID + ")."
+			continue
+		}
+		fs[i].Fix = "See rhythm-roadie explain " + fs[i].ID + "."
+	}
+	return fs
 }
 
 func nonNil[T any](s []T) []T {

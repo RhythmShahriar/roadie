@@ -46,11 +46,15 @@ Usage:
 // exitHelp is the exit code block under the top help and every command's.
 const exitHelp = `Exit codes (as in Tuner, Soundcheck and Echo):
   0    ok: done and verify found nothing at or above --fail-on
-  1    findings: verify found something at or above --fail-on, plan would stop,
-       or a report's signature doesn't match
-  2    usage error: a wrong command line or a bad .roadie/config.yaml
+  1    findings: verify found something at or above --fail-on, a copy stopped on
+       uncovered columns, plan --fail-on would stop, or report check found an
+       edited report, another input or another key
+  2    usage error: a wrong command line, a bad .roadie/config.yaml, a signing
+       key that can't be read, or a target to confirm with no terminal
+       (pass --confirm-target)
   3    couldn't run: source or target unreachable, a dump that ends early, a
-       target refused as production, nothing to scan
+       target refused as production, nothing to scan, an incomplete verify,
+       an unsigned report (report check)
   130  interrupted
 `
 
@@ -64,7 +68,8 @@ const outputHelp = `Output:
       --junit                JUnit XML for CI test views (verify only)
   -o, --output <file>        write the report to a file (format from the extension:
                              .json .md .html .sarif .xml), keep the live view;
-                             repeat it for several files
+                             repeat it for several files. With a file of the same
+                             format, --json, --md and the others write only the file
       --open                 open the HTML report when done
   -q, --quiet                results only
       --plain                no color, boxes or glyphs (screen readers, logs)
@@ -118,8 +123,9 @@ const safetyHelp = `Target safety:
       --production <list>    production hosts or URLs, e.g. shop.com,*.shop.com (adds to
                              production: in the config); a target that matches is refused
       --confirm-target <host>
-                             the target's host or database name, typed out; needed when
-                             the target is a site or database and there's no terminal
+                             the target's host or database name (a SQLite file's path or
+                             name), typed out; needed when the target is a site or
+                             database and there's no terminal
       --target-is-staging <host>
                              the target says it's production (WP_ENVIRONMENT_TYPE or APP_ENV)
                              but isn't: name its host to go on. Never overrides a production:
@@ -139,7 +145,9 @@ const afterHelp = `After the copy:
                              medium, high (default) or critical
       --soundcheck           also run rhythm-soundcheck run <url> --json on the copy
       --sign=off             don't sign the JSON report (default: sign it)
-      --key <file>           sign with this Ed25519 key instead (ROADIE_SIGNING_KEY in CI)
+      --key <file>           sign with this private Ed25519 key file instead
+                             (ROADIE_SIGNING_KEY in CI); report check --key is the
+                             public key or key ID to check against
 `
 
 // copyHelp is PRD 6.4 with --dry-run added under Where.
@@ -239,7 +247,9 @@ CI:
                              critical
       --baseline <file>      hide findings already in this JSON report (accepted test data)
       --sign=off             don't sign the JSON report (default: sign it)
-      --key <file>           sign with this Ed25519 key instead (ROADIE_SIGNING_KEY in CI)
+      --key <file>           sign with this private Ed25519 key file instead
+                             (ROADIE_SIGNING_KEY in CI); report check --key is the
+                             public key or key ID to check against
 `
 
 // configHelp is PRD 6.8 written in the same style.
@@ -280,8 +290,9 @@ Usage:
 Report:
       --brand-name <name>    a name for the top of the HTML report, e.g. your agency's
       --brand-logo <file>    a PNG, SVG or JPEG logo for the HTML report (under 512 KiB)
-      --key <file|id>        check: the public key or key ID (roadie:..., which report
-                             check prints) the report must be signed with
+      --key <file|id>        check: the public key file or key ID (roadie:..., which
+                             report check prints) the report must be signed with;
+                             copy and verify --key is the private key that signs
       --input <dump>         check: the dump the report describes; its fingerprint must match
 `
 

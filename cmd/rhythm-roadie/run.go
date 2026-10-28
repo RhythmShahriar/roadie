@@ -86,6 +86,9 @@ func runEngine(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 	}
 
 	out := newOutputs(p, stdout, stderr, cfg, cfgPath, mode != engine.Plan)
+	if err := out.checkSigner(); err != nil {
+		return err
+	}
 	// With --to - stdout carries the dump (PRD 6.2): the screen goes to
 	// stderr and no report may go to stdout, or the dump couldn't load.
 	screen, screenTerm := stdout, dep.stdoutTerminal()
@@ -251,6 +254,7 @@ type outputs struct {
 	format         string // stdout's format: "", json, md, html, sarif or junit
 	sign           bool
 	keyFile        string
+	signer         signer // loaded by checkSigner before the run
 	save           bool   // copy, prepare and verify keep their reports
 	dir            string // the project folder: .roadie/ is under it
 }
@@ -263,12 +267,34 @@ func newOutputs(p *parsed, stdout, stderr io.Writer, cfg *roadiecfg.Config, cfgP
 			o.format = name
 		}
 	}
+	for _, f := range g.outputs {
+		if format, _ := formatOf(f); format == o.format {
+			// --md -o r.md asks for the Markdown in r.md: stdout keeps
+			// the live view rather than a second copy of the report.
+			o.format = ""
+		}
+	}
 	o.sign, o.keyFile = p.signing(cfg)
 	if cfgPath != "" {
 		// .roadie/config.yaml's folder's parent holds .roadie/reports too.
 		o.dir = roadiecfg.ProjectDir(cfgPath)
 	}
 	return o
+}
+
+// checkSigner loads the signing key before the run, so a bad --key or
+// ROADIE_SIGNING_KEY stops with a usage error (exit 2) before anything
+// is read, not after a PASS box.
+func (o *outputs) checkSigner() error {
+	if !o.sign || !o.save && o.format == "" && len(o.p.f.g.outputs) == 0 {
+		return nil
+	}
+	s, err := loadReportSigner(o.keyFile, o.stderr)
+	if err != nil {
+		return usageError(o.stderr, o.p.cmd, "can't sign the report: %v", err)
+	}
+	o.signer = s
+	return nil
 }
 
 // live reports whether the terminal view goes to stdout: it does unless
@@ -288,9 +314,11 @@ func (o *outputs) write(r *core.Result) (string, error) {
 		return "", fmt.Errorf("couldn't build the report: %w", err)
 	}
 	if o.sign {
-		s, err := loadReportSigner(o.keyFile, o.stderr)
-		if err != nil {
-			return "", fmt.Errorf("couldn't sign the report: %w", err)
+		s := o.signer
+		if s == nil {
+			if s, err = loadReportSigner(o.keyFile, o.stderr); err != nil {
+				return "", fmt.Errorf("couldn't sign the report: %w", err)
+			}
 		}
 		if err := s.Sign(env); err != nil {
 			return "", fmt.Errorf("couldn't sign the report: %w", err)

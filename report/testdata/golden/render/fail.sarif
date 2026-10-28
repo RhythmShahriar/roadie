@@ -129,7 +129,7 @@
           "ruleId": "key.stripe-live",
           "level": "error",
           "message": {
-            "text": "Stripe live key: wp_options woocommerce_stripe_settings → serialized:secret_key (e.g. sk_l•••••)"
+            "text": "Stripe live key: wp_options woocommerce_stripe_settings → serialized:secret_key (e.g. sk_l•••••). Fix: Swap it for a test key or blank it: rhythm-roadie prepare <staging> --only keys, or copy again for a dump (rhythm-roadie explain key.stripe-live)."
           },
           "locations": [
             {
@@ -159,7 +159,7 @@
           "ruleId": "config.environment",
           "level": "warning",
           "message": {
-            "text": "WP_ENVIRONMENT_TYPE is unset: wp-config.php line 41"
+            "text": "WP_ENVIRONMENT_TYPE is unset: wp-config.php line 41. Fix: See rhythm-roadie explain config.environment."
           },
           "locations": [
             {

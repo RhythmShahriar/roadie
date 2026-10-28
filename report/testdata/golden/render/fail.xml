@@ -14,7 +14,7 @@
     </testcase>
     <testcase name="No real-looking phones (pii.phone)" classname="roadie.verify"></testcase>
     <testcase name="The site says it is staging (config.environment)" classname="roadie.verify">
-      <system-out>warning: 1 hit under --fail-on high&#xA;config.environment medium: WP_ENVIRONMENT_TYPE is unset</system-out>
+      <system-out>warning: 1 finding below --fail-on high (config.environment)&#xA;config.environment medium: WP_ENVIRONMENT_TYPE is unset</system-out>
     </testcase>
     <testcase name="No live keys (keys)" classname="roadie.verify">
       <failure message="Stripe live key" type="keys">key.stripe-live critical: Stripe live key at wp_options.option_value option_name=woocommerce_stripe_settings → serialized:secret_key 1 (e.g. sk_l•••••)</failure>

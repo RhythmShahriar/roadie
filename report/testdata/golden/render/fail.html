@@ -70,13 +70,13 @@ section.report+section.report{margin-top:48px;border-top:3px solid var(--line);p
 
 <h2>Findings</h2>
 <div class="finding critical"><span class="badge critical">critical</span><strong>Stripe live key</strong>
-<div class="sub">wp_options.option_value option_name=woocommerce_stripe_settings → serialized:secret_key 1</div><div class="sub">e.g. <code>sk_l•••••</code></div>
+<div class="sub">wp_options.option_value option_name=woocommerce_stripe_settings → serialized:secret_key 1</div><div class="sub">e.g. <code>sk_l•••••</code></div><div>Fix: <code>Swap it for a test key or blank it: rhythm-roadie prepare &lt;staging&gt; --only keys, or copy again for a dump (rhythm-roadie explain key.stripe-live).</code></div>
 <div class="sub">More: <code>rhythm-roadie explain key.stripe-live</code></div></div>
 <div class="finding high"><span class="badge high">high</span><strong>3 real-looking emails</strong>
 <div class="sub">wp_users.user_email ID=42 2 · wp_postmeta.meta_value meta_key=_billing_email 1</div><div class="sub">e.g. <code>ad•••@gm•••.com</code></div><div>Fix: <code>rhythm-roadie prepare staging.sql.gz</code></div>
 <div class="sub">More: <code>rhythm-roadie explain pii.email</code></div></div>
 <div class="finding medium"><span class="badge medium">medium</span><strong>WP_ENVIRONMENT_TYPE is unset</strong>
-<div class="sub">wp-config.php line 41 1</div>
+<div class="sub">wp-config.php line 41 1</div><div>Fix: <code>See rhythm-roadie explain config.environment.</code></div>
 <div class="sub">More: <code>rhythm-roadie explain config.environment</code></div></div>
 <div class="finding high"><span class="badge high">uncovered</span>wp_loyalty_members.email looks personal (92% of sampled values) and no rule covers it<div class="sub">Add it under columns: in .roadie/config.yaml. More: <code>rhythm-roadie explain uncovered-column</code></div></div>
 

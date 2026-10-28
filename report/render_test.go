@@ -312,7 +312,7 @@ func TestJUnit(t *testing.T) {
 		t.Errorf("failure %+v", f)
 	}
 	// A warning passes its case and says why in its output.
-	if c := suite.Cases[2]; c.Failure != nil || !strings.HasPrefix(c.SystemOut, "warning: 1 hit under --fail-on high") {
+	if c := suite.Cases[2]; c.Failure != nil || !strings.HasPrefix(c.SystemOut, "warning: 1 finding below --fail-on high") {
 		t.Errorf("warn case %+v", c)
 	}
 	if f := suite.Cases[3].Failure; f == nil || f.Message != "Stripe live key" {
@@ -333,11 +333,11 @@ func TestSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(dir, ".roadie", "reports", "2026-10-26T14-02-11"); folder != want {
+	if want := filepath.Join(dir, ".roadie", "reports", "2026-10-26T14-02-11Z-copy-staging"); folder != want {
 		t.Errorf("folder %s, want %s", folder, want)
 	}
 	again, err := Save(dir, e, nil)
-	if err != nil || again != filepath.Join(dir, ".roadie", "reports", "2026-10-26T14-02-11-2") {
+	if err != nil || again != filepath.Join(dir, ".roadie", "reports", "2026-10-26T14-02-11Z-copy-staging-2") {
 		t.Errorf("second save %s %v", again, err)
 	}
 	js, _ := os.ReadFile(filepath.Join(folder, "report.json"))
@@ -359,7 +359,7 @@ func TestSave(t *testing.T) {
 	// No start time: the clock names the folder.
 	now = func() time.Time { return started.Add(time.Hour) }
 	t.Cleanup(func() { now = time.Now })
-	if f, err := Save(dir, mustEnvelope(t, &core.Result{Kind: "verify"}), nil); err != nil || filepath.Base(f) != "2026-10-26T15-02-11" {
+	if f, err := Save(dir, mustEnvelope(t, &core.Result{Kind: "verify"}), nil); err != nil || filepath.Base(f) != "2026-10-26T15-02-11Z-verify" {
 		t.Errorf("clock folder %s %v", f, err)
 	}
 	if _, err := Save(dir, nil, nil); err == nil {
@@ -380,7 +380,7 @@ func TestSaveFallsBackToCache(t *testing.T) {
 	cache := t.TempDir()
 	t.Setenv(config.EnvCacheDir, cache)
 	folder, err := Save(ro, signedEnvelope(t, copyPass()), nil)
-	if err != nil || folder != filepath.Join(cache, "roadie", "reports", "2026-10-26T14-02-11") {
+	if err != nil || folder != filepath.Join(cache, "roadie", "reports", "2026-10-26T14-02-11Z-copy-staging") {
 		t.Fatalf("fallback %s %v", folder, err)
 	}
 }

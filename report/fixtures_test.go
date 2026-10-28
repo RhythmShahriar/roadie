@@ -118,7 +118,7 @@ func verifyFail() *core.Result {
 			Checks: []core.Check{
 				{ID: core.FindingPIIEmail, Status: "fail", Checked: 18402},
 				{ID: core.FindingPIIPhone, Status: "pass", Checked: 41077},
-				{ID: core.FindingConfigEnvironment, Status: "warn", Checked: 1, Detail: "1 hit under --fail-on high"},
+				{ID: core.FindingConfigEnvironment, Status: "warn", Checked: 1, Detail: "1 finding below --fail-on high (config.environment)"},
 				{ID: "keys", Status: "fail", Detail: "database"},
 				{ID: core.FindingUploadsPersonal, Status: "skip", Detail: "a dump has no uploads"},
 			},

@@ -615,9 +615,12 @@ func (r *run) runChecks(n int, at func(i int) (string, func() (core.SideEffect, 
 		if se.ID == "" {
 			se.ID = id
 		}
-		if se.Status == "unknown" && se.How != "" && r.note[id] == "" {
-			// The check ran and couldn't tell: its line says why.
-			r.note[id] = se.How
+		if se.Status == "unknown" {
+			r.unknown[id] = true
+			if se.How != "" && r.note[id] == "" {
+				// The check ran and couldn't tell: its line says why.
+				r.note[id] = se.How
+			}
 		}
 		r.res.SideEffects = append(r.res.SideEffects, se)
 		for _, f := range found {

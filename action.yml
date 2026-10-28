@@ -71,8 +71,9 @@ inputs:
     default: ""
   confirm-target:
     description: >
-      Modes copy and prepare: the target's host or database name, typed out. Needed when the target is a
-      site or a database, since a CI job has no terminal to ask on.
+      Modes copy and prepare: the target's host or database name, typed out (for a SQLite target its
+      absolute file path or the file's name). Needed when the target is a site or a database, since a CI
+      job has no terminal to ask on.
     required: false
     default: ""
   config:
@@ -164,7 +165,9 @@ outputs:
     description: Roadie's exit code (0 ok, 1 findings at or above fail-on, 2 usage error, 3 couldn't run, 130 interrupted).
     value: ${{ steps.run.outputs.exit-code }}
   verdict:
-    description: pass, fail or error.
+    description: >
+      pass, fail or error, as data.result in report.json. A verify that couldn't read all its input
+      (INCOMPLETE) is error; a sampled verify is fail unless allow-sample is "true".
     value: ${{ steps.run.outputs.verdict }}
   findings:
     description: How many findings are at or above fail-on.

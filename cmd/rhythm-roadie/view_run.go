@@ -917,12 +917,19 @@ func (v *view) footer(r *core.Result, j engine.Job, reportPath string) {
 	if reportPath != "" {
 		v.next("signed report: " + reportPath)
 	}
-	if !failed && r.Verify != nil {
-		url := j.Opts.URL
-		if url == "" {
-			url = "<url>"
+	if k := j.To.Kind; !failed && r.Verify != nil && (k == core.DumpFile || k == core.Stdio) {
+		// A dump has no running site for Echo or Soundcheck to look at.
+		name := j.To.Display
+		if k == core.Stdio {
+			name = "the dump"
 		}
-		v.next("next: rhythm echo up, then rhythm soundcheck run " + url)
+		v.next("next: load " + name + " into the staging database, or copy straight to it: rhythm-roadie copy --from " + j.From.Display + " --to <staging site or DSN>")
+		return
+	}
+	if !failed && r.Verify != nil && (j.Opts.URL != "" || isSite(j.To.Kind)) {
+		// A database copied without a URL (stack sql) has no site for
+		// Echo or Soundcheck to look at.
+		v.next("next: rhythm echo up, then rhythm soundcheck run " + cmp.Or(j.Opts.URL, "<url>"))
 	}
 }
 
@@ -1005,7 +1012,8 @@ func (v *view) stopView(r *core.Result, j engine.Job) {
 	}
 	word := "STOPPED"
 	if j.Mode == engine.Plan {
-		word = "PLAN"
+		// plan never writes: the target's state says nothing.
+		word, state = "PLAN", ""
 	}
 	line := e.Code + state
 	if e.Code == "" {
@@ -1013,12 +1021,16 @@ func (v *view) stopView(r *core.Result, j engine.Job) {
 		line = strings.TrimPrefix(state, "; ")
 	}
 	v.box(word, line, "", sevColor(core.SeverityCritical))
+	msg := e.Msg
+	if j.Mode == engine.Plan {
+		msg = planMsg(msg)
+	}
 	if v.o.quiet {
 		// -q drops progress and settings, never the reason a run
 		// stopped: a CI log must say why it failed.
-		fmt.Fprintln(v.w, safe(e.Msg))
+		fmt.Fprintln(v.w, safe(msg))
 	}
-	v.para(e.Msg)
+	v.para(msg)
 	if r.Backup != "" {
 		// prepare's backup is the one copy of the target as it was: a
 		// new run would back up what this one left.
@@ -1030,8 +1042,21 @@ func (v *view) stopView(r *core.Result, j engine.Job) {
 	}
 	v.blank()
 	if core.KnownID(e.Code) && e.Code != core.ErrCodeNotBuilt {
-		v.next("rhythm-roadie explain " + e.Code)
+		id := e.Code
+		if id == core.ErrUncovered {
+			// One page for the stop and its findings: the message and
+			// each finding's fix name uncovered-column too.
+			id = core.FindingUncoveredColumn
+		}
+		v.next("rhythm-roadie explain " + id)
 	}
+}
+
+// planMsg drops the target's state from a stop's message: plan never
+// writes, so "the target is untouched" says nothing there.
+func planMsg(msg string) string {
+	msg = strings.Replace(msg, "; the target is untouched.", ".", 1)
+	return strings.Replace(msg, " The target is untouched.", "", 1)
 }
 
 // verdictColor is the box color of a verdict word.

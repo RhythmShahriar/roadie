@@ -8,5 +8,5 @@ Why it matters: copy replaces the target's database, so a run in CI or a
 script must say which target it means.
 
 By hand: Pass --confirm-target <name> (the site's host or the database name
-the message gives). On a terminal, answer y to the replace question or pass
+the message gives; for a SQLite target its absolute path or the file's name). On a terminal, answer y to the replace question or pass
 --yes.
