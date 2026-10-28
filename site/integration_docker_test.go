@@ -3,7 +3,7 @@
 
 //go:build docker
 
-package site
+package site_test
 
 import (
 	"context"
@@ -22,6 +22,7 @@ import (
 
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/keys"
+	"github.com/RhythmShahriar/roadie/site"
 	"github.com/RhythmShahriar/roadie/site/exposure"
 	"github.com/RhythmShahriar/roadie/site/killswitch"
 )
@@ -377,11 +378,11 @@ func TestKillSwitchInWordPress(t *testing.T) {
 
 	// The kill switch, as prepare applies it.
 	must(t, "", "docker", "exec", wpName, "chmod", "-R", "a+rwX", "/var/www/html")
-	ep, err := ParseEndpoint(html)
+	ep, err := site.ParseEndpoint(html)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := Open(ctx, ep, Options{})
+	s, err := site.Open(ctx, ep, site.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

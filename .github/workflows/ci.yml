@@ -43,6 +43,20 @@ jobs:
           docker run --rm --network none -v "$PWD:/repo:ro" -w /repo \
             koalaman/shellcheck@sha256:2097951f02e735b613f4a34de20c40f937a6c8f18ecb170612c88c34517221fb "${files[@]}"
 
+  # The docker, testbed and nonet tests only build under their tags, which
+  # the plain go job never sets. Vet every tag here so an import cycle or
+  # a stale helper in a tagged test fails the PR, not the nightly run.
+  tagged-vet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go vet -tags docker ./...
+      - run: go vet -tags testbed ./...
+      - run: go vet -tags nonet ./...
+
   # The PHP serialized codec, the wp-config editor and the password hashes
   # are checked against real PHP (unserialize, php -l and
   # password_verify) on every OS. ROADIE_REQUIRE_PHP makes
