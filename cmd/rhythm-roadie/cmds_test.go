@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/engine"
@@ -691,9 +692,20 @@ func TestProfilesShowKeptParts(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	out, _, code := run(t, "profiles", "woocommerce", "--offline")
-	if code != 0 || !strings.Contains(out, "(meta_key = _billing_country) kept (keep: country)") ||
-		!strings.Contains(out, "(meta_key = _shipping_state) kept (keep: state)") {
+	if code != 0 || !regexp.MustCompile(`\(meta_key = _billing_country\)  +kept \(keep: country\)`).MatchString(out) ||
+		!regexp.MustCompile(`\(meta_key = _shipping_state\)  +kept \(keep: state\)`).MatchString(out) {
 		t.Errorf("profiles: exit %d\n%s", code, out)
+	}
+	// Every row's RULE starts in the same column, at least two spaces
+	// after the longest COLUMN value.
+	var starts []int
+	for line := range strings.Lines(out) {
+		if i := strings.Index(line, "fake "); i > 0 && strings.Contains(line, "meta_value") {
+			starts = append(starts, utf8.RuneCountInString(line[:i]))
+		}
+	}
+	if len(starts) < 2 || slices.Min(starts) != slices.Max(starts) {
+		t.Errorf("RULE starts at %v", starts)
 	}
 	out, _, code = run(t, "config", "show", "--offline")
 	if code != 0 || !strings.Contains(out, "(meta_key = _billing_country): kept (keep: country)") {
@@ -704,7 +716,7 @@ func TestProfilesShowKeptParts(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, _, _ = run(t, "profiles", "woocommerce", "--offline", "--config", cfg)
-	if strings.Contains(out, "kept (keep:") || !strings.Contains(out, "(meta_key = _billing_country) blank") {
+	if strings.Contains(out, "kept (keep:") || !regexp.MustCompile(`\(meta_key = _billing_country\)  +blank`).MatchString(out) {
 		t.Errorf("keep: []:\n%s", out)
 	}
 }
@@ -721,5 +733,36 @@ func TestVerifyReportsStack(t *testing.T) {
 	out, errOut, code := runCmd(t, "verify", "staging.sql", "--no-config", "--md")
 	if code != 0 || !strings.Contains(out, `"Stack":{"Name":"wordpress","Profiles":["wordpress"]`) {
 		t.Errorf("exit %d %s\n%s", code, errOut, out)
+	}
+}
+
+// The profiles list gives every name its own column: a name that fills
+// the old fixed width ran into "docs:".
+func TestProfilesListColumns(t *testing.T) {
+	t.Chdir(t.TempDir())
+	out, _, code := run(t, "profiles", "--offline")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	var starts []int
+	for line := range strings.Lines(out) {
+		if i := strings.Index(line, "docs:"); i > 0 {
+			if line[i-2:i] != "  " {
+				t.Errorf("no gap before docs: %q", line)
+			}
+			starts = append(starts, utf8.RuneCountInString(line[:i]))
+		}
+	}
+	if len(starts) < 2 || slices.Min(starts) != slices.Max(starts) {
+		t.Errorf("checked against starts at %v\n%s", starts, out)
+	}
+}
+
+func TestWriteColumns(t *testing.T) {
+	var b bytes.Buffer
+	writeColumns(&b, [][]string{{"TABLE", "COLUMN", "RULE"}, {"wp_postmeta", "meta_value → a.b", "fake email"}, {"t", "c", ""}})
+	want := "  TABLE        COLUMN            RULE\n  wp_postmeta  meta_value → a.b  fake email\n  t            c\n"
+	if b.String() != want {
+		t.Errorf("got\n%s\nwant\n%s", b.String(), want)
 	}
 }

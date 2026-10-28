@@ -1,7 +1,7 @@
 Profiles (pack 2026.10.26):
 
-  wordpress                   WordPress core               install (WordPress 6.8.x)
-  gravity-forms               Gravity Forms                docs (https://docs.gravityforms.com/database-storage-structure-reference/)
+  wordpress      WordPress core  install (WordPress 6.8.x)
+  gravity-forms  Gravity Forms   docs (https://docs.gravityforms.com/database-storage-structure-reference/)
 
 rhythm-roadie profiles <name> lists one profile's rules.
 
@@ -10,9 +10,9 @@ WordPress core (wordpress)
 checked against: install (WordPress 6.8.x)
 detected by: a table of {prefix}options
 
-  TABLE                        COLUMN                     RULE
-  {prefix}users                user_email                 fake email
-  {prefix}usermeta             meta_value (meta_key = billing_email) fake email
+  TABLE             COLUMN                                 RULE
+  {prefix}users     user_email                             fake email
+  {prefix}usermeta  meta_value (meta_key = billing_email)  fake email
 
 truncated: {prefix}woocommerce_sessions
 

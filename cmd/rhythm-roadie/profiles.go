@@ -10,6 +10,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
 
@@ -99,9 +100,11 @@ func runProfiles(ctx context.Context, p *parsed, stdout, stderr io.Writer) error
 			return writeEnvelope(stdout, "profiles", map[string]any{"profile_pack": pack, "profiles": list})
 		}
 		fmt.Fprintf(stdout, "Profiles (pack %s):\n\n", safe(pack))
-		for _, d := range defs {
-			fmt.Fprintf(stdout, "  %-27s %-28s %s\n", safe(d.ID), safe(d.Name), safe(d.CheckedAgainst))
+		rows := make([][]string, len(defs))
+		for i, d := range defs {
+			rows[i] = []string{safe(d.ID), safe(d.Name), safe(d.CheckedAgainst)}
 		}
+		writeColumns(stdout, rows)
 		fmt.Fprintf(stdout, "\n%s profiles <name> lists one profile's rules.\n", prog())
 		return nil
 	}
@@ -155,7 +158,7 @@ func printProfile(w io.Writer, d profile.Def, keep []string) {
 		fmt.Fprintf(w, "detected by: %s\n", safe(strings.Join(det, "; or ")))
 	}
 	if len(d.Rules) > 0 {
-		fmt.Fprintf(w, "\n  %-28s %-26s %s\n", "TABLE", "COLUMN", "RULE")
+		rows := [][]string{{"TABLE", "COLUMN", "RULE"}}
 		for _, r := range d.Rules {
 			col := r.Column
 			if r.Path != "" {
@@ -171,8 +174,10 @@ func printProfile(w io.Writer, d profile.Def, keep []string) {
 			if part := keptPart(d, r.ID, keep); part != "" {
 				rule = keptLabel(part)
 			}
-			fmt.Fprintf(w, "  %-28s %-26s %s\n", safe(r.Table), safe(col), safe(rule))
+			rows = append(rows, []string{safe(r.Table), safe(col), safe(rule)})
 		}
+		fmt.Fprintln(w)
+		writeColumns(w, rows)
 	}
 	for _, l := range []struct {
 		label string
@@ -183,6 +188,31 @@ func printProfile(w io.Writer, d profile.Def, keep []string) {
 		}
 	}
 	fmt.Fprintf(w, "\n%s explain %s says why.\n", prog(), safe(d.ID))
+}
+
+// writeColumns prints rows indented by two spaces, each column as wide
+// as its longest value and at least two spaces before the next.
+func writeColumns(w io.Writer, rows [][]string) {
+	var width []int
+	for _, r := range rows {
+		for i, c := range r {
+			if i == len(width) {
+				width = append(width, 0)
+			}
+			width[i] = max(width[i], utf8.RuneCountInString(c))
+		}
+	}
+	for _, r := range rows {
+		var b strings.Builder
+		b.WriteString("  ")
+		for i, c := range r {
+			b.WriteString(c)
+			if i < len(r)-1 {
+				b.WriteString(strings.Repeat(" ", width[i]-utf8.RuneCountInString(c)+2))
+			}
+		}
+		fmt.Fprintln(w, strings.TrimRight(b.String(), " "))
+	}
 }
 
 func sortedWhere(m map[string]string) []string {
