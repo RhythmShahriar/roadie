@@ -167,12 +167,12 @@ func uncovered(t *core.Table, covered map[string]bool, samples map[string][][]by
 func UncoveredTitle(u core.Uncovered, samples [][]byte) string {
 	n, emails, phones := sampleCounts(u.Column, samples)
 	why := "by its name"
-	if n > 0 && (emails+phones)*100/n >= UncoveredRate {
+	if n > 0 && (u.Rate >= UncoveredRate || (emails+phones)*100/n >= UncoveredRate) {
 		what := "emails"
 		switch {
 		case phones > 0 && emails == 0:
 			what = "phone numbers"
-		case phones > 0:
+		case phones > 0, emails == 0:
 			what = "emails or phone numbers"
 		}
 		why = fmt.Sprintf("%d%% of %s sampled values are %s", u.Rate, thousands(n), what)

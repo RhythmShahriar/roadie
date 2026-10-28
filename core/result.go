@@ -168,13 +168,44 @@ type ConsistencyInfo struct {
 	KeyFingerprint string
 }
 
-// AllFindings returns the engine's findings followed by verify's.
+// UncoveredFix is the fix line of every uncovered-column finding, the
+// run's and verify's alike.
+const UncoveredFix = "Add the column under columns: in .roadie/config.yaml (rhythm-roadie explain uncovered-column)."
+
+// AllFindings returns the engine's findings followed by verify's. Copy
+// and prepare report an uncovered column themselves (--allow-uncovered)
+// and verify scans for the same columns, so verify's finding for a
+// column the run already named is dropped: one column, one finding.
 func (r *Result) AllFindings() []Finding {
 	out := append([]Finding(nil), r.Findings...)
-	if r.Verify != nil {
-		out = append(out, r.Verify.Findings...)
+	if r.Verify == nil {
+		return out
+	}
+	named := map[Location]bool{}
+	for _, f := range r.Findings {
+		if f.ID == FindingUncoveredColumn {
+			for _, l := range f.Locations {
+				named[Location{Table: l.Table, Column: l.Column}] = true
+			}
+		}
+	}
+	for _, f := range r.Verify.Findings {
+		if f.ID == FindingUncoveredColumn && len(f.Locations) > 0 && allNamed(f.Locations, named) {
+			continue
+		}
+		out = append(out, f)
 	}
 	return out
+}
+
+// allNamed reports whether every location's table and column is in named.
+func allNamed(ls []LocationCount, named map[Location]bool) bool {
+	for _, l := range ls {
+		if !named[Location{Table: l.Table, Column: l.Column}] {
+			return false
+		}
+	}
+	return true
 }
 
 // Summary counts the result for the envelope. Severity counts are grouped

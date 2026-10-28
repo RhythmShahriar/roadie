@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -332,5 +333,41 @@ func TestFixedTypesCompile(t *testing.T) {
 	_ = core.Clock(time.Now)
 	if core.MaxBatchBytes != 4<<20 || len(core.FakeKinds()) != 17 {
 		t.Fatal("constants changed")
+	}
+}
+
+// With --allow-uncovered the run names an uncovered column and verify
+// finds it again: AllFindings and Summary count it once, while a column
+// only verify found stays.
+func TestAllFindingsDropsVerifyUncoveredDuplicate(t *testing.T) {
+	at := func(table, col string) []core.LocationCount {
+		return []core.LocationCount{{Location: core.Location{Table: table, Column: col}, Count: 1}}
+	}
+	r := &core.Result{
+		Findings: []core.Finding{
+			{ID: core.FindingUncoveredColumn, Severity: core.SeverityMedium, Title: "orders.ip_address", Locations: at("orders", "ip_address")},
+			{ID: core.FindingUncoveredColumn, Severity: core.SeverityMedium, Title: "users.phone", Locations: at("users", "phone")},
+		},
+		Uncovered: []core.Uncovered{{Table: "orders", Column: "ip_address"}, {Table: "users", Column: "phone"}},
+		Verify: &core.VerifyResult{
+			Findings: []core.Finding{
+				{ID: core.FindingUncoveredColumn, Severity: core.SeverityMedium, Title: "dup", Locations: at("orders", "ip_address")},
+				{ID: core.FindingUncoveredColumn, Severity: core.SeverityMedium, Title: "dup", Locations: at("users", "phone")},
+				{ID: core.FindingUncoveredColumn, Severity: core.SeverityMedium, Title: "contacts.note", Locations: at("contacts", "note")},
+				{ID: core.FindingPIIEmail, Severity: core.SeverityHigh, Title: "emails", Locations: at("orders", "ip_address")},
+			},
+			Uncovered: []core.Uncovered{{Table: "orders", Column: "ip_address"}, {Table: "users", Column: "phone"}, {Table: "contacts", Column: "note"}},
+		},
+	}
+	all := r.AllFindings()
+	var titles []string
+	for _, f := range all {
+		titles = append(titles, f.Title)
+	}
+	if want := []string{"orders.ip_address", "users.phone", "contacts.note", "emails"}; !slices.Equal(titles, want) {
+		t.Errorf("findings %v, want %v", titles, want)
+	}
+	if s := r.Summary(); s.Medium != 3 || s.High != 1 || s.UncoveredColumns != 3 {
+		t.Errorf("summary medium %d high %d uncovered %d", s.Medium, s.High, s.UncoveredColumns)
 	}
 }

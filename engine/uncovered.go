@@ -149,25 +149,24 @@ func scanUncovered(schema *core.Schema, c *profile.Compiled, s *samples) uncover
 				continue // detect must not report a covered column; never trust it to
 			}
 			res.Uncovered = append(res.Uncovered, u)
-			res.Findings = append(res.Findings, uncoveredFinding(u, len(sampled[u.Column])))
+			res.Findings = append(res.Findings, uncoveredFinding(u, sampled[u.Column]))
 		}
 	}
 	return res
 }
 
-// uncoveredFinding is the uncovered-column finding of PRD 11.3.
-func uncoveredFinding(u core.Uncovered, n int) core.Finding {
-	why := "its name"
-	if u.Rate > 0 {
-		why = fmt.Sprintf("%d%% of %s sampled values look like emails or phones", u.Rate, thousands(int64(n)))
-	}
+// uncoveredFinding is the uncovered-column finding of PRD 11.3. Its
+// title and fix are verify's own (detect.UncoveredTitle and
+// core.UncoveredFix), so the two paths read the same and
+// Result.AllFindings can drop verify's copy of a column the run named.
+func uncoveredFinding(u core.Uncovered, samples [][]byte) core.Finding {
 	return core.Finding{
 		ID:        core.FindingUncoveredColumn,
 		Severity:  core.SeverityMedium,
-		Title:     fmt.Sprintf("%s.%s looks personal (%s) and no rule covers it", u.Table, u.Column, why),
+		Title:     detect.UncoveredTitle(u, samples),
 		Count:     1,
 		Locations: []core.LocationCount{{Location: core.Location{Table: u.Table, Column: u.Column}, Count: 1}},
-		Fix:       "Add it under columns: in .roadie/config.yaml (rhythm-roadie explain uncovered-column).",
+		Fix:       core.UncoveredFix,
 	}
 }
 
@@ -187,9 +186,9 @@ func uncoveredErrorIn(us []core.Uncovered, st core.TargetState) *core.Error {
 	for i, u := range us {
 		names[i] = u.Table + "." + u.Column
 	}
-	what, them, it := "columns look", "them", "them"
+	what, them, it, list := "columns look", "them", "them", "them as findings"
 	if len(us) == 1 {
-		what, them, it = "column looks", "it", "it"
+		what, them, it, list = "column looks", "it", "it", "it as a finding"
 	}
 	tail := "The target is untouched."
 	if st != core.Untouched {
@@ -201,8 +200,8 @@ func uncoveredErrorIn(us []core.Uncovered, st core.TargetState) *core.Error {
 			st, held, has)
 	}
 	return &core.Error{Code: core.ErrUncovered, Exit: 1, State: st, Msg: fmt.Sprintf(
-		"uncovered: %d %s personal and no rule covers %s: %s. Add %s under columns: (rhythm-roadie explain uncovered-column), or --allow-uncovered to copy and list them as findings. %s",
-		len(us), what, them, strings.Join(names, ", "), it, tail)}
+		"uncovered: %d %s personal and no rule covers %s: %s. Add %s under columns: (rhythm-roadie explain uncovered-column), or --allow-uncovered to copy and list %s. %s",
+		len(us), what, them, strings.Join(names, ", "), it, list, tail)}
 }
 
 // thousands writes n with comma separators, as the PRD's messages do.

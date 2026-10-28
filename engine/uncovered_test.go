@@ -129,7 +129,7 @@ func TestScanUncovered(t *testing.T) {
 	}
 	sm := newSamples()
 	for i := range 50 {
-		sm.add("wp_loyalty_members", "email", []byte(fmt.Sprintf("m%d@example.com", i)))
+		sm.add("wp_loyalty_members", "email", []byte(fmt.Sprintf("m%d@acme-shop.com", i)))
 		sm.add("wp_users", "user_email", []byte("x@example.com")) // covered: must not reach detect
 	}
 	res := scanUncovered(s, c, sm)
@@ -150,8 +150,8 @@ func TestScanUncovered(t *testing.T) {
 		t.Errorf("uncovered %v", res.Uncovered)
 	}
 	if len(res.Findings) != 2 || res.Findings[0].ID != core.FindingUncoveredColumn || res.Findings[0].Severity != core.SeverityMedium ||
-		res.Findings[0].Title != "wp_loyalty_members.email looks personal (100% of 50 sampled values look like emails or phones) and no rule covers it" ||
-		res.Findings[1].Title != "wp_loyalty_members.phone looks personal (its name) and no rule covers it" {
+		res.Findings[0].Title != "wp_loyalty_members.email looks personal (100% of 50 sampled values are emails) and no rule covers it" || res.Findings[0].Fix != core.UncoveredFix ||
+		res.Findings[1].Title != "wp_loyalty_members.phone looks personal (by its name) and no rule covers it" {
 		t.Errorf("findings %+v", res.Findings)
 	}
 	if !slices.Contains(res.Covered, core.Uncovered{Table: "wp_users", Column: "user_email", Rate: 100}) ||
@@ -177,7 +177,7 @@ func TestScanUncoveredUntyped(t *testing.T) {
 	c := mustCompile(t, s, nil)
 	sm := newSamples()
 	for i := range 20 {
-		sm.add("wp_loyalty_members", "email", []byte(fmt.Sprintf("m%d@example.com", i)))
+		sm.add("wp_loyalty_members", "email", []byte(fmt.Sprintf("m%d@acme-shop.com", i)))
 	}
 	res := scanUncovered(s, c, sm)
 	var tables []string
@@ -201,7 +201,7 @@ func TestUncoveredError(t *testing.T) {
 		t.Errorf("got %+v", two)
 	}
 	one := uncoveredError([]core.Uncovered{{Table: "customers", Column: "email"}})
-	if !strings.HasPrefix(one.Msg, "uncovered: 1 column looks personal and no rule covers it: customers.email. Add it under columns:") {
+	if one.Msg != "uncovered: 1 column looks personal and no rule covers it: customers.email. Add it under columns: (rhythm-roadie explain uncovered-column), or --allow-uncovered to copy and list it as a finding. The target is untouched." {
 		t.Errorf("got %q", one.Msg)
 	}
 	mixed := uncoveredErrorIn([]core.Uncovered{{Table: "customers", Column: "email"}}, core.Mixed)
