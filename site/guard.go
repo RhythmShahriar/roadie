@@ -505,8 +505,10 @@ func targetHoldsProduction(in GuardInput, t *targetFacts) error {
 	if in.URL != "" && sameURL(t.siteURL, in.URL) {
 		return nil
 	}
+	// The advice never names siteurl as production's: on a staging that
+	// already calls itself by its own URL that would be wrong.
 	return core.Errorf(core.ErrTargetHoldsProduction, 3,
-		"target-holds-production: %s still calls itself %s. Pass --production-url %s so Roadie knows which URL is live.",
+		"target-holds-production: %s calls itself %s; Roadie can't tell whether that is the live site. Pass --production-url <production URL> (the live site's URL) so Roadie knows which URL is live, or --url %s if it is this staging's own URL.",
 		in.To.Display, t.siteURL, t.siteURL)
 }
 

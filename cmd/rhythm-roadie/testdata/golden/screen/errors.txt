@@ -356,7 +356,7 @@ Target: /var/www/staging
 
 STOPPED   target-holds-production; the target is untouched
 
-target-holds-production: /var/www/staging still calls itself https://shop.com. Pass --production-url https://shop.com so Roadie knows which URL is live.
+target-holds-production: /var/www/staging calls itself https://shop.com; Roadie can't tell whether that is the live site. Pass --production-url <production URL> (the live site's URL) so Roadie knows which URL is live, or --url https://shop.com if it is this staging's own URL.
 
 rhythm-roadie explain target-holds-production
 --- exit 3

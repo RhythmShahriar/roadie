@@ -116,7 +116,7 @@ func TestGuardRefusals(t *testing.T) {
 			s := stagingSite("staging", "https://shop.com")
 			return GuardInput{From: s.EP, To: s.EP, FromSite: s, ToSite: s, URL: "https://staging.shop.test", Mode: "prepare"}, s
 		}, core.ErrTargetHoldsProduction, 3,
-			"target-holds-production: /var/www/staging still calls itself https://shop.com. Pass --production-url https://shop.com so Roadie knows which URL is live."},
+			"target-holds-production: /var/www/staging calls itself https://shop.com; Roadie can't tell whether that is the live site. Pass --production-url <production URL> (the live site's URL) so Roadie knows which URL is live, or --url https://shop.com if it is this staging's own URL."},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -614,5 +614,26 @@ func TestGuardUnreachableDatabase(t *testing.T) {
 	s.SourceFunc = func([]string) (core.Source, error) { return nil, errors.New("table staging.wp_options doesn't exist") }
 	if err := Guard(ctx, in); err != nil {
 		t.Errorf("empty database: %v", err)
+	}
+}
+
+// A staging that already calls itself by its own URL is never told to pass
+// that URL as production's; --url with it lets prepare go on.
+func TestGuardHoldsProductionAdvice(t *testing.T) {
+	ctx := context.Background()
+	s := stagingSite("staging", "https://staging.shop.test")
+	in := GuardInput{From: s.EP, To: s.EP, FromSite: s, ToSite: s, Mode: "prepare"}
+	err := Guard(ctx, in)
+	var ce *core.Error
+	if !errors.As(err, &ce) || ce.Code != core.ErrTargetHoldsProduction {
+		t.Fatalf("err %v", err)
+	}
+	if strings.Contains(ce.Msg, "--production-url https://staging.shop.test") || !strings.Contains(ce.Msg, "--production-url <production URL>") ||
+		!strings.Contains(ce.Msg, "--url https://staging.shop.test") {
+		t.Errorf("advice %q", ce.Msg)
+	}
+	in.URL = "https://staging.shop.test"
+	if err := Guard(ctx, in); err != nil {
+		t.Errorf("with --url: %v", err)
 	}
 }

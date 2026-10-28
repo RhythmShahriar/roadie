@@ -100,7 +100,7 @@ var prdErrors = map[string]string{
 	core.ErrTargetIsProduction:    "target-is-production: /var/www/shop is shop.com, which production: lists. Roadie never writes to production. Point --to at the staging copy.",
 	core.ErrTargetSaysProduction:  "target-says-production: /var/www/staging has WP_ENVIRONMENT_TYPE unset, which WordPress reads as production. If it's staging, set WP_ENVIRONMENT_TYPE to staging there, or pass --target-is-staging staging.shop.test.",
 	core.ErrTargetIsSource:        "target-is-source: --from and --to both reach database shop on db.shop.com. A copy can't replace its own source.",
-	core.ErrTargetHoldsProduction: "target-holds-production: /var/www/staging still calls itself https://shop.com. Pass --production-url https://shop.com so Roadie knows which URL is live.",
+	core.ErrTargetHoldsProduction: "target-holds-production: /var/www/staging calls itself https://shop.com; Roadie can't tell whether that is the live site. Pass --production-url <production URL> (the live site's URL) so Roadie knows which URL is live, or --url https://shop.com if it is this staging's own URL.",
 	core.ErrOutputIsInput:         "output-is-input: --to prod.sql.gz is the file Roadie reads. Write the copy to a new file.",
 	core.ErrPrepareConfirm:        "prepare-confirm: there's no terminal to confirm on. Pass --confirm-target staging.shop.test (the site's host) to go on.",
 	core.ErrConfirmTarget:         "confirm-target: there's no terminal to confirm on. Pass --confirm-target staging.shop.test (the site's host) to go on.",

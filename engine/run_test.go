@@ -730,7 +730,7 @@ func TestRunHoldsProduction(t *testing.T) {
 			return nil
 		}
 		return core.Errorf(core.ErrTargetHoldsProduction, 3,
-			"target-holds-production: /srv/staging still calls itself https://shop.com. Pass --production-url https://shop.com so Roadie knows which URL is live.")
+			"target-holds-production: /srv/staging calls itself https://shop.com; Roadie can't tell whether that is the live site. Pass --production-url <production URL> (the live site's URL) so Roadie knows which URL is live, or --url https://shop.com if it is this staging's own URL.")
 	}
 	for _, yes := range []bool{true, false} {
 		f := useRunFakes(t)
@@ -746,7 +746,7 @@ func TestRunHoldsProduction(t *testing.T) {
 			return true, nil
 		}
 		res, err := Run(context.Background(), j)
-		want := "/srv/staging still calls itself https://shop.com. Is https://shop.com the live site? Type yes to go on:|yes"
+		want := "/srv/staging calls itself https://shop.com. Is https://shop.com the live site? Type yes to go on:|yes"
 		if len(asked) == 0 || asked[0] != want {
 			t.Fatalf("asked %q", asked)
 		}
@@ -789,7 +789,7 @@ func TestRunHoldsProductionPrintable(t *testing.T) {
 		return false, nil
 	}
 	_, _ = Run(context.Background(), j)
-	if asked != "/srv/staging still calls itself https://sh]0;pwnedop.com. Is https://sh]0;pwnedop.com the live site? Type yes to go on:" {
+	if asked != "/srv/staging calls itself https://sh]0;pwnedop.com. Is https://sh]0;pwnedop.com the live site? Type yes to go on:" {
 		t.Errorf("asked %q", asked)
 	}
 	for in, want := range map[string]string{"https://a.test": "https://a.test", "  https://b.test\n": "https://b.test",

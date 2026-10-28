@@ -638,7 +638,7 @@ func (r *runner) open(ctx context.Context) error {
 }
 
 // heldURL matches the URL in a target-holds-production message.
-var heldURL = regexp.MustCompile(`still calls itself (\S+?)\.(?:\s|$)`)
+var heldURL = regexp.MustCompile(`calls itself (\S+?)[;.](?:\s|$)`)
 
 // guard runs the target guards. When the staging still holds a URL that
 // may be production's, a terminal is asked once whether it is the live
@@ -667,7 +667,7 @@ func (r *runner) guard(ctx context.Context) error {
 		if u == "" {
 			return err
 		}
-		q := fmt.Sprintf("%s still calls itself %s. Is %s the live site? Type yes to go on:", r.j.To.Display, u, u)
+		q := fmt.Sprintf("%s calls itself %s. Is %s the live site? Type yes to go on:", r.j.To.Display, u, u)
 		ok, cerr := r.j.Confirm(q, "yes")
 		if cerr != nil {
 			return cerr
@@ -751,7 +751,11 @@ func (r *runner) confirmNames(ctx context.Context, withSite bool) (names []strin
 		add(strings.TrimPrefix(to.Alias, "@"))
 	}
 	if len(names) == 0 {
+		// No host to go by: a local folder is confirmed by its path.
 		add(to.Display)
+		if what == "the site's host" {
+			what = "the site's path"
+		}
 	}
 	return names, what
 }
