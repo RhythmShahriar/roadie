@@ -169,8 +169,12 @@ func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 func nothingScanned(j Job, c core.Coverage) *core.Error {
 	why := "no tables"
 	switch {
+	case c.TablesTotal == 1 && len(c.Skipped) >= 1:
+		why = "1 table, which couldn't be read"
 	case c.TablesTotal > 0 && len(c.Skipped) >= c.TablesTotal:
 		why = fmt.Sprintf("%d tables, none could be read", c.TablesTotal)
+	case c.TablesTotal == 1:
+		why = "1 table, empty"
 	case c.TablesTotal > 0:
 		why = fmt.Sprintf("%d tables, all empty", c.TablesTotal)
 	case len(c.Skipped) > 0:
@@ -180,8 +184,13 @@ func nothingScanned(j Job, c core.Coverage) *core.Error {
 	if name == "" {
 		name = "the target"
 	}
+	advice := "check the user's SELECT rights."
+	if k := j.Target.Kind; k == core.DumpFile || k == core.Stdio {
+		// A dump has no user: it holds no tables or no rows.
+		advice = "the dump holds no tables or no rows. Check that the export wrote the database you meant."
+	}
 	return core.Errorf(core.ErrNothingScanned, 3,
-		"nothing-scanned: verify read 0 rows from %s (%s). A verify that sees nothing can't pass; check the user's SELECT rights.", name, why)
+		"nothing-scanned: verify read 0 rows from %s (%s). A verify that sees nothing can't pass; %s", name, why, advice)
 }
 
 // openTarget returns the source to scan and the site, if any, opening

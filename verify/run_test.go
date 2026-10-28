@@ -336,9 +336,20 @@ func TestRunNothingScanned(t *testing.T) {
 	if !strings.HasPrefix(ce.Msg, "nothing-scanned: verify read 0 rows from staging@localhost (") {
 		t.Errorf("message %s", ce.Msg)
 	}
+	if !strings.HasSuffix(ce.Msg, "check the user's SELECT rights.") {
+		t.Errorf("a database: %s", ce.Msg)
+	}
 	empty := source(&core.Batch{Table: table("wp_posts", "ID", "post_content")})
 	if _, err := Run(context.Background(), Job{Source: empty}); !errors.Is(err, &core.Error{Code: core.ErrNothingScanned}) {
 		t.Errorf("empty table: %v", err)
+	}
+	// A dump has no user to give SELECT rights to.
+	for _, k := range []core.EndpointKind{core.DumpFile, core.Stdio} {
+		empty := source(&core.Batch{Table: table("wp_posts", "ID", "post_content")})
+		_, err := Run(context.Background(), Job{Source: empty, Target: core.Endpoint{Kind: k, Display: "empty.sql"}})
+		if !errors.As(err, &ce) || ce.Msg != "nothing-scanned: verify read 0 rows from empty.sql (1 table, empty). A verify that sees nothing can't pass; the dump holds no tables or no rows. Check that the export wrote the database you meant." {
+			t.Errorf("%s: %v", k, err)
+		}
 	}
 }
 
