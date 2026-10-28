@@ -16,8 +16,9 @@ $ rhythm-roadie plan --from ssh://deploy@shop.com/var/www/shop --to /var/www/sta
 
   [1;38;2;255;124;81mDATA  4 tables[0m [38;2;107;113;128m─────────────────────────────────────────────────────────────[0m
 
-    wp_users                     18,402 rows   user_email, user_login → fake;
-                                               user_pass → reset (2 kept)
+    wp_users                     18,402 rows   user_email (2 kept), user_login
+                                               (2 kept) → fake; user_pass (2
+                                               kept) → reset
     wp_wc_orders                 96,220 rows   billing_email → fake;
                                                customer_note → scrub
     wp_wpmailsmtp_emails_log      9,812 rows   truncated (wp-mail-smtp)

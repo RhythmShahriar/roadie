@@ -9,7 +9,7 @@ URLs: shop.com → https://staging.shop.test (serialized and JSON safe)
 Consistency: per-run key: each real person gets one fake, across every table
 
 DATA  4 tables
-wp_users (18,402 rows): user_email, user_login → fake; user_pass → reset (2 kept)
+wp_users (18,402 rows): user_email (2 kept), user_login (2 kept) → fake; user_pass (2 kept) → reset
 wp_wc_orders (96,220 rows): billing_email → fake; customer_note → scrub
 wp_wpmailsmtp_emails_log (9,812 rows): truncated (wp-mail-smtp)
 wp_options (1,044 rows): option_value → URLs rewritten

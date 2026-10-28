@@ -756,6 +756,24 @@ func TestTableWhatGroupsColumns(t *testing.T) {
 	}
 }
 
+// The values a column kept as they were are counted by that column's
+// name: 150 empty user_url values never read as 150 passwords kept.
+func TestTableWhatKeptByColumn(t *testing.T) {
+	tr := core.TableReport{Name: "wp_users", Action: string(core.Fake), Columns: []core.ColumnReport{
+		{Name: "user_email", Changed: 151},
+		{Name: "user_url", Changed: 1, Kept: 150},
+		{Name: "user_pass", Changed: 151},
+	}}
+	changes := []core.Change{
+		{Table: "wp_users", Column: "user_email", Action: core.Fake, Values: 151},
+		{Table: "wp_users", Column: "user_url", Action: core.Fake, Values: 1, Kept: 150},
+		{Table: "wp_users", Column: "user_pass", Action: core.ResetPassword, Values: 151},
+	}
+	if got, want := tableWhat(tr, changes, true), "user_email, user_url (150 kept) → fake; user_pass → reset"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 // An error with no code of its own gets one where Roadie knows it (a
 // remote command, a missing table); the stop box never shows a lone
 // "; " where the code would be.

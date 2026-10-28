@@ -215,6 +215,13 @@ func tableWhat(t core.TableReport, changes []core.Change, counted bool) string {
 			best[c.Name] = colAction{action: core.Fake, values: c.Changed}
 		}
 	}
+	// A column some of whose values stayed as they were (empty, already
+	// fake, a kept user's) says how many by its own name, so the count
+	// never reads as the last group's: "user_url (150 kept) → fake".
+	kept := map[string]int64{}
+	for _, c := range t.Columns {
+		kept[c.Name] = max(kept[c.Name], c.Kept)
+	}
 	var order []core.Action
 	cols := map[core.Action][]string{}
 	for _, name := range colOrder {
@@ -225,22 +232,16 @@ func tableWhat(t core.TableReport, changes []core.Change, counted bool) string {
 		if _, ok := cols[a]; !ok {
 			order = append(order, a)
 		}
+		if n := kept[name]; n > 0 {
+			name += " (" + num(n) + " kept)"
+		}
 		cols[a] = append(cols[a], name)
 	}
 	var parts []string
 	for _, a := range order {
 		parts = append(parts, strings.Join(cols[a], ", ")+" → "+changeWords[a])
 	}
-	var kept int64
-	for _, c := range t.Columns {
-		if best[c.Name].action != "" {
-			kept = max(kept, c.Kept)
-		}
-	}
 	s := strings.Join(parts, "; ")
-	if kept > 0 {
-		s += " (" + num(kept) + " kept)"
-	}
 	if s == "" {
 		return "no column changes"
 	}
