@@ -30,3 +30,26 @@ func TestUncoveredSkipsTruncatedTables(t *testing.T) {
 		}
 	}
 }
+
+// A production email in a column DEFAULT is found like one in a row,
+// under the table's "(schema)" column, and isn't counted as a row.
+func TestDDLLiteralsScanned(t *testing.T) {
+	users := table("wp_users", "ID", "user_email")
+	ddl := &core.Batch{Pass: &core.Statement{Kind: "alter-table",
+		Text: []byte("ALTER TABLE `wp_users` ADD COLUMN `zz_note` varchar(100) DEFAULT 'maria.kowalska@gmail.com';")}}
+	res := runJob(t, Job{Source: source(batch(users, []string{"1", "u1@example.invalid"}), ddl)})
+	found := false
+	for _, f := range res.Findings {
+		for _, l := range f.Locations {
+			if f.ID == core.FindingPIIEmail && l.Table == "wp_users" && l.Column == "(schema)" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Errorf("findings %+v", res.Findings)
+	}
+	if res.Coverage.RowsScanned != 1 {
+		t.Errorf("rows scanned %d", res.Coverage.RowsScanned)
+	}
+}

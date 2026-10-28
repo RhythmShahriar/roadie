@@ -86,6 +86,9 @@ func (s *scanner) batch(w work) result {
 	}
 	res.findings = acc.Findings()
 	res.unparsed = f.unparsed
+	if w.ddl {
+		res.rows, res.bytes = 0, 0
+	}
 	return res
 }
 

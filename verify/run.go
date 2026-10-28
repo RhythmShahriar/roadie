@@ -257,6 +257,44 @@ type work struct {
 	b     *core.Batch
 	rows  []int
 	kinds map[string]core.FakeKind
+	ddl   bool // the literals of a DDL statement: not rows of the coverage
+}
+
+// ddlColumn is the column a DDL literal's finding names.
+const ddlColumn = "(schema)"
+
+// ddlBatch turns the string literals of a CREATE TABLE or ALTER TABLE
+// into a batch of one-value rows on the table it names, so the
+// detectors and exact mode read them like any value; nil when it has
+// none.
+func ddlBatch(st *core.Statement) *core.Batch {
+	lits := core.DDLLiterals(st.Text)
+	if len(lits) == 0 {
+		return nil
+	}
+	name := core.DDLTable(st.Text)
+	if name == "" {
+		name = "(DDL)"
+	}
+	b := &core.Batch{Table: &core.Table{Name: name, Columns: []core.Column{{Name: ddlColumn, Type: "text"}}}}
+	for _, l := range lits {
+		if l[1] > l[0] {
+			b.Rows = append(b.Rows, core.Row{Values: []core.Value{{Kind: core.String, Raw: st.Text[l[0]:l[1]]}}})
+		}
+	}
+	if len(b.Rows) == 0 {
+		return nil
+	}
+	return b
+}
+
+// allRows is every row index of b.
+func allRows(b *core.Batch) []int {
+	out := make([]int, len(b.Rows))
+	for i := range out {
+		out[i] = i
+	}
+	return out
 }
 
 // result is what a worker found in one batch.
@@ -352,6 +390,15 @@ func (r *run) stream(ctx context.Context, src core.Source) (map[string]map[strin
 			}
 			r.res.Coverage.Skipped = append(r.res.Coverage.Skipped, skip)
 			break
+		}
+		if b != nil && b.Table == nil && b.Pass != nil && core.IsDDL(b.Pass.Kind) {
+			// A production email in a DEFAULT or COMMENT is in the copy
+			// as much as one in a row: the literals are scanned as values.
+			if db := ddlBatch(b.Pass); db != nil {
+				in <- work{idx: idx, b: db, rows: allRows(db), ddl: true}
+				idx++
+			}
+			continue
 		}
 		if b == nil || b.Table == nil || len(b.Rows) == 0 {
 			continue

@@ -1042,3 +1042,27 @@ func TestKeyedLeaf(t *testing.T) {
 		}
 	}
 }
+
+// A production value kept in a column DEFAULT or COMMENT gets its fake,
+// a real-looking email in one gets a fake email, and a DEFAULT that holds
+// no one ('publish') stays.
+func TestDDLLiterals(t *testing.T) {
+	k := testutil.FakeKnown()
+	k.Add(core.KEmail, []byte("omar.okafor@shop.example"))
+	k.Seal()
+	tr := newTransformer(&shared{cfg: roadiecfg.Default(), known: k}, testutil.FakeFaker())
+	st := &core.Statement{Kind: "alter-table", Text: []byte("ALTER TABLE `wp_users` ADD COLUMN `zz_note` varchar(100) DEFAULT 'omar.okafor@shop.example' " +
+		"COMMENT 'ask maria.kowalska@gmail.com', ADD COLUMN `st` varchar(9) DEFAULT 'publish';")}
+	got, n := tr.ddl(st)
+	text := string(got.Text)
+	if n != 2 || strings.Contains(text, "omar.okafor@shop.example") || strings.Contains(text, "maria.kowalska@gmail.com") ||
+		!strings.Contains(text, "DEFAULT 'publish'") || !strings.Contains(text, "COMMENT 'ask ") {
+		t.Errorf("%d: %s", n, text)
+	}
+	if string(st.Text) == text {
+		t.Error("the input statement was changed in place")
+	}
+	if got, n := tr.ddl(&core.Statement{Kind: core.StmtLock, Text: []byte("LOCK TABLES `a@b.com` WRITE;")}); n != 0 || got.Kind != core.StmtLock {
+		t.Errorf("a lock statement: %d", n)
+	}
+}

@@ -753,6 +753,7 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 			}
 		}()
 	}
+	ddlT := newTransformer(sh, faker.Clone())
 	var readErr error
 	var wide, joined *profile.Compiled // the one-pass rule set so far, with the data rules
 	readDone := make(chan struct{})
@@ -787,6 +788,11 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 			}
 			if comp != nil && skipBatch(b, comp) {
 				continue
+			}
+			if b.Table == nil && b.Pass != nil {
+				// A DEFAULT or COMMENT can hold what a row would: the
+				// reader scrubs the DDL it passes on (few, short).
+				b.Pass, _ = ddlT.ddl(b.Pass)
 			}
 			j := &job{b: b, comp: comp, done: make(chan struct{}), cost: batchCost(b)}
 			if b.Table == nil {
