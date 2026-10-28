@@ -27,13 +27,14 @@ type Job struct {
 	ProductionPairs []core.Pair // production's wp-config.php/.env pairs (exact mode): config.salts, config.points-at-production
 	Rules           []core.Rule // covering rules, for column kinds and uncovered
 	Steps           []core.Step // kill-switch and exposure checks
+	Opts            Options
+	Progress        core.Progress
+
 	// ScanTable says which tables the uncovered-column scan reads; nil
 	// reads them all. A copy leaves out the tables it truncated or
 	// dropped (PRD 15.2) and, for prepare --only without data, every
 	// table: no column rule ran.
 	ScanTable func(table string) bool
-	Opts            Options
-	Progress        core.Progress
 }
 
 // Options are verify's flags and config.
