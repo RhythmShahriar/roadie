@@ -214,3 +214,30 @@ func TestCutCompressed(t *testing.T) {
 		}
 	}
 }
+
+// A GRANT after "-- Dump completed" is dropped and the dump is whole; a
+// statement that counts after it, or a second dump cut short after it,
+// stops with a message that says the end line is there.
+func TestStatementsAfterTrailer(t *testing.T) {
+	whole, err := os.ReadFile("testdata/small.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(whole, []byte("-- Dump completed")) {
+		t.Fatal("small.sql has no end line")
+	}
+	if err := openAll(t, append(bytes.Clone(whole), "GRANT ALL ON shop.* TO 'app'@'%';\nFLUSH PRIVILEGES;\n"...), "grant.sql"); err != nil {
+		t.Errorf("GRANT after the end line: %v", err)
+	}
+	err = openAll(t, append(bytes.Clone(whole), "DROP TABLE IF EXISTS `x`;\n"...), "after.sql")
+	if !errors.Is(err, &core.Error{Code: core.ErrDumpTruncated}) || strings.Contains(err.Error(), `with no "Dump completed" line`) ||
+		!strings.Contains(err.Error(), `after its "Dump completed" line (the first a DROP TABLE)`) {
+		t.Errorf("statement after the end line: %v", err)
+	}
+	cut := bytes.Index(whole, []byte("INSERT INTO"))
+	err = openAll(t, append(bytes.Clone(whole), whole[:cut+40]...), "twice.sql")
+	if !errors.Is(err, &core.Error{Code: core.ErrDumpTruncated}) || strings.Contains(err.Error(), `with no "Dump completed" line`) ||
+		!strings.Contains(err.Error(), "two dumps run together") {
+		t.Errorf("second dump cut short: %v", err)
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/dump/allow"
@@ -200,6 +201,16 @@ func (s *source) end(err error) error {
 		return err
 	}
 	s.err = streamError(s.name, s.rd.Table(), err)
+	var ce *core.Error
+	if errors.As(s.err, &ce) && ce.Code == core.ErrDumpTruncated && s.ends.read && s.ends.trailer != "" &&
+		strings.Contains(ce.Msg, `with no "`+s.ends.trailer+`" line`) {
+		// A statement cut short after the end line: the dump has that
+		// line, so saying it lacks one would mislead.
+		cp := *ce
+		cp.Msg = strings.Replace(ce.Msg, `with no "`+s.ends.trailer+`" line`,
+			`after its "`+s.ends.trailer+`" line (two dumps run together, the second cut short)`, 1)
+		s.err = &cp
+	}
 	return s.err
 }
 

@@ -6,6 +6,7 @@ package dump
 import (
 	"bytes"
 	"regexp"
+	"strings"
 
 	"github.com/RhythmShahriar/roadie/core"
 	"github.com/RhythmShahriar/roadie/dump/internal/size"
@@ -37,6 +38,8 @@ var reAdminerEnd = regexp.MustCompile(`(?m)^-- \d{4}-\d\d-\d\d \d\d:\d\d:\d\d`)
 type endCheck struct {
 	trailer  string // the end line wanted, "" for tools that write none
 	seen     bool   // the end line was read and nothing but comments followed
+	read     bool   // the end line was read at some point
+	after    string // the kind of the first statement that counts after it
 	adminer  bool
 	dateSeen bool   // Adminer's closing date line was read last
 	closed   bool   // the last statement that counts closes an export
@@ -77,7 +80,7 @@ func (e *endCheck) see(b *core.Batch) {
 	switch st.Kind {
 	case core.StmtComment:
 		if e.trailer != "" && bytes.Contains(st.Text, []byte("-- "+e.trailer)) {
-			e.seen = true
+			e.seen, e.read, e.after = true, true, ""
 		}
 		if e.adminer {
 			e.dateSeen = reAdminerEnd.Match(st.Text)
@@ -92,6 +95,16 @@ func (e *endCheck) see(b *core.Batch) {
 		// phpMyAdmin restores its settings after COMMIT.
 		e.seen, e.dateSeen = false, false
 		return
+	case core.StmtOther:
+		// A GRANT or FLUSH PRIVILEGES added after the end line holds no
+		// rows; the allowlist drops it (or refuses one that writes rows),
+		// so the dump is still whole.
+		if e.seen {
+			return
+		}
+	}
+	if e.read && e.after == "" {
+		e.after = kindWords(st.Kind)
 	}
 	e.seen, e.dateSeen = false, false
 	switch st.Kind {
@@ -113,8 +126,20 @@ func (e *endCheck) see(b *core.Batch) {
 }
 
 func (e *endCheck) count(kind string, closes bool) {
+	if e.read && e.after == "" {
+		e.after = kind
+	}
 	e.seen, e.dateSeen = false, false
 	e.any, e.closed, e.lastKind = true, closes, kind
+}
+
+// kindWords names a statement kind as SQL does: drop-table is DROP
+// TABLE; anything Roadie has no name for is a statement.
+func kindWords(k core.StmtKind) string {
+	if k == core.StmtOther || k == "" {
+		return "statement"
+	}
+	return strings.ToUpper(strings.ReplaceAll(string(k), "-", " "))
 }
 
 // isCommit reports whether a transaction statement is COMMIT.
@@ -153,6 +178,12 @@ func (e *endCheck) truncatedError(name, table string, raw int64) *core.Error {
 	}
 	what := `with no "` + e.trailer + `" line`
 	switch {
+	case e.trailer != "" && e.read:
+		// The end line is there, with more after it: two dumps run
+		// together, the second cut short.
+		return core.Errorf(core.ErrDumpTruncated, 3,
+			"dump-truncated: %s has statements after its %q line (the first a %s) and ends at %s without another one. Export it again, or remove what follows that line; the target is untouched.",
+			name, e.trailer, e.after, size.Human(raw))
 	case e.trailer != "":
 	case e.txOpen:
 		what = "with no COMMIT for its START TRANSACTION"
