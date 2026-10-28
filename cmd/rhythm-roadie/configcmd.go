@@ -125,11 +125,26 @@ func initScan(ctx context.Context, p *parsed, stderr io.Writer) (*core.Result, e
 	if err != nil {
 		return nil, endpointError(stderr, "config", err)
 	}
-	j := engine.Job{Mode: engine.Plan, From: from, Clock: dep.now,
-		Opts: engine.Options{SchemaOnly: true, Offline: p.offline(dep.env), Keys: "swap", EmailDomain: defaultEmailDomain}}
-	r, err := dep.run(ctx, j)
-	if err == nil && r != nil && r.Err != nil {
-		err = r.Err
+	// --stack reaches the schema read (woocommerce is a WordPress
+	// template). With none, a schema no profile matches is read as stack
+	// sql: init's job there is to list its personal-looking columns.
+	stack := p.f.stack
+	if stack == "woocommerce" {
+		stack = "wordpress"
+	}
+	scan := func(stack string) (*core.Result, error) {
+		j := engine.Job{Mode: engine.Plan, From: from, Clock: dep.now,
+			Opts: engine.Options{SchemaOnly: true, Offline: p.offline(dep.env), Keys: "swap", EmailDomain: defaultEmailDomain, Stack: stack}}
+		r, err := dep.run(ctx, j)
+		if err == nil && r != nil && r.Err != nil {
+			err = r.Err
+		}
+		return r, err
+	}
+	r, err := scan(stack)
+	var ce *core.Error
+	if err != nil && stack == "" && errors.As(err, &ce) && ce.Code == core.ErrStack {
+		r, err = scan("sql")
 	}
 	if err != nil {
 		return nil, runError(err)
@@ -229,7 +244,7 @@ func configCheck(p *parsed, stdout, stderr io.Writer) error {
 		}
 		return runError(err)
 	}
-	b, err := os.ReadFile(path) // #nosec G304 -- the user's own settings file
+	b, err := os.ReadFile(path) // #nosec G304 G703 -- the user's own settings file
 	if err != nil {
 		return &cli.ExitError{Code: cli.ExitUnavailable, Err: err}
 	}
@@ -445,7 +460,7 @@ func (p *parsed) projectDir() string {
 // keyExists reports whether the key file is there. Any error but "not
 // there" counts as there, so forget still tries and reports it.
 func keyExists(path string) bool {
-	_, err := os.Stat(path)
+	_, err := os.Stat(path) // #nosec G703 -- the project's own key file
 	return !errors.Is(err, fs.ErrNotExist)
 }
 
