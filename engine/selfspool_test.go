@@ -7,13 +7,17 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/codec/urlrw"
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/dump"
 	"github.com/RhythmShahriar/roadie/internal/testutil"
+	"github.com/RhythmShahriar/roadie/roadiecfg"
 	"github.com/RhythmShahriar/roadie/verify"
 )
 
@@ -300,5 +304,33 @@ func TestPrepareConfirmBySiteHost(t *testing.T) {
 		case c.wantErr != "" && (err == nil || !strings.Contains(err.Error(), c.wantErr)):
 			t.Errorf("%s: %v, want %q", c.confirm, err, c.wantErr)
 		}
+	}
+}
+
+// A standalone verify of a dump no profile knows runs heuristically as
+// stack sql instead of stopping with stack (persona C), and says which
+// stack it found.
+func TestVerifyJobWithoutProfile(t *testing.T) {
+	useRunFakes(t)
+	old := openDump
+	openDump = dump.Open
+	t.Cleanup(func() { openDump = old })
+	in := filepath.Join(t.TempDir(), "app.sql")
+	sql := "-- MySQL dump 10.13\nCREATE TABLE `customers` (`id` int, `email` varchar(100), `phone` varchar(30));\n" +
+		"INSERT INTO `customers` VALUES (1,'maria.kowalska@gmail.com','+48 601 234 567');\n-- Dump completed on 2026-10-26\n"
+	if err := os.WriteFile(in, []byte(sql), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	target := core.Endpoint{Kind: core.DumpFile, Raw: in, Display: "app.sql", Path: in}
+	vj, err := VerifyJob(context.Background(), Job{Config: roadiecfg.Default()}, target, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vj.Stack.Name != core.StackSQL || vj.Known != nil {
+		t.Errorf("stack %+v, known %v", vj.Stack, vj.Known)
+	}
+	// An explicit stack that doesn't match still says so.
+	if _, err := VerifyJob(context.Background(), Job{Config: roadiecfg.Default(), Opts: Options{Stack: "wordpress"}}, target, nil); err != nil && !isCode(err, core.ErrStack) {
+		t.Errorf("stack wordpress: %v", err)
 	}
 }

@@ -35,6 +35,9 @@ type Job struct {
 	// dropped (PRD 15.2) and, for prepare --only without data, every
 	// table: no column rule ran.
 	ScanTable func(table string) bool
+	// Stack is what a standalone verify found the copy to be, for the
+	// report; verify itself doesn't read it.
+	Stack core.StackInfo
 }
 
 // Options are verify's flags and config.

@@ -63,6 +63,7 @@ func runVerify(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 			bar = newProgress(stdout, dep.stdoutTerminal() && !vo.plain, vo.quiet, dep.now)
 		}
 		job.Progress = bar
+		r.Stack = job.Stack
 		r.Verify, err = dep.verify(ctx, job)
 		bar.Done()
 		if r.Verify != nil {

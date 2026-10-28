@@ -708,3 +708,18 @@ func TestProfilesShowKeptParts(t *testing.T) {
 		t.Errorf("keep: []:\n%s", out)
 	}
 }
+
+// A standalone verify reports the stack it found (data.stack), not
+// "not detected".
+func TestVerifyReportsStack(t *testing.T) {
+	fx := &verifyFixture{results: []*core.VerifyResult{heuristicPass()}}
+	useVerify(t, fx, func(d *deps) {
+		d.verifyJob = func(_ context.Context, _ engine.Job, target core.Endpoint, _ *core.Endpoint) (verify.Job, error) {
+			return verify.Job{Target: target, Stack: core.StackInfo{Name: core.StackWordPress, Profiles: []string{"wordpress"}}}, nil
+		}
+	})
+	out, errOut, code := runCmd(t, "verify", "staging.sql", "--no-config", "--md")
+	if code != 0 || !strings.Contains(out, `"Stack":{"Name":"wordpress","Profiles":["wordpress"]`) {
+		t.Errorf("exit %d %s\n%s", code, errOut, out)
+	}
+}

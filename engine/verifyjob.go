@@ -81,7 +81,8 @@ func VerifyJob(ctx context.Context, j Job, target core.Endpoint, from *core.Endp
 		_ = in.close()
 		return verify.Job{}, err
 	}
-	vj := verify.Job{Target: target, Rules: c.All(), Production: production(cfg, nil), Opts: r.verifyOptions(), Progress: j.Progress}
+	vj := verify.Job{Target: target, Rules: c.All(), Production: production(cfg, nil), Opts: r.verifyOptions(), Progress: j.Progress,
+		Stack: core.StackInfo{Name: c.Stack(), Profiles: c.Profiles()}}
 	if si, ok := in.(*streamInput); ok && target.Kind == core.Stdio {
 		// verify reads the spool pass 1 wrote; closing it removes it.
 		src, err := si.open(ctx, 2)
@@ -130,7 +131,16 @@ func (p *pipeline) compileOnly(ctx context.Context) (*profile.Compiled, error) {
 	if err != nil {
 		return nil, err
 	}
-	return p.finalCompile(idx, schema)
+	c, err := p.finalCompile(idx, schema)
+	if errors.Is(err, profile.ErrNoStack) && (p.cfg.Stack == "" || p.cfg.Stack == "auto") {
+		// A dump no profile knows (a CRM's customers table) is still
+		// verified: heuristically, as stack sql (persona C).
+		cfg := *p.cfg
+		cfg.Stack = string(core.StackSQL)
+		p.cfg = &cfg
+		return p.finalCompile(idx, schema)
+	}
+	return c, err
 }
 
 // productionIndex is a read-only pass 1 over production for exact mode:
