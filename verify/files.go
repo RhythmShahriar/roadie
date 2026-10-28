@@ -37,7 +37,9 @@ var parsePairs = func(name string, b []byte) ([]core.Pair, error) {
 	if err != nil {
 		return nil, err
 	}
-	return f.Pairs(), nil
+	// The strings inside a define built from an expression count too:
+	// AS3CF_SETTINGS holds its AWS keys in serialize( array( ... ) ).
+	return append(f.Pairs(), f.MemberPairs()...), nil
 }
 
 // configFiles are the config files verify reads on a site.

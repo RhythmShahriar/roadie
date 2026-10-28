@@ -405,22 +405,48 @@ func sameSite(a, b string) bool {
 // lists the live keys still there as key.<provider>-live findings.
 func keyStep(o Options) core.Step {
 	id := core.FindingKeyGeneric
+	// The literal defines and the strings inside defines built from an
+	// expression (AS3CF_SETTINGS' serialize( array( ... ) )).
+	all := func(f *wpconfig.File) (pairs []core.Pair, member map[core.Pair]bool) {
+		ms := f.MemberPairs()
+		member = make(map[core.Pair]bool, len(ms))
+		for _, m := range ms {
+			member[m] = true
+		}
+		return append(f.Pairs(), ms...), member
+	}
 	live := func(f *wpconfig.File) []core.KeyHit {
 		var out []core.KeyHit
-		for _, h := range o.scan(f.Pairs()) {
+		pairs, _ := all(f)
+		for _, h := range o.scan(pairs) {
 			if h.Env == "live" {
 				out = append(out, h)
 			}
 		}
 		return out
 	}
-	pairAt := func(f *wpconfig.File, line int) (core.Pair, bool) {
-		for _, p := range f.Pairs() {
-			if p.Line == line {
-				return p, true
+	// pairAt finds the setting a hit is in: the one on its line, or
+	// with two on one line the one that starts as the masked key does.
+	pairAt := func(f *wpconfig.File, h core.KeyHit) (core.Pair, bool, bool) {
+		pairs, member := all(f)
+		var on []core.Pair
+		for _, p := range pairs {
+			if p.Line == h.At.Line {
+				on = append(on, p)
 			}
 		}
-		return core.Pair{}, false
+		if len(on) > 1 {
+			head, _, _ := strings.Cut(h.Masked, "\u2022")
+			for _, p := range on {
+				if head != "" && strings.Contains(p.Value, head) {
+					return p, member[p], true
+				}
+			}
+		}
+		if len(on) == 0 {
+			return core.Pair{}, false, false
+		}
+		return on[0], member[on[0]], true
 	}
 	ks := &keyFileStep{step: step{id: id}}
 	plan, apply := configEdit(id,
@@ -434,7 +460,7 @@ func keyStep(o Options) core.Step {
 		func(f *wpconfig.File) error {
 			ks.applied = nil
 			for _, h := range live(f) {
-				p, ok := pairAt(f, h.At.Line)
+				p, isMember, ok := pairAt(f, h)
 				if !ok {
 					continue
 				}
@@ -447,7 +473,11 @@ func keyStep(o Options) core.Step {
 				if action == "manual" || action == "kept" {
 					continue
 				}
-				if err := f.Set(p.Name, string(v)); err != nil {
+				set := func() error { return f.Set(p.Name, string(v)) }
+				if isMember {
+					set = func() error { return f.SetMember(p.Name, p.Line, string(v)) }
+				}
+				if err := set(); err != nil {
 					return err
 				}
 			}

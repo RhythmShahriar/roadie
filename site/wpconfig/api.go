@@ -12,6 +12,7 @@ package wpconfig
 
 import (
 	"bytes"
+	"fmt"
 	"slices"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -45,6 +46,48 @@ func (f *File) Pairs() []core.Pair {
 		}
 	}
 	return out
+}
+
+// MemberPairs returns the string literals inside defines built from an
+// expression, such as define( 'AS3CF_SETTINGS', serialize( array(
+// 'secret-access-key' => '...' ) ) ), so a key there is found like one
+// in a plain define. Each is named NAME.key (NAME alone for a literal
+// with no array key) and carries the literal's own line.
+func (f *File) MemberPairs() []core.Pair {
+	var out []core.Pair
+	for _, d := range f.p.defs {
+		for _, m := range d.members {
+			out = append(out, core.Pair{Name: memberName(d.Name, m.key), Value: m.value, Line: m.line, Quoted: true})
+		}
+	}
+	return out
+}
+
+func memberName(define, key string) string {
+	if key == "" {
+		return define
+	}
+	return define + "." + key
+}
+
+// SetMember replaces the string literal MemberPairs names name at line
+// with value, keeping its quote style; nothing else in the file changes.
+func (f *File) SetMember(name string, line int, value string) error {
+	for _, d := range f.p.defs {
+		for _, m := range d.members {
+			if m.line != line || memberName(d.Name, m.key) != name {
+				continue
+			}
+			out := apply(f.src, []edit{{m.start, m.end, Quote(value, m.quote)}})
+			np, err := parse(out)
+			if err != nil {
+				return fmt.Errorf("wp-config.php: setting %s would break the file: %w", name, err)
+			}
+			f.src, f.p = out, np
+			return nil
+		}
+	}
+	return fmt.Errorf("wp-config.php: no string %s at line %d", name, line)
 }
 
 // Get returns the define PHP keeps for name (the first unconditional one,

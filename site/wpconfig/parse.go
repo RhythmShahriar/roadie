@@ -34,6 +34,43 @@ type def struct {
 	callStart        int
 	valStart, valEnd int  // the value's bytes; valStart < 0 when there is none
 	stmt             *gap // the safe gap before the top-level statement holding the call
+	// members are the string literals inside a value built from an
+	// expression, such as serialize( array( 'key' => 'value' ) ).
+	members []member
+}
+
+// member is one string literal inside a define's expression.
+type member struct {
+	key        string // the array key before "=>", "" when there is none
+	value      string
+	start, end int // the literal's bytes, quotes included
+	quote      byte
+	line       int
+}
+
+// readMembers finds the string literals of an expression value, each with
+// the array key before it. A key itself is not a member.
+func readMembers(toks []token, val []int, text func(int) string) []member {
+	var out []member
+	for j, ti := range val {
+		t := toks[ti]
+		if t.kind != tString || !t.literal {
+			continue
+		}
+		if j+1 < len(val) && toks[val[j+1]].kind == tPunct && text(val[j+1]) == "=>" {
+			continue
+		}
+		m := member{value: t.value, start: t.start, end: t.end, quote: t.quote}
+		if j >= 2 && toks[val[j-1]].kind == tPunct && text(val[j-1]) == "=>" {
+			if k := toks[val[j-2]]; k.kind == tString && k.literal {
+				m.key = k.value
+			} else if k.kind == tNumber {
+				m.key = text(val[j-2])
+			}
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // gap is the space between two top-level statements, where a new define
@@ -190,6 +227,9 @@ func parse(src []byte) (*parsed, error) {
 				d.Conditional = g == nil || d.Conditional
 				d.stmt = lastSafe
 				d.Line = p.lineOf(t.start)
+				for k := range d.members {
+					d.members[k].line = p.lineOf(d.members[k].start)
+				}
 				p.defs = append(p.defs, d)
 			}
 		}
@@ -331,6 +371,9 @@ done:
 		d.Literal = true
 	case len(val) == 2 && (text(val[0]) == "-" || text(val[0]) == "+") && toks[val[1]].kind == tNumber:
 		d.Value, d.Literal = text(val[0])+text(val[1]), true
+	}
+	if !d.Literal && len(val) > 1 {
+		d.members = readMembers(toks, val, text)
 	}
 	// define(...) must end its statement; "define(...) or die()" is conditional.
 	if k+1 >= len(sig) || (text(sig[k+1]) != ";" && toks[sig[k+1]].kind != tClose) {
