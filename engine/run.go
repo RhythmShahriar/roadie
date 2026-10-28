@@ -953,11 +953,11 @@ func (r *runner) inputFor(ctx context.Context, e core.Endpoint, s core.Site, lim
 		return nil, core.Errorf(core.ErrConfig, 2, "engine: %s isn't open", e.Display)
 	}
 	// A site over ssh or an alias is read whole: its export of a table
-	// it lacks fails, and its tables can't be listed without one.
+	// it lacks fails and its tables can't be listed without one.
 	if limited && e.Kind != core.SSHSite && e.Kind != core.WPAlias {
 		id, err := s.DBIdentity(ctx)
 		if err == nil && s.Stack() == core.StackWordPress {
-			// A single site has no blogs table, and a site without
+			// A single site has no blogs table and a site without
 			// WooCommerce webhooks or AutomateWoo lacks theirs: the
 			// database leaves a missing one out.
 			ctx := db.SkipMissing(ctx)
@@ -1059,7 +1059,7 @@ func (t *tablesInput) open(ctx context.Context, _ int) (core.Source, error) {
 }
 
 // listedSource is a source of some tables whose schema shows only them:
-// a database's schema names every table, and the run would report all
+// a database's schema names every table and the run would report all
 // of them imported.
 type listedSource struct {
 	core.Source

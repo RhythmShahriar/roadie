@@ -32,7 +32,7 @@ func (s *recSource) Close() error {
 	return s.Source.Close()
 }
 
-// prepare reads the staging once, into the spool, and closes that read
+// prepare reads the staging once, into the spool, then closes that read
 // before the import opens: a read still open on the database the import
 // replaces waits on its own metadata locks for ever (MySQL, MariaDB).
 func TestPrepareClosesItsReadBeforeTheImport(t *testing.T) {
@@ -254,7 +254,7 @@ func TestResultSideEffects(t *testing.T) {
 	}
 }
 
-// Uncovered columns of a truncated table are no finding (PRD 15.2), and
+// Uncovered columns of a truncated table are no finding (PRD 15.2);
 // prepare --only side-effects, which ran no column rule, scans none.
 func TestVerifyScanTable(t *testing.T) {
 	f := useRunFakes(t)
@@ -281,7 +281,7 @@ func TestVerifyScanTable(t *testing.T) {
 }
 
 // prepare without --url takes the host the staging calls itself, as copy
-// does from --url, and names it as the host to confirm by; a siteurl that
+// does from --url, then names it as the host to confirm by; a siteurl that
 // is still production's is never offered.
 func TestPrepareConfirmBySiteHost(t *testing.T) {
 	for _, c := range []struct {
@@ -308,7 +308,7 @@ func TestPrepareConfirmBySiteHost(t *testing.T) {
 }
 
 // A standalone verify of a dump no profile knows runs heuristically as
-// stack sql instead of stopping with stack (persona C), and says which
+// stack sql instead of stopping with stack (persona C); it says which
 // stack it found.
 func TestVerifyJobWithoutProfile(t *testing.T) {
 	useRunFakes(t)

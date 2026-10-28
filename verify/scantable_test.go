@@ -32,7 +32,7 @@ func TestUncoveredSkipsTruncatedTables(t *testing.T) {
 }
 
 // A production email in a column DEFAULT is found like one in a row,
-// under the table's "(schema)" column, and isn't counted as a row.
+// under the table's "(schema)" column; it isn't counted as a row.
 func TestDDLLiteralsScanned(t *testing.T) {
 	users := table("wp_users", "ID", "user_email")
 	ddl := &core.Batch{Pass: &core.Statement{Kind: "alter-table",

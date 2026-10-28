@@ -1044,7 +1044,7 @@ func TestKeyedLeaf(t *testing.T) {
 }
 
 // A production value kept in a column DEFAULT or COMMENT gets its fake,
-// a real-looking email in one gets a fake email, and a DEFAULT that holds
+// a real-looking email in one gets a fake email; a DEFAULT that holds
 // no one ('publish') stays.
 func TestDDLLiterals(t *testing.T) {
 	k := testutil.FakeKnown()

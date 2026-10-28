@@ -15,7 +15,7 @@ var ddlEmail = detect.Email()
 
 // ddl scrubs the string literals a CREATE TABLE or ALTER TABLE keeps (a
 // column's DEFAULT, a COMMENT): a literal that is a known production
-// value gets its fake, and a real-looking email inside one gets a fake
+// value gets its fake and a real-looking email inside one gets a fake
 // email. Anything else in a literal ('publish', '0000-00-00') is left as
 // it is: blanking a DEFAULT would change the schema.
 func (t *transformer) ddl(st *core.Statement) (*core.Statement, int) {
