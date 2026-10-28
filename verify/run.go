@@ -507,8 +507,21 @@ func columnAt(b *core.Batch, pos int) *core.Column {
 
 // uncovered lists the uncovered columns of every table (PRD 11.3).
 func (r *run) uncovered(tables []*core.Table, samples map[string]map[string][][]byte) {
-	r.count(core.FindingUncoveredColumn, int64(len(tables)))
+	var n int64
 	for _, t := range tables {
+		if r.j.ScanTable == nil || r.j.ScanTable(t.Name) {
+			n++
+		}
+	}
+	if n == 0 && len(tables) > 0 {
+		r.skipCheck(core.FindingUncoveredColumn, "this run left every table's columns as they were")
+		return
+	}
+	r.count(core.FindingUncoveredColumn, n)
+	for _, t := range tables {
+		if r.j.ScanTable != nil && !r.j.ScanTable(t.Name) {
+			continue
+		}
 		_, covered := columnKinds(t, r.j.Rules)
 		for _, u := range detect.Uncovered(t, covered, samples[t.Name]) {
 			kept := r.add(core.Finding{
