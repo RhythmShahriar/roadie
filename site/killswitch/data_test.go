@@ -63,3 +63,34 @@ func TestDataRead(t *testing.T) {
 		}
 	}
 }
+
+func TestRuleEffect(t *testing.T) {
+	o := fixtureOptions()
+	for _, r := range append(DataRules(core.StackWordPress, o), DataRules(core.StackLaravel, o)...) {
+		if _, how, ok := RuleEffect(o, r.ID); !ok || how == "" {
+			t.Errorf("rule %s names no side effect", r.ID)
+		}
+	}
+	for id, want := range map[string]string{
+		"killswitch.wc_webhooks.status":                                        core.FindingSideEffectWebhooks,
+		"killswitch.options.option_value.woocommerce_stripe_settings.testmode": core.FindingSideEffectGateways,
+		"killswitch.options.option_value.woocommerce_acme_settings.enabled":    core.FindingSideEffectGateways,
+		"killswitch.options.option_value.jetpack_options.blog_token":           core.FindingSideEffectJetpack,
+		"killswitch.automatewoo_queue":                                         core.FindingSideEffectAutomateWoo,
+		"killswitch.jobs":                                                      core.FindingSideEffectQueue,
+	} {
+		if got, _, _ := RuleEffect(o, id); got != want {
+			t.Errorf("%s: %q, want %q", id, got, want)
+		}
+	}
+	for _, id := range []string{"wordpress.users.user_email", "killswitch.options.option_value.blogname.x", "keys"} {
+		if _, _, ok := RuleEffect(o, id); ok {
+			t.Errorf("%s named a side effect", id)
+		}
+	}
+	for base, id := range TruncatedTables {
+		if _, _, ok := RuleEffect(o, id); !ok {
+			t.Errorf("truncated %s: %s", base, id)
+		}
+	}
+}

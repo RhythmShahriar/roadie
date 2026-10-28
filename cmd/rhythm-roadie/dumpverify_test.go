@@ -73,6 +73,13 @@ func TestVerifyDumpSideEffects(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("copy: exit %d\n%s\n%s", code, out, errOut)
 	}
+	if !strings.Contains(out, "2 side effects") || !strings.Contains(out, "(data rules only: a dump has no files)") {
+		t.Errorf("copy to a dump counts no side effects:\n%s", out)
+	}
+	out, errOut, code = runCmd(t, "copy", "--from", "shop.sql", "--to", "out2.sql", "--url", demoURL, "--production", prod, "--yes", "--offline", "--json")
+	if _, sum := jsonData(t, out); code != 0 || sum["side_effects_off"] != float64(2) {
+		t.Errorf("copy --json: exit %d summary %v\n%s", code, sum, errOut)
+	}
 	out, errOut, code = runCmd(t, "verify", "out.sql", "--production", prod, "--offline", "--json")
 	if code != 0 {
 		t.Fatalf("verify of the copy: exit %d\n%s\n%s", code, out, errOut)

@@ -4,6 +4,7 @@
 package engine
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -35,5 +36,42 @@ func TestNoFilesSteps(t *testing.T) {
 		if got := noFilesSteps(nil, st, ko); got != nil {
 			t.Errorf("stack %q: %d steps", st, len(got))
 		}
+	}
+}
+
+// A dump target's side effects are the data rules that matched a value or
+// emptied a table; verify's read-back replaces them, an unknown aside.
+func TestDataEffects(t *testing.T) {
+	ko := killswitch.Options{}
+	tables := []core.TableReport{
+		{Name: "wp_wc_webhooks", Columns: []core.ColumnReport{
+			{Name: "status", Rule: "killswitch.wc_webhooks.status", Changed: 1},
+			{Name: "secret", Rule: "killswitch.wc_webhooks.secret", Kept: 1},
+		}},
+		{Name: "wp_options", Columns: []core.ColumnReport{
+			{Name: "option_value", Rule: "killswitch.options.option_value.woocommerce_stripe_settings.testmode"},
+			{Name: "option_value", Rule: "wordpress.options.option_value.siteurl", Changed: 1},
+		}},
+		{Name: "wp_automatewoo_queue", Profile: killswitch.Profile, Action: string(core.Truncate)},
+	}
+	got := dataEffects(tables, ko)
+	var ids []string
+	for _, se := range got {
+		ids = append(ids, se.ID)
+		if se.Status != "off" || se.How == "" {
+			t.Errorf("effect %+v", se)
+		}
+	}
+	if want := []string{core.FindingSideEffectWebhooks, core.FindingSideEffectAutomateWoo}; !slices.Equal(ids, want) {
+		t.Fatalf("effects %v, want %v (a rule that matched nothing isn't one)", ids, want)
+	}
+	merged := mergeEffects(got, []core.SideEffect{
+		{ID: core.FindingSideEffectWebhooks, Status: "on"},
+		{ID: core.FindingSideEffectActionScheduler, Status: "unknown"},
+		{ID: core.FindingSideEffectSubscriptions, Status: "not-present"},
+		{ID: core.FindingSideEffectAutomateWoo, Status: "off", How: "read back"},
+	})
+	if len(merged) != 3 || merged[0].Status != "on" || merged[1].How == "read back" || merged[2].ID != core.FindingSideEffectSubscriptions {
+		t.Errorf("merged %+v", merged)
 	}
 }

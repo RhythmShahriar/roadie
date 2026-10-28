@@ -358,6 +358,12 @@ func (r *runner) run(ctx context.Context) error {
 		if r.j.To.Kind == core.DumpFile && r.mode != Plan {
 			r.res.Output = fileFingerprint(r.j.To.Path)
 		}
+		if r.to == nil && p.dataRules != nil {
+			// A dump or stdout target has no files: the kill switch's
+			// data rules are all it does there, so they are its side
+			// effects turned off.
+			r.res.SideEffects = dataEffects(r.res.Tables, ko)
+		}
 	} else if r.mode != Plan {
 		if err := writeStart(ctx); err != nil {
 			return err
@@ -822,6 +828,56 @@ func (r *runner) killOptions() killswitch.Options {
 	return killswitch.Options{EchoURL: r.cfg.SideEffects.Echo.URL, EchoProxy: r.cfg.SideEffects.Echo.Proxy,
 		URL: r.opts.URL, Production: r.cfg.Production, KeepAppKey: r.opts.KeepAppKey, Noindex: r.cfg.Noindex, Cfg: r.cfg,
 		Version: r.opts.Version}
+}
+
+// dataEffects lists the side effects the kill switch's data rules turned
+// off on a target with no files, one per side effect, from the rules
+// that matched a value (changed or already off) or emptied a table.
+func dataEffects(tables []core.TableReport, ko killswitch.Options) []core.SideEffect {
+	var out []core.SideEffect
+	add := func(id string) {
+		effect, how, ok := killswitch.RuleEffect(ko, id)
+		if !ok || slices.ContainsFunc(out, func(se core.SideEffect) bool { return se.ID == effect }) {
+			return
+		}
+		out = append(out, core.SideEffect{ID: effect, Status: "off", How: how + " in the data"})
+	}
+	for _, t := range tables {
+		for _, c := range t.Columns {
+			if c.Changed+c.Kept > 0 {
+				add(c.Rule)
+			}
+		}
+		if t.Profile == killswitch.Profile && t.Action == string(core.Truncate) {
+			for base, id := range killswitch.TruncatedTables {
+				if strings.HasSuffix(t.Name, base) {
+					add(id)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// mergeEffects is a no-files target's side effects: what its data rules
+// turned off, with verify's read-back in place of each it checked. A
+// read-back that can't tell (unknown: the files that would say aren't
+// there) doesn't count as still on.
+func mergeEffects(rules, readBack []core.SideEffect) []core.SideEffect {
+	out := slices.Clone(rules)
+	for _, se := range readBack {
+		if se.Status == "unknown" {
+			continue
+		}
+		if i := slices.IndexFunc(out, func(x core.SideEffect) bool { return x.ID == se.ID }); i >= 0 {
+			if se.Status == "on" || out[i].Status != "off" {
+				out[i] = se
+			}
+			continue
+		}
+		out = append(out, se)
+	}
+	return out
 }
 
 // plannedEffects lists the side effects steps turn off, one per
@@ -1409,6 +1465,9 @@ func (r *runner) verify(ctx context.Context, out *output, checks []core.Step) er
 			if strings.HasPrefix(se.ID, "side-effect.") {
 				got = append(got, se)
 			}
+		}
+		if r.to == nil {
+			got = mergeEffects(r.res.SideEffects, got)
 		}
 		if len(got) > 0 {
 			r.res.SideEffects = got

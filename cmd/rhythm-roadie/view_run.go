@@ -713,7 +713,11 @@ func (v *view) effectsLine(r *core.Result, j engine.Job) {
 	case len(on) > 0:
 		v.mark("✗", "Side effects", "still on: "+strings.Join(on, ", "), lipgloss.Color(ui.Danger))
 	case len(off) > 0:
-		v.mark("✓", "Side effects", strings.Join(off, ", "), lipgloss.Color(ui.Ok))
+		line := strings.Join(off, ", ")
+		if k := j.To.Kind; k == core.DumpFile || k == core.Stdio {
+			line += " (data rules only: a dump has no files)"
+		}
+		v.mark("✓", "Side effects", line, lipgloss.Color(ui.Ok))
 	}
 }
 

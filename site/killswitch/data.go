@@ -144,3 +144,59 @@ func DataRead(base string) (cols []string, keep func(vals [][]byte) bool) {
 	}
 	return nil, nil
 }
+
+// RuleEffect names the side effect a kill-switch data rule turns off and
+// says how, by the rule's ID; ok is false for a rule that isn't one. A
+// dump or stdout target has no files, so these rules are all the kill
+// switch does there.
+func RuleEffect(o Options, id string) (effect, how string, ok bool) {
+	rest, isKill := strings.CutPrefix(id, Profile+".")
+	if !isKill {
+		return "", "", false
+	}
+	switch {
+	case strings.HasPrefix(rest, "wc_webhooks."):
+		return core.FindingSideEffectWebhooks, "WooCommerce webhooks paused, their secrets blanked", true
+	case strings.HasPrefix(rest, "automatewoo_queue"):
+		return core.FindingSideEffectAutomateWoo, "AutomateWoo's queued workflows dropped", true
+	case strings.HasPrefix(rest, "actionscheduler_actions."):
+		return core.FindingSideEffectActionScheduler, "pending actions marked canceled", true
+	case rest == "jobs" || rest == "job_batches":
+		return core.FindingSideEffectQueue, "production's queued jobs dropped", true
+	}
+	opt, isOpt := strings.CutPrefix(rest, "options.option_value.")
+	if !isOpt {
+		return "", "", false
+	}
+	// The leaf may hold dots (smtp.pass); WordPress option names the kill
+	// switch reads don't.
+	opt, _, _ = strings.Cut(opt, ".")
+	for _, g := range o.gateways() {
+		if g.Option == opt {
+			return core.FindingSideEffectGateways, "payment gateways to test mode, live keys swapped or blanked", true
+		}
+	}
+	if GatewayOptionsMatch(opt) {
+		return core.FindingSideEffectGateways, "payment gateways to test mode, live keys swapped or blanked", true
+	}
+	for _, m := range o.mailers() {
+		if m.Option == opt {
+			return core.FindingSideEffectMail, "mail plugins to the default PHP mailer, their credentials blanked", true
+		}
+	}
+	for _, j := range jetpackTokens {
+		if j.option == opt {
+			return core.FindingSideEffectJetpack, "Jetpack connection tokens blanked", true
+		}
+	}
+	return "", "", false
+}
+
+// TruncatedTables are the tables the kill switch empties, without a
+// table prefix, each with the ID of its rule.
+var TruncatedTables = map[string]string{
+	"automatewoo_queue":      Profile + ".automatewoo_queue",
+	"automatewoo_queue_meta": Profile + ".automatewoo_queue_meta",
+	"jobs":                   Profile + ".jobs",
+	"job_batches":            Profile + ".job_batches",
+}
