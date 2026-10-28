@@ -67,8 +67,15 @@ FUZZTIME ?= 5m
 
 .PHONY: build test lint fmt check hooks golden fuzz-smoke fuzz no-network testbed testbed-down bench reproduce actionlint
 
-build: ## build bin/rhythm-roadie
-	go build -o bin/rhythm-roadie ./cmd/rhythm-roadie
+# A source build is stamped with the nearest release tag (1.0.0, or
+# 1.0.0-3-gabc1234 past it) and the commit. Without a tag the version
+# stays "dev" and only the commit says which build it is.
+VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null | sed 's/^v//')
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null)
+LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT)
+
+build: ## build bin/rhythm-roadie, stamped with the version and commit
+	GOWORK=off go build -trimpath -ldflags "$(LDFLAGS)" -o bin/rhythm-roadie ./cmd/rhythm-roadie
 
 test:
 	go test -race ./...
