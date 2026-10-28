@@ -29,6 +29,9 @@ type Job struct {
 	Steps           []core.Step // kill-switch and exposure checks
 	Opts            Options
 	Progress        core.Progress
+	// Schema is --schema of a data-only dump: the written copy has no
+	// CREATE TABLE either, so verify reads it with this one.
+	Schema *core.Schema
 
 	// ScanTable says which tables the uncovered-column scan reads; nil
 	// reads them all. A copy leaves out the tables it truncated or

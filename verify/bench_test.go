@@ -274,3 +274,25 @@ func TestVerifyDumpWithFunction(t *testing.T) {
 		t.Error("scanned no rows")
 	}
 }
+
+// A copy of a data-only dump has no CREATE TABLE either: verify reads it
+// with the --schema the run read (Job.Schema) instead of refusing it.
+func TestVerifyDataOnlyDumpWithSchema(t *testing.T) {
+	dir := t.TempDir()
+	data := filepath.Join(dir, "out.sql")
+	if err := os.WriteFile(data, []byte("INSERT INTO `t` VALUES (1,'hi');\n-- Dump completed on 2026-10-28 10:00:00\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sc := &core.Schema{Dialect: core.MySQL, Tables: []*core.Table{{Name: "t", Columns: []core.Column{{Name: "id", Type: "int"}, {Name: "note", Type: "text"}}}}}
+	target := core.Endpoint{Kind: core.DumpFile, Path: data, Display: "out.sql"}
+	if _, err := Run(context.Background(), Job{Target: target}); err == nil {
+		t.Error("read without a schema")
+	}
+	res, err := Run(context.Background(), Job{Target: target, Schema: sc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Coverage.RowsScanned != 1 {
+		t.Errorf("scanned %d rows", res.Coverage.RowsScanned)
+	}
+}

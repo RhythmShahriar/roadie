@@ -72,15 +72,18 @@ type rawExporter interface {
 // runner is one Run: the job, the effective settings and the sites it
 // opened.
 type runner struct {
-	j    Job
-	mode Mode
-	cfg  *roadiecfg.Config // config with the flags over it
-	opts Options
-	now  core.Clock
-	only map[string]bool // prepare --only; nil means every part
-	from core.Site       // nil for a dump file or stdin
-	to   core.Site       // nil for a dump file, stdout or no target
-	res  *core.Result
+	// schemaFile is --schema once read; verify reads the written copy of
+	// a data-only dump with it too.
+	schemaFile *core.Schema
+	j          Job
+	mode       Mode
+	cfg        *roadiecfg.Config // config with the flags over it
+	opts       Options
+	now        core.Clock
+	only       map[string]bool // prepare --only; nil means every part
+	from       core.Site       // nil for a dump file or stdin
+	to         core.Site       // nil for a dump file, stdout or no target
+	res        *core.Result
 	// opened are the sites to close and ask for their remote commands.
 	opened []core.Site
 	// samePlace is a plan or prepare of one staging: source and target
@@ -1006,13 +1009,14 @@ func (r *runner) dumpOptions(ctx context.Context, name string) (dump.Options, er
 	r.notes.out = r.j.Progress
 	o := dump.Options{Name: name, MaxValue: r.opts.MaxValue, MaxRatio: r.opts.MaxOutputRatio, KeepRoutines: r.opts.KeepRoutines,
 		Progress: &r.notes}
-	if r.opts.SchemaFile != "" {
+	if r.opts.SchemaFile != "" && r.schemaFile == nil {
 		s, err := readSchemaFile(ctx, r.opts.SchemaFile)
 		if err != nil {
 			return o, err
 		}
-		o.Schema = s
+		r.schemaFile = s
 	}
+	o.Schema = r.schemaFile
 	return o, nil
 }
 
@@ -1427,7 +1431,7 @@ func (r *runner) verify(ctx context.Context, out *output, checks []core.Step) er
 		return nil
 	}
 	vj := verify.Job{Target: r.j.To, Known: out.Known, Production: production(r.cfg, r.res.Production),
-		Rules: compiledRules(out.Compiled), Steps: checks, Opts: r.verifyOptions(), Progress: r.j.Progress}
+		Rules: compiledRules(out.Compiled), Steps: checks, Opts: r.verifyOptions(), Progress: r.j.Progress, Schema: r.schemaFile}
 	if out.Compiled != nil {
 		vj.Steps = append(slices.Clip(vj.Steps), noFilesSteps(r.to, out.Compiled.Stack(), r.killOptions())...)
 	}

@@ -232,7 +232,7 @@ func openTarget(ctx context.Context, j Job) (core.Source, core.Site, func(), err
 			// KeepRoutines: verify reads the dump and never runs it, so a
 			// trigger or a function is no reason to refuse it.
 			src, err := dump.Open(ctx, rd, dump.Options{Name: name, Progress: j.Progress, KeepRoutines: true,
-				MaxValue: j.Opts.MaxValue, MaxRatio: j.Opts.MaxRatio})
+				MaxValue: j.Opts.MaxValue, MaxRatio: j.Opts.MaxRatio, Schema: j.Schema})
 			if err != nil {
 				return fail(err)
 			}
@@ -594,7 +594,7 @@ func (r *run) uncovered(tables []*core.Table, samples map[string]map[string][][]
 				ID: core.FindingUncoveredColumn, Severity: core.SeverityMedium,
 				Title:     detect.UncoveredTitle(u, samples[t.Name][u.Column]),
 				Locations: []core.LocationCount{{Location: core.Location{Table: u.Table, Column: u.Column}}},
-				Fix:       "Add the column under columns: in .roadie/config.yaml (rhythm-roadie explain uncovered-column).",
+				Fix:       core.UncoveredFix,
 			})
 			if kept {
 				r.res.Uncovered = append(r.res.Uncovered, u)

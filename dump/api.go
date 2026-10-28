@@ -27,6 +27,10 @@ type Options struct {
 	KeepRoutines bool          // keep triggers, procedures, functions and views, without DEFINER
 	Schema       *core.Schema  // schema for a data-only dump, from --schema
 	Progress     core.Progress // may be nil
+	// SchemaOnly marks the --schema file itself: DDL a person may have
+	// written by hand, with no dump tool's end to check. It must still
+	// hold a statement and end at a statement's end.
+	SchemaOnly bool
 }
 
 // Open sniffs compression and dialect and returns the dump as a source.

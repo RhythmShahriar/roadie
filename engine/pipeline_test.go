@@ -827,8 +827,8 @@ func TestReadSchemaFile(t *testing.T) {
 	oldOpen := openDump
 	g := newGenSource(5, 0)
 	openDump = func(_ context.Context, _ io.Reader, o dump.Options) (core.Source, error) {
-		if o.Name != "schema.sql" {
-			t.Errorf("name %q", o.Name)
+		if o.Name != "schema.sql" || !o.SchemaOnly {
+			t.Errorf("name %q schema-only %v", o.Name, o.SchemaOnly)
 		}
 		return g, nil
 	}
@@ -1017,5 +1017,31 @@ func TestURLPlanMainHostFirst(t *testing.T) {
 	}
 	if !slices.Equal(plan.Production, []string{"zshop.com", "a.zshop.com", "b.zshop.com"}) {
 		t.Errorf("production %v", plan.Production)
+	}
+}
+
+// A hand-written --schema file, with no dump tool's header or end line,
+// is read for its tables (the real reader, not a fake). The runner reads
+// it once and gives the same schema to every pass.
+func TestReadSchemaFileHandWritten(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "schema.sql")
+	ddl := "CREATE TABLE `t` (`id` int NOT NULL, `note` text, PRIMARY KEY (`id`)) ENGINE=InnoDB;\n"
+	if err := os.WriteFile(file, []byte(ddl), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := readSchemaFile(context.Background(), file)
+	if err != nil || s.Table("t") == nil {
+		t.Fatalf("schema %v: %v", s, err)
+	}
+	r := &runner{opts: Options{SchemaFile: file}}
+	o1, err := r.dumpOptions(context.Background(), "d.sql")
+	if err != nil || o1.Schema == nil || o1.Schema.Table("t") == nil || o1.SchemaOnly {
+		t.Fatalf("options %+v: %v", o1, err)
+	}
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	if o2, err := r.dumpOptions(context.Background(), "d.sql"); err != nil || o2.Schema != o1.Schema || r.schemaFile != o1.Schema {
+		t.Errorf("second read: %v", err)
 	}
 }

@@ -154,7 +154,7 @@ func (s *closingSource) Close() error {
 // statements stand in for the ones a data-only dump lacks. Its Schema()
 // becomes dump.Options.Schema of the real input.
 func readSchemaFile(ctx context.Context, path string) (*core.Schema, error) {
-	src, err := openDumpFile(ctx, path, dump.Options{Name: filepath.Base(path)})
+	src, err := openDumpFile(ctx, path, dump.Options{Name: filepath.Base(path), SchemaOnly: true})
 	if err != nil {
 		return nil, err
 	}

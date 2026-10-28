@@ -245,3 +245,34 @@ func TestStatementsAfterTrailer(t *testing.T) {
 		t.Errorf("second dump cut short: %v", err)
 	}
 }
+
+// A --schema file is DDL a person may have written by hand: it has no
+// tool's end line or closing COMMIT, so only its emptiness and a cut
+// statement stop it. The same file read as a dump is still truncated.
+func TestSchemaOnlySkipsEndCheck(t *testing.T) {
+	ddl := []byte("CREATE TABLE `t` (`id` int NOT NULL, `note` text, PRIMARY KEY (`id`)) ENGINE=InnoDB;\n")
+	open := func(in []byte, schemaOnly bool) (*core.Schema, error) {
+		src, err := Open(t.Context(), bytes.NewReader(in), Options{Name: "schema.sql", SchemaOnly: schemaOnly})
+		if err != nil {
+			return nil, err
+		}
+		defer src.Close()
+		if _, err := drainAll(t, src); err != nil {
+			return nil, err
+		}
+		return src.Schema(), nil
+	}
+	s, err := open(ddl, true)
+	if err != nil || s.Table("t") == nil || len(s.Table("t").Columns) != 2 {
+		t.Fatalf("schema %+v: %v", s, err)
+	}
+	var ce *core.Error
+	if _, err := open(ddl, false); !errors.As(err, &ce) || ce.Code != core.ErrDumpTruncated {
+		t.Errorf("as a dump: %v", err)
+	}
+	for name, in := range map[string][]byte{"empty": nil, "cut statement": ddl[:40]} {
+		if _, err := open(in, true); !errors.As(err, &ce) || ce.Code != core.ErrDumpTruncated {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}

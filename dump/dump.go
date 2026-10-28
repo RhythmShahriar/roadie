@@ -61,7 +61,7 @@ func open(ctx context.Context, r io.Reader, o Options) (core.Source, error) {
 		ph = ph[len(utf8BOM):]
 	}
 	ends := newEndCheck(ph)
-	s := &source{name: name, cr: cr, ends: ends, progress: o.Progress}
+	s := &source{name: name, cr: cr, ends: ends, progress: o.Progress, schemaOnly: o.SchemaOnly}
 	switch dialect {
 	case core.Postgres:
 		pg := pgsql.NewSource(plain, pgsql.SourceOptions{
@@ -120,8 +120,10 @@ type source struct {
 	allow    *allow.Filter
 	ends     *endCheck
 	progress core.Progress
-	fp       core.Fingerprint
-	err      error
+	// schemaOnly skips the tool end check (Options.SchemaOnly).
+	schemaOnly bool
+	fp         core.Fingerprint
+	err        error
 }
 
 func (s *source) Schema() *core.Schema { return s.rd.Schema() }
@@ -181,7 +183,8 @@ func (s *source) end(err error) error {
 		// A dump that ended between statements but not where its tool
 		// ends one was cut short: the error comes from the last Next, so
 		// no sink has committed anything.
-		if !s.ends.whole() {
+		// A --schema file is checked only for holding something.
+		if !s.ends.whole() && (!s.schemaOnly || !s.ends.any) {
 			s.err = s.ends.truncatedError(s.name, s.rd.Table(), s.cr.RawBytes())
 			return s.err
 		}
