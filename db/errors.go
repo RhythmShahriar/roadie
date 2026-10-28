@@ -23,6 +23,34 @@ import (
 	"github.com/RhythmShahriar/roadie/core"
 )
 
+// NoTableError is a table a source was asked for that the database
+// doesn't have. A caller that only looks (a kill-switch check) reads it
+// as "not there"; one that needs the table stops with the db code.
+type NoTableError struct {
+	DB, Table string
+}
+
+func (e *NoTableError) Error() string {
+	return fmt.Sprintf("db: %s has no table %s", e.DB, e.Table)
+}
+
+// skipKey marks a context whose sources leave out the named tables the
+// database doesn't have.
+type skipKey struct{}
+
+// SkipMissing returns a context under which Source leaves out a named
+// table the database doesn't have instead of failing: prepare --only
+// side-effects asks for the kill switch's tables, which a site without
+// WooCommerce webhooks or AutomateWoo lacks.
+func SkipMissing(ctx context.Context) context.Context {
+	return context.WithValue(ctx, skipKey{}, true)
+}
+
+func skipMissing(ctx context.Context) bool {
+	v, _ := ctx.Value(skipKey{}).(bool)
+	return v
+}
+
 // importState is what a sink knows when an import stops: how far it got
 // and the words that name the target.
 type importState struct {

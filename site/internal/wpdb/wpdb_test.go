@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/db"
 	"github.com/RhythmShahriar/roadie/internal/testutil"
 )
 
@@ -74,5 +75,28 @@ func TestRowsError(t *testing.T) {
 	}
 	if err := Rows(context.Background(), s, "x", nil, nil); !errors.Is(err, boom) {
 		t.Fatal(err)
+	}
+}
+
+// A table the database doesn't have yields no rows and Has says so; any
+// other error still stops.
+func TestMissingTable(t *testing.T) {
+	s := testutil.FakeSite(nil)
+	s.SourceFunc = func(tables []string) (core.Source, error) {
+		return nil, &db.NoTableError{DB: "staging", Table: tables[0]}
+	}
+	ctx := context.Background()
+	if err := Rows(ctx, s, "wp_wc_webhooks", nil, func([][]byte) error { t.Error("a row"); return nil }); err != nil {
+		t.Errorf("rows: %v", err)
+	}
+	if has, err := Has(ctx, s, "wp_automatewoo_queue"); has || err != nil {
+		t.Errorf("has: %v %v", has, err)
+	}
+	s.SourceFunc = func([]string) (core.Source, error) { return testutil.FakeSource(nil, nil), nil }
+	if has, err := Has(ctx, s, "wp_options"); !has || err != nil {
+		t.Errorf("has wp_options: %v %v", has, err)
+	}
+	if !Missing(errors.New("remote wp db export exited 2: mysqldump: Couldn't find table: \"wp_blogs\"")) || Missing(errors.New("boom")) || Missing(nil) {
+		t.Error("Missing")
 	}
 }

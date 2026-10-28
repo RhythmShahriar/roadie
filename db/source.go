@@ -81,8 +81,11 @@ func (c *Conn) newSource(ctx context.Context, names []string) (core.Source, erro
 	} else {
 		for _, n := range names {
 			tb := s.Table(n)
+			if tb == nil && skipMissing(ctx) {
+				continue
+			}
 			if tb == nil {
-				return nil, fmt.Errorf("db: %s has no table %s", c.ep.Display, n)
+				return nil, &NoTableError{DB: c.ep.Display, Table: n}
 			}
 			tables = append(tables, tb)
 		}

@@ -10,8 +10,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/db"
 )
 
 // Prefix is the site's WordPress table prefix, "wp_" when unknown.
@@ -27,6 +29,9 @@ func Prefix(ctx context.Context, s core.Site) string {
 // there yields no rows.
 func Rows(ctx context.Context, s core.Site, table string, cols []string, fn func(vals [][]byte) error) error {
 	src, err := s.Source(ctx, []string{table})
+	if Missing(err) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -102,6 +107,29 @@ func OptionsMatch(ctx context.Context, s core.Site, match func(name string) bool
 		return nil
 	})
 	return out, err
+}
+
+// Missing reports an error that says a table isn't there: the database's
+// own, or an export over ssh that couldn't find it.
+func Missing(err error) bool {
+	if err == nil {
+		return false
+	}
+	var nt *db.NoTableError
+	return errors.As(err, &nt) || strings.Contains(err.Error(), "Couldn't find table")
+}
+
+// Has reports whether the site's database has table. It opens a source
+// of that table alone and reads none of its rows.
+func Has(ctx context.Context, s core.Site, table string) (bool, error) {
+	src, err := s.Source(ctx, []string{table})
+	if Missing(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, src.Close()
 }
 
 // Count counts the rows of table for which keep accepts the values of cols.

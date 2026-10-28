@@ -882,6 +882,10 @@ func automatewooStep() core.Step {
 		check: func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
 			se := core.SideEffect{ID: id, Status: "off", How: "the AutomateWoo queue is empty", Undo: "none needed: new workflows queue as usual"}
 			table := wpdb.Prefix(ctx, s) + "automatewoo_queue"
+			if has, err := wpdb.Has(ctx, s, table); err == nil && !has {
+				se.Status, se.How, se.Undo = "not-present", "AutomateWoo isn't on this copy", ""
+				return se, nil, nil
+			}
 			n, err := wpdb.Count(ctx, s, table, nil, func([][]byte) bool { return true })
 			if err != nil {
 				se.Status, se.How = "unknown", "automatewoo_queue can't be read"
