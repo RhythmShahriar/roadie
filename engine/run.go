@@ -939,7 +939,9 @@ func (r *runner) inputFor(ctx context.Context, e core.Endpoint, s core.Site, lim
 		if err != nil {
 			return nil, err
 		}
-		in := &streamInput{r: stdin, o: o, onePass: onePass}
+		// A read of stdin blocks until the writer sends or closes; a
+		// signal must end the run at once, not when the pipe does.
+		in := &streamInput{r: newCtxReader(ctx, stdin), o: o, onePass: onePass}
 		if !onePass {
 			if in.dir, err = spoolDir(); err != nil {
 				return nil, err
