@@ -42,6 +42,9 @@
 | [Soundcheck](https://github.com/RhythmShahriar/soundcheck) | Did my change break anything? | what visitors see and do |
 | [Echo](https://github.com/RhythmShahriar/echo) | Is my site still saying what it should? | everything the site sends |
 | **Roadie** | **Is my staging a safe copy of production?** | **real people, live keys and side effects in the copy** |
+| [Sightread](https://github.com/RhythmShahriar/sightread) | What will this update really change? | the code an update brings |
+
+They work on the same change: Tuner finds the plugin to update, Sightread reads the update, Roadie gives you a staging copy to try it on, Soundcheck shows what it did to the pages and Echo what it did to the messages.
 
 ## Try it in a minute
 
@@ -50,7 +53,7 @@ rhythm install roadie
 rhythm roadie demo
 ```
 
-`demo` builds a small WooCommerce shop with fake customers, a live-looking Stripe key, an active webhook and production URLs in serialized and JSON-escaped forms. It plans and copies it, verifies the copy (PASS), then verifies the untouched input (FAIL) and deletes everything again. No network, no database server, a few seconds.
+`rhythm install roadie` needs rhythm 0.9.0 or later (`rhythm update` first on an older one). `demo` builds a small WooCommerce shop with fake customers, a live-looking Stripe key, an active webhook and production URLs in serialized and JSON-escaped forms. It plans and copies it, verifies the copy (PASS), then verifies the untouched input (FAIL) and deletes everything again. No network, no database server, a few seconds. Then follow [Getting started](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Getting-Started) for your own first copy.
 
 New to rhythm? Install it first:
 
@@ -64,7 +67,7 @@ go install github.com/RhythmShahriar/roadie/cmd/rhythm-roadie@latest
 
 ## Safety promises
 
-- **Production is read-only.** Roadie opens the source read-only and over SSH runs only a fixed list of read commands ([the list](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Sources-And-Targets)).
+- **Production is read-only.** Roadie opens the source read-only and over SSH runs only a fixed list of read commands ([the list](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Sources-And-Targets#remote-commands)).
 - **Production is never a target.** A target that matches `production:`, is the same database as the source or says it is production is refused before anything is written.
 - **No real data on your disk.** `copy` streams from source to target; a dump you pass is never rewritten in place and a stream read twice is spooled encrypted with a key held only in memory.
 - **Every copy is verified.** `copy` and `prepare` end with a verify that reads the finished copy, never what Roadie believed it changed.
@@ -189,6 +192,7 @@ The installers and the GitHub Action run the same check before anything from a d
 | | |
 |---|---|
 | [Getting started](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Getting-Started) | the demo, a first plan and copy, Echo on the staging host, logging in |
+| [Copy and prepare](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Copy-And-Prepare) | the pipeline, plan, target guards, uncovered columns, `prepare` and its backup |
 | [CLI reference](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-CLI-Reference) | every command, flag, exit code and the JSON schema |
 | [Configuration](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Configuration) | `.roadie/config.yaml` |
 | [Sources and targets](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Sources-And-Targets) | dumps, sites, SSH, aliases, DSNs and the remote command list |
@@ -200,7 +204,8 @@ The installers and the GitHub Action run the same check before anything from a d
 | [CI](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-CI) | the Action, a nightly refresh, secrets |
 | [Laravel](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Laravel) · [Generic SQL and Postgres](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Generic-SQL-And-Postgres) · [Multisite](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Multisite) | stack guides |
 | [Security and limits](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Security-And-Limits) | what Roadie promises, every network request it can make |
-| [Troubleshooting](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Troubleshooting) · [FAQ](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-FAQ) | every error code; common questions |
+| [Troubleshooting](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Troubleshooting) · [FAQ](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-FAQ) | every error code; common questions and honest limits |
+| [Benchmark](https://github.com/RhythmShahriar/rhythm/wiki/Roadie-Benchmark) | the testbed, what was measured and what it doesn't show |
 
 All of it lives in the **[Rhythm documentation wiki](https://github.com/RhythmShahriar/rhythm/wiki/Roadie)**. What comes after 1.0 is in the [roadmap](ROADMAP.md).
 
