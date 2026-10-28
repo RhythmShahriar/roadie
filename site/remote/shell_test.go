@@ -6,6 +6,7 @@
 package remote
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -117,7 +118,8 @@ func runTemplate(t *testing.T, sh string, tm Template) {
 			argv = append([]string{"sh"}, argv...)
 		}
 		err := exec.Command(sh, argv...).Run()
-		if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 1 {
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) || ee.ExitCode() != 1 {
 			t.Errorf("test -f on a missing file via %s: %v, want exit 1", sh, err)
 		}
 	}

@@ -138,7 +138,7 @@ func (t *teeSource) Next(ctx context.Context) (*core.Batch, error) {
 }
 
 func (t *teeSource) Close() error {
-	t.in.schema, t.in.fp = t.Source.Schema(), t.Source.Fingerprint()
+	t.in.schema, t.in.fp = t.Schema(), t.Fingerprint()
 	err := t.Source.Close()
 	if ferr := t.bw.Flush(); err == nil && t.err == nil {
 		err = ferr

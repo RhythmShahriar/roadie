@@ -25,8 +25,8 @@ func IsDDL(k StmtKind) bool {
 // DDLLiterals returns the byte ranges of the single-quoted string
 // literals of a DDL statement, inside the quotes. Identifiers in
 // backticks or double quotes and comments are skipped. A doubled quote
-// ('') or a backslash escape stays inside the literal, as MySQL and
-// PostgreSQL's E'' strings read them.
+// or a backslash escape stays inside the literal, as MySQL and the E
+// strings of PostgreSQL read them.
 func DDLLiterals(text []byte) [][2]int {
 	var out [][2]int
 	for i := 0; i < len(text); i++ {
