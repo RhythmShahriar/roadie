@@ -154,6 +154,7 @@ var extraData = map[string][]string{
 	"checks":     {"detail"},
 	"findings":   {"detail"},
 	"soundcheck": {"note"},
+	"error":      {"backup", "restore"},
 }
 
 // The field names are the PRD's: every one is written and nothing else
@@ -229,7 +230,9 @@ func TestEnvelopeFieldNames(t *testing.T) {
 	}
 	var errEnv map[string]any
 	_ = json.Unmarshal(indent(t, mustEnvelope(t, copyError())), &errEnv)
-	if g, w := keys(errEnv["data"].(map[string]any)["error"]), want("error"); !slices.Equal(g, w) {
+	// backup and restore are omitted when prepare took no backup.
+	notExtra := func(k string) bool { return slices.Contains(extraData["error"], k) }
+	if g, w := keys(errEnv["data"].(map[string]any)["error"]), slices.DeleteFunc(want("error"), notExtra); !slices.Equal(g, w) {
 		t.Errorf("error: %v, want %v", g, w)
 	}
 	// not_covered is always there, starting with PRD 19.1's list.
@@ -243,6 +246,35 @@ func TestEnvelopeFieldNames(t *testing.T) {
 	}
 	if passData["started"] != "2026-10-26T14:02:11Z" || passData["duration_ms"] != float64(82400) {
 		t.Errorf("started %v duration %v", passData["started"], passData["duration_ms"])
+	}
+}
+
+// A prepare that stopped after its backup names the backup and its
+// restore command in data.error: it may be the one copy of the target as
+// it was. A run that finished keeps them out of the report.
+func TestEnvelopeErrorNamesBackup(t *testing.T) {
+	r := copyError()
+	r.Kind, r.TargetState = "prepare", core.Mixed
+	r.Backup, r.Restore = "/srv/x/.roadie/backups/2026-10-28T15-05-04.sql.gz", "gunzip -c /srv/x/.roadie/backups/2026-10-28T15-05-04.sql.gz | mysql staging"
+	var env struct {
+		Data struct {
+			Error map[string]any `json:"error"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(indent(t, mustEnvelope(t, r)), &env); err != nil {
+		t.Fatal(err)
+	}
+	e := env.Data.Error
+	if e["backup"] != r.Backup || e["restore"] != r.Restore || e["code"] != r.Err.Code || e["message"] != r.Err.Msg {
+		t.Errorf("data.error %v", e)
+	}
+	// Read back, the report keeps them.
+	b, _ := json.Marshal(mustEnvelope(t, r))
+	var back struct {
+		Data Data `json:"data"`
+	}
+	if err := json.Unmarshal(b, &back); err != nil || back.Data.Error == nil || back.Data.Error.Backup != r.Backup || back.Data.Error.Code != r.Err.Code {
+		t.Errorf("read back %+v %v", back.Data.Error, err)
 	}
 }
 

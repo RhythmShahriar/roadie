@@ -130,7 +130,8 @@ type Result struct {
 	Covered   []Uncovered
 	Uncovered []Uncovered
 	// Backup and Restore are the backup path and restore command of
-	// prepare, for the screen only, never in the JSON.
+	// prepare, for the screen; the JSON has them only in data.error of a
+	// run that stopped.
 	Backup  string
 	Restore string
 	// KeptUsers and FirstAdmin feed the no-kept-user login line of PRD

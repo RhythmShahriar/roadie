@@ -41,7 +41,7 @@ type Data struct {
 	RemoteCommands      []string        `json:"remote_commands"`
 	NotCovered          []string        `json:"not_covered"`
 	Soundcheck          *SoundcheckData `json:"soundcheck"`
-	Error               *core.Error     `json:"error,omitempty"`
+	Error               *ErrorData      `json:"error,omitempty"`
 	Signature           *Signature      `json:"signature,omitempty"`
 }
 
@@ -165,4 +165,13 @@ type Signature struct {
 	KeyID     string `json:"key_id"`
 	PublicKey string `json:"public_key"` // base64 of the raw 32-byte key
 	Sig       string `json:"sig"`        // base64 of the 64-byte signature
+}
+
+// ErrorData is data.error: the stop's code, exit and message. A prepare
+// that stopped after its backup adds the backup's path and the command
+// that restores it, so a script can undo a target left mixed.
+type ErrorData struct {
+	*core.Error
+	Backup  string `json:"backup,omitempty"`
+	Restore string `json:"restore,omitempty"`
 }

@@ -206,6 +206,11 @@ func asCoreError(err error) *core.Error {
 		return core.Errorf(core.ErrUnreachable, cli.ExitUnavailable,
 			"unreachable: %s. Check that the database or host is running and reachable from here; then check the host and port you gave.", err)
 	}
+	var dc *db.ConnectError
+	if errors.As(err, &dc) {
+		return core.Errorf(core.ErrUnreachable, cli.ExitUnavailable,
+			"unreachable: %s refused the connection: %s. Check the database name, the user and its password in the DSN or the site's config; the target is untouched.", dc.Display, dc.Reason())
+	}
 	var re *remote.RunError
 	if errors.As(err, &re) {
 		return core.Errorf(core.ErrSSH, cli.ExitUnavailable, "ssh: %s. Run that command on the host by hand to see why, then run Roadie again.", err)

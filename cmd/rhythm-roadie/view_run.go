@@ -75,6 +75,9 @@ func (v *view) before(j engine.Job) {
 	if j.To.Display != "" {
 		v.setting("Target", j.To.Display)
 	}
+	if engine.RowsOnly(j.From, j.To) {
+		v.setting("Schema", "rows only: a live PostgreSQL source sends no CREATE TABLE, so every table must already be on the target")
+	}
 }
 
 // stackLine is "WordPress + WooCommerce (HPOS) + Gravity Forms".
@@ -970,6 +973,15 @@ func (v *view) stopView(r *core.Result, j engine.Job) {
 		fmt.Fprintln(v.w, safe(e.Msg))
 	}
 	v.para(e.Msg)
+	if r.Backup != "" {
+		// prepare's backup is the one copy of the target as it was: a
+		// new run would back up what this one left.
+		if v.o.quiet {
+			fmt.Fprintln(v.w, safe("Backup: "+r.Backup+"; to undo: "+r.Restore))
+		}
+		v.blank()
+		v.mark("!", "Backup", r.Backup+"; to undo: "+r.Restore, lipgloss.Color(ui.Warn))
+	}
 	v.blank()
 	if core.KnownID(e.Code) && e.Code != core.ErrCodeNotBuilt {
 		v.next("rhythm-roadie explain " + e.Code)

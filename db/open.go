@@ -69,7 +69,7 @@ func open(ctx context.Context, e core.Endpoint, m Mode) (*Conn, error) {
 	conn, err := sdb.Conn(ctx)
 	if err != nil {
 		_ = sdb.Close()
-		return nil, fmt.Errorf("db: connect to %s: %w", e.Display, err)
+		return nil, &ConnectError{Display: e.Display, Err: err}
 	}
 	c := &Conn{ep: e, mode: m, engine: e.Driver, db: sdb, conn: conn, dbName: e.Path, user: e.User}
 	if err := c.hello(ctx); err != nil {
@@ -337,3 +337,19 @@ func (c *Conn) close() error {
 	}
 	return errors.Join(errs...)
 }
+
+// ConnectError is a connection to a database that failed: the server
+// didn't answer, or it answered with a refusal (an unknown database, a
+// wrong password, a user without rights).
+type ConnectError struct {
+	Display string // the DSN without its password
+	Err     error
+}
+
+func (e *ConnectError) Error() string { return "db: connect to " + e.Display + ": " + e.Err.Error() }
+
+func (e *ConnectError) Unwrap() error { return e.Err }
+
+// Reason is the server's answer with every quoted part masked, as the
+// import errors word it.
+func (e *ConnectError) Reason() string { return describe(e.Err) }

@@ -57,31 +57,34 @@ const (
 	ErrTargetHoldsProduction = "target-holds-production"
 	ErrOutputIsInput         = "output-is-input"
 	ErrPrepareConfirm        = "prepare-confirm"
-	ErrDumpTruncated         = "dump-truncated"
-	ErrDumpFormat            = "dump-format"
-	ErrDialectMismatch       = "dialect-mismatch"
-	ErrDumpRefused           = "dump-refused"
-	ErrDumpBomb              = "dump-bomb"
-	ErrValueTooLarge         = "value-too-large"
-	ErrSiteConfig            = "site-config"
-	ErrSSH                   = "ssh"
-	ErrSSHHostKey            = "ssh-host-key"
-	ErrWPCLI                 = "wp-cli"
-	ErrImport                = "import"
-	ErrImportMixed           = "import-mixed"
-	ErrUncovered             = "uncovered"
-	ErrStack                 = "stack"
-	ErrURLMap                = "url-map"
-	ErrKeyManual             = "key-manual"
-	ErrKillSwitch            = "kill-switch"
-	ErrTestKeyIsLive         = "test-key-is-live"
-	ErrConfig                = "config"
-	ErrNothingScanned        = "nothing-scanned"
-	ErrLock                  = "lock"
-	ErrFakeCollision         = "fake-collision"
-	ErrEchoUnreachable       = "echo-unreachable"
-	ErrReportEdited          = "report-edited"
-	ErrReportUnsigned        = "report-unsigned"
+	// ErrConfirmTarget (exit 2) is prepare-confirm's twin for copy, so
+	// a copy's stop doesn't name prepare.
+	ErrConfirmTarget   = "confirm-target"
+	ErrDumpTruncated   = "dump-truncated"
+	ErrDumpFormat      = "dump-format"
+	ErrDialectMismatch = "dialect-mismatch"
+	ErrDumpRefused     = "dump-refused"
+	ErrDumpBomb        = "dump-bomb"
+	ErrValueTooLarge   = "value-too-large"
+	ErrSiteConfig      = "site-config"
+	ErrSSH             = "ssh"
+	ErrSSHHostKey      = "ssh-host-key"
+	ErrWPCLI           = "wp-cli"
+	ErrImport          = "import"
+	ErrImportMixed     = "import-mixed"
+	ErrUncovered       = "uncovered"
+	ErrStack           = "stack"
+	ErrURLMap          = "url-map"
+	ErrKeyManual       = "key-manual"
+	ErrKillSwitch      = "kill-switch"
+	ErrTestKeyIsLive   = "test-key-is-live"
+	ErrConfig          = "config"
+	ErrNothingScanned  = "nothing-scanned"
+	ErrLock            = "lock"
+	ErrFakeCollision   = "fake-collision"
+	ErrEchoUnreachable = "echo-unreachable"
+	ErrReportEdited    = "report-edited"
+	ErrReportUnsigned  = "report-unsigned"
 	// ErrDiskFull is the lead's addition to PRD 17 (exit 3, "not enough
 	// free disk space: need about <N>, <M> free in <dir>"), which PRD 10.2
 	// and testbed scenario r20 need.
@@ -103,7 +106,7 @@ const (
 // codeExit is the exit code of every error code.
 var codeExit = map[string]int{
 	ErrTargetIsProduction: 3, ErrTargetSaysProduction: 3, ErrTargetIsSource: 3,
-	ErrTargetHoldsProduction: 3, ErrOutputIsInput: 2, ErrPrepareConfirm: 2,
+	ErrTargetHoldsProduction: 3, ErrOutputIsInput: 2, ErrPrepareConfirm: 2, ErrConfirmTarget: 2,
 	ErrDumpTruncated: 3, ErrDumpFormat: 2, ErrDialectMismatch: 2, ErrDumpRefused: 3,
 	ErrDumpBomb: 3, ErrValueTooLarge: 3, ErrSiteConfig: 3, ErrSSH: 3, ErrSSHHostKey: 3,
 	ErrWPCLI: 3, ErrImport: 3, ErrImportMixed: 3, ErrUncovered: 1, ErrStack: 2,

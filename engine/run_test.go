@@ -395,7 +395,13 @@ func TestRunConfirmTarget(t *testing.T) {
 					}
 					return
 				}
-				if code, exit := errCode(err); code != core.ErrPrepareConfirm || exit != 2 {
+				// copy has its own code: prepare-confirm would name the
+				// wrong command.
+				want := core.ErrPrepareConfirm
+				if mode == Copy {
+					want = core.ErrConfirmTarget
+				}
+				if code, exit := errCode(err); code != want || exit != 2 || !strings.HasPrefix(err.Error(), want+": ") {
 					t.Fatalf("err %v", err)
 				}
 				if len(f.staging.Writes()) != 0 || f.staging.Backups() != 0 || f.rec.index("sink") >= 0 || len(f.applied()) != 0 {
@@ -435,7 +441,7 @@ func TestRunConfirmQuestion(t *testing.T) {
 	j = f.job(Copy)
 	j.Confirm, j.Opts.ConfirmTarget = confirm, ""
 	asked = nil
-	if _, err := Run(context.Background(), j); !isCode(err, core.ErrPrepareConfirm) || len(asked) != 1 || asked[0] != "Replace the database of /srv/staging? [y/N]|" {
+	if _, err := Run(context.Background(), j); !isCode(err, core.ErrConfirmTarget) || len(asked) != 1 || asked[0] != "Replace the database of /srv/staging? [y/N]|" {
 		t.Errorf("copy asked %q: %v", asked, err)
 	}
 	asked, j.Opts.Yes = nil, true
@@ -1486,6 +1492,89 @@ func TestRunCountsFileKeys(t *testing.T) {
 	for _, k := range res.Keys {
 		if k.At.File == ".env" {
 			t.Errorf("plan counted %+v", k)
+		}
+	}
+}
+
+// A prepare that stops mixed after its backup names the backup and says
+// to restore it first: a new run would back up the mixed database.
+func TestRunPrepareMixedNamesBackup(t *testing.T) {
+	f := useRunFakes(t)
+	mixed := core.Errorf(core.ErrImportMixed, 3,
+		"import: table wp_users: MySQL error 1067 (42000): Invalid default value. The target is in a mixed state during table wp_users: some tables are pseudonymised, the rest still hold the earlier copy. Fix the cause and run the same command again.")
+	mixed.State = core.Mixed
+	f.stagSink.WriteErr = mixed
+	res, err := Run(context.Background(), f.job(Prepare))
+	if !isCode(err, core.ErrImportMixed) {
+		t.Fatalf("err %v", err)
+	}
+	if res.Backup == "" || res.Err == nil || res.Err.State != core.Mixed {
+		t.Fatalf("backup %q err %+v", res.Backup, res.Err)
+	}
+	want := "Restore the backup prepare took first: " + f.staging.BackupRestore + ". Then fix the cause and run the same command again; a new run backs up the database as it is now, not as it was."
+	if !strings.HasSuffix(res.Err.Msg, want) || err.Error() != res.Err.Msg || strings.Contains(res.Err.Msg, "Fix the cause") {
+		t.Errorf("message %q", res.Err.Msg)
+	}
+
+	// Negative: a copy takes no backup and keeps the advice as it is.
+	f = useRunFakes(t)
+	f.stagSink.WriteErr = core.Errorf(core.ErrImportMixed, 3, "import: x. Fix the cause and run the same command again.")
+	res, _ = Run(context.Background(), f.job(Copy))
+	if res.Err == nil || !strings.HasPrefix(res.Err.Msg, "import: x. Fix the cause and run the same command again.") || strings.Contains(res.Err.Msg, "Restore the backup") {
+		t.Errorf("copy message %+v", res.Err)
+	}
+}
+
+// A stop the import calls untouched after a kill-switch step changed
+// the site's files says mixed in its message too, as the box does.
+func TestRunSteppedRewordsUntouched(t *testing.T) {
+	f := useRunFakes(t)
+	f.stagSink.WriteErr = core.Errorf(core.ErrImport, 3, "import: table wp_users: refused. The target is untouched.")
+	res, err := Run(context.Background(), f.job(Copy))
+	if err == nil || res.TargetState != core.Mixed {
+		t.Fatalf("state %s err %v", res.TargetState, err)
+	}
+	want := "import: table wp_users: refused. The database is untouched but the kill switch already changed the site's files, so the target is in a mixed state."
+	if res.Err.Msg != want || err.Error() != want {
+		t.Errorf("message %q / %q", res.Err.Msg, err)
+	}
+}
+
+// A DSN target has no files: a step there changes nothing, so a stop in
+// the import before any table leaves it untouched, as the message says.
+func TestRunDSNTargetStepsLeaveUntouched(t *testing.T) {
+	f := useRunFakes(t)
+	f.stagSink.WriteErr = core.Errorf(core.ErrImport, 3, "import: table migrations: missing. The target is untouched.")
+	j := f.job(Copy)
+	j.To.Kind, j.To.Driver = core.DSN, core.MySQL
+	j.Opts.ConfirmTarget = "staging"
+	res, err := Run(context.Background(), j)
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if res.TargetState != core.Untouched || res.Err == nil || res.Err.State != core.Untouched || !strings.HasSuffix(res.Err.Msg, "The target is untouched.") {
+		t.Errorf("state %s err %+v", res.TargetState, res.Err)
+	}
+}
+
+// A live PostgreSQL source into a database brings rows only; plan and
+// copy say so up front.
+func TestRowsOnly(t *testing.T) {
+	pg := core.Endpoint{Kind: core.DSN, Driver: core.Postgres}
+	for _, c := range []struct {
+		from, to core.Endpoint
+		want     bool
+	}{
+		{pg, core.Endpoint{Kind: core.DSN, Driver: core.Postgres}, true},
+		{pg, core.Endpoint{Kind: core.LocalSite}, true},
+		{pg, core.Endpoint{Kind: core.DumpFile}, false},
+		{pg, core.Endpoint{Kind: core.Stdio}, false},
+		{pg, core.Endpoint{}, false},
+		{core.Endpoint{Kind: core.DSN, Driver: core.MySQL}, core.Endpoint{Kind: core.DSN, Driver: core.MySQL}, false},
+		{core.Endpoint{Kind: core.DumpFile, Driver: core.Postgres}, core.Endpoint{Kind: core.DSN, Driver: core.Postgres}, false},
+	} {
+		if got := RowsOnly(c.from, c.to); got != c.want {
+			t.Errorf("RowsOnly(%s %s, %s) = %v", c.from.Kind, c.from.Driver, c.to.Kind, got)
 		}
 	}
 }

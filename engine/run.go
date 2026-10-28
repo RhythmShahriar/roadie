@@ -116,8 +116,10 @@ func Run(ctx context.Context, j Job) (*core.Result, error) {
 	for _, s := range r.opened {
 		_ = s.Close()
 	}
+	promoted := false
 	if err != nil && r.stepped && r.res.TargetState == core.Untouched {
 		r.res.TargetState = core.Mixed
+		promoted = true
 	}
 	r.res.Target.State = r.res.TargetState
 	r.res.Duration = r.now().Sub(r.res.Started)
@@ -128,11 +130,48 @@ func Run(ctx context.Context, j Job) (*core.Result, error) {
 			if cp.State == "" || r.res.TargetState == core.Mixed {
 				cp.State = r.res.TargetState
 			}
+			if promoted && ce.State != core.Mixed {
+				cp.Msg = steppedMessage(cp.Msg)
+			}
+			if cp.State == core.Mixed && r.res.Backup != "" {
+				cp.Msg = restoreFirst(cp.Msg, r.res.Restore)
+			}
 			r.res.Err = &cp
+			if cp.Msg != ce.Msg {
+				err = &cp
+			}
 		}
 		return r.res, err
 	}
 	return r.res, nil
+}
+
+// untouchedSentence is how an error message ends when nothing was
+// written (db's stateSentence).
+const untouchedSentence = "The target is untouched."
+
+// steppedMessage rewords msg for a target the kill-switch steps already
+// changed before the stop: the database may be as it was, the target as
+// a whole isn't.
+func steppedMessage(msg string) string {
+	if strings.Contains(msg, untouchedSentence) {
+		return strings.Replace(msg, untouchedSentence,
+			"The database is untouched but the kill switch already changed the site's files, so the target is in a mixed state.", 1)
+	}
+	return msg + " The kill switch already changed the site's files, so the target is in a mixed state."
+}
+
+// restoreFirst points a stop that left the target mixed at the backup
+// prepare took before it wrote: running again would back up the mixed
+// database instead.
+func restoreFirst(msg, restore string) string {
+	advice := " Restore the backup prepare took first: " + restore + ". Then fix the cause and run the same command again; a new run backs up the database as it is now, not as it was."
+	for _, again := range []string{" Fix the cause and run the same command again.", " Run the same command again."} {
+		if strings.Contains(msg, again) {
+			return strings.Replace(msg, again, advice, 1)
+		}
+	}
+	return msg + advice
 }
 
 // run is Run's body: PRD 10.1 step by step.
@@ -160,6 +199,9 @@ func (r *runner) run(ctx context.Context) error {
 		}
 	}
 	r.res.URL = r.opts.URL
+	if RowsOnly(r.j.From, r.j.To) {
+		r.notes.lines = append(r.notes.lines, RowsOnlyNote)
+	}
 	r.res.Source = core.EndpointInfo{Kind: r.j.From.Kind, Display: r.j.From.Display}
 	r.res.Target = core.EndpointInfo{Kind: r.j.To.Kind, Display: r.j.To.Display}
 	defs, pack, err := loadProfiles(ctx, r.opts.Offline)
@@ -730,14 +772,20 @@ func (r *runner) confirm(ctx context.Context) error {
 		names, what = r.confirmNames(ctx, true)
 	}
 	host := names[0]
+	// copy stops with its own code: prepare-confirm would name the
+	// wrong command.
+	code := core.ErrPrepareConfirm
+	if r.mode != Prepare {
+		code = core.ErrConfirmTarget
+	}
 	if ct != "" && !slices.ContainsFunc(names, match) {
-		return core.Errorf(core.ErrPrepareConfirm, 2,
-			"prepare-confirm: --confirm-target %s doesn't name this target, which is %s. Pass --confirm-target %s (%s) to go on.", ct, host, host, what)
+		return core.Errorf(code, 2,
+			"%s: --confirm-target %s doesn't name this target, which is %s. Pass --confirm-target %s (%s) to go on.", code, ct, host, host, what)
 	}
 	if r.j.Confirm == nil {
 		if ct == "" {
-			return core.Errorf(core.ErrPrepareConfirm, 2,
-				"prepare-confirm: there's no terminal to confirm on. Pass --confirm-target %s (%s) to go on.", host, what)
+			return core.Errorf(code, 2,
+				"%s: there's no terminal to confirm on. Pass --confirm-target %s (%s) to go on.", code, host, what)
 		}
 		return nil
 	}
@@ -760,7 +808,7 @@ func (r *runner) confirm(ctx context.Context) error {
 		return err
 	}
 	if !ok {
-		return core.Errorf(core.ErrPrepareConfirm, 2, "prepare-confirm: %s wasn't replaced; nothing was changed.", r.j.To.Display)
+		return core.Errorf(code, 2, "%s: %s wasn't replaced; nothing was changed.", code, r.j.To.Display)
 	}
 	return nil
 }
@@ -825,7 +873,11 @@ func (r *runner) apply(ctx context.Context, steps []core.Step, phase string) err
 		}
 		err := st.Apply(ctx, r.to)
 		if err == nil {
-			r.stepped = true
+			// A DSN target has no files: a file step there changes
+			// nothing, so a stop after it leaves the target untouched.
+			if r.j.To.Kind != core.DSN {
+				r.stepped = true
+			}
 			if ks, ok := st.(core.KeyStep); ok {
 				r.fileKeys = append(r.fileKeys, ks.AppliedKeys()...)
 			}
@@ -1415,4 +1467,17 @@ func backupErr(target string, err error) *core.Error {
 		return &out
 	}
 	return &core.Error{Code: core.ErrSiteConfig, Exit: 3, Msg: msg, State: core.Untouched}
+}
+
+// RowsOnlyNote is the plan line of a copy from a live PostgreSQL
+// database into a database: its source sends no CREATE TABLE.
+const RowsOnlyNote = "a live PostgreSQL source sends rows only, no CREATE TABLE: every table must already be on the target (run the app's migrations there or load pg_dump --schema-only first)"
+
+// RowsOnly reports whether a copy from from to to brings rows without
+// the schema: a live PostgreSQL source into a database or site.
+func RowsOnly(from, to core.Endpoint) bool {
+	if from.Kind != core.DSN || from.Driver != core.Postgres {
+		return false
+	}
+	return to.Kind != "" && to.Kind != core.DumpFile && to.Kind != core.Stdio
 }

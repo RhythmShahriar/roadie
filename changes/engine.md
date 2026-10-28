@@ -707,10 +707,10 @@ Without `data`, `keys` and `urls`, only the tables the kill switch touches are e
 ## 6. Confirmation
 
 - A site or database target without a terminal needs `--confirm-target` naming it, compared without case: the host of `--url`, the ssh host or the alias name for a site, the database name for a DSN. prepare also takes the host of the siteurl the staging holds (unless that is production's) and names it first when there is no `--url`. `--yes` alone is refused.
-  - none: `prepare-confirm: there's no terminal to confirm on. Pass --confirm-target staging.shop.test (the site's host) to go on.` (`(the database name)` for a DSN; exit 2)
+  - none: `prepare-confirm: there's no terminal to confirm on. Pass --confirm-target staging.shop.test (the site's host) to go on.` (`(the database name)` for a DSN; exit 2). copy stops with its own code, `confirm-target`, worded the same: `confirm-target: there's no terminal to confirm on. ...`
   - wrong: `prepare-confirm: --confirm-target shop.com doesn't name this target, which is staging.shop.test. Pass --confirm-target staging.shop.test (the site's host) to go on.` (also on a terminal)
 - On a terminal, `prepare` always asks (also with `--yes`): `prepare rewrites this site's database while it runs. Visitors see a maintenance page for about a minute. Type the site's host to go on (staging.shop.test):`. Another answer: `prepare-confirm: the answer wasn't staging.shop.test, so nothing was changed.`
-- On a terminal, `copy` asks `Replace the database of /var/www/staging? [y/N]` unless `--yes`. No: `prepare-confirm: /var/www/staging wasn't replaced; nothing was changed.`
+- On a terminal, `copy` asks `Replace the database of /var/www/staging? [y/N]` unless `--yes`. No: `confirm-target: /var/www/staging wasn't replaced; nothing was changed.`
 - A staging that still calls itself by a URL that may be production's (`target-holds-production`) is asked about once on a terminal: `/var/www/staging still calls itself https://shop.com. Is https://shop.com the live site? Type yes to go on:`. `yes` takes that URL as `--production-url` and the guards run again; any other answer, or no terminal, keeps the refusal. The URL comes from the target's own data, so control and format characters (escape sequences, bidi overrides) are removed and it ends at the first space, at most 512 bytes, before the question shows it.
 - A dump file or stdout target is never asked about.
 

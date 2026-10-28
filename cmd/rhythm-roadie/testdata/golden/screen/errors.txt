@@ -17,6 +17,19 @@ rhythm roadie dev - shop.com → staging.shop.test
 Source: ssh://deploy@shop.com/var/www/shop
 Target: /var/www/staging
 
+STOPPED   confirm-target; the target is untouched
+
+confirm-target: there's no terminal to confirm on. Pass --confirm-target staging.shop.test (the site's host) to go on.
+
+rhythm-roadie explain confirm-target
+--- exit 2
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
 STOPPED   dialect-mismatch; the target is untouched
 
 dialect-mismatch: prod.sql is a MySQL dump and --to is a PostgreSQL database. Roadie copies MySQL to MySQL or MariaDB and PostgreSQL to PostgreSQL.

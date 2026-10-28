@@ -114,6 +114,12 @@ func importError(err error, st importState) error {
 		e.State = state
 		return e
 	}
+	if st.current != "" && undefinedTable(err) {
+		e := core.Errorf(code, 3, "import: the target has no table %s and the input doesn't create it. A copy from a live PostgreSQL database brings rows only, so create the schema on the target first (run the app's migrations there or load pg_dump --schema-only), then run the same command again. %s",
+			st.current, stateSentence(st, false))
+		e.State = state
+		return e
+	}
 	where := "import"
 	if st.current != "" {
 		where = "import: table " + st.current
@@ -121,6 +127,13 @@ func importError(err error, st importState) error {
 	e := core.Errorf(code, 3, "%s: %s. %s", where, describe(err), stateSentence(st, true))
 	e.State = state
 	return e
+}
+
+// undefinedTable reports whether err is PostgreSQL's undefined_table: a
+// table the sink fills that the target doesn't have.
+func undefinedTable(err error) bool {
+	var pe *pgconn.PgError
+	return errors.As(err, &pe) && pe.Code == "42P01"
 }
 
 // stateSentence says what the target holds after a stop.

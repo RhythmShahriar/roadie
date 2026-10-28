@@ -103,6 +103,7 @@ var prdErrors = map[string]string{
 	core.ErrTargetHoldsProduction: "target-holds-production: /var/www/staging still calls itself https://shop.com. Pass --production-url https://shop.com so Roadie knows which URL is live.",
 	core.ErrOutputIsInput:         "output-is-input: --to prod.sql.gz is the file Roadie reads. Write the copy to a new file.",
 	core.ErrPrepareConfirm:        "prepare-confirm: there's no terminal to confirm on. Pass --confirm-target staging.shop.test (the site's host) to go on.",
+	core.ErrConfirmTarget:         "confirm-target: there's no terminal to confirm on. Pass --confirm-target staging.shop.test (the site's host) to go on.",
 	core.ErrDumpTruncated:         `dump-truncated: prod.sql.gz ends inside table wp_postmeta at 1.7 GB, with no "Dump completed" line. Export it again; the target is untouched.`,
 	core.ErrDumpFormat:            "dump-format: prod.dump is a pg_dump custom-format archive. Roadie reads plain SQL: pg_dump -Fp, mysqldump, mariadb-dump or wp db export.",
 	core.ErrDialectMismatch:       "dialect-mismatch: prod.sql is a MySQL dump and --to is a PostgreSQL database. Roadie copies MySQL to MySQL or MariaDB and PostgreSQL to PostgreSQL.",
@@ -633,6 +634,14 @@ func TestPlainErrorsGetCodes(t *testing.T) {
 	if ce.Code != core.ErrUnreachable || ce.Exit != 3 || !strings.HasPrefix(ce.Msg, "unreachable: db: connect to") {
 		t.Errorf("refused: %+v", ce)
 	}
+	// A server that answers with a refusal: a code too, never the bare
+	// driver message (an unknown database here).
+	ce = asCoreError(fmt.Errorf("site: %w", &db.ConnectError{Display: "mysql://root@127.0.0.1:39001/PROD",
+		Err: errors.New("Error 1049 (42000): Unknown database 'PROD'")}))
+	if ce.Code != core.ErrUnreachable || ce.Exit != 3 ||
+		ce.Msg != "unreachable: mysql://root@127.0.0.1:39001/PROD refused the connection: Error 1049 (42000): Unknown database '•••'. Check the database name, the user and its password in the DSN or the site's config; the target is untouched." {
+		t.Errorf("refused login: %+v", ce)
+	}
 	if ce := asCoreError(errors.New("something else")); ce.Code != "" || ce.Exit != 3 {
 		t.Errorf("other: %+v", ce)
 	}
@@ -646,6 +655,28 @@ func TestPlainErrorsGetCodes(t *testing.T) {
 	v.stopView(&core.Result{Err: ce, TargetState: core.Untouched}, engine.Job{Mode: engine.Copy})
 	if !strings.Contains(b.String(), "interrupted; the target is untouched") {
 		t.Errorf("stop box:\n%s", b.String())
+	}
+}
+
+// A prepare that stopped after its backup names the backup under the
+// box, also with -q; a stop without one says nothing about a backup.
+func TestStopViewNamesBackup(t *testing.T) {
+	r := &core.Result{Kind: "prepare", TargetState: core.Mixed, Backup: ".roadie/backups/2026-10-28T15-05-04.sql.gz",
+		Restore: "gunzip -c .roadie/backups/2026-10-28T15-05-04.sql.gz | mysql -u stg -p staging",
+		Err:     core.Errorf(core.ErrImportMixed, 3, "import: x. Restore the backup prepare took first.")}
+	want := "Backup: .roadie/backups/2026-10-28T15-05-04.sql.gz; to undo: gunzip -c .roadie/backups/2026-10-28T15-05-04.sql.gz | mysql -u stg -p staging"
+	for _, o := range []viewOpts{{plain: true}, {plain: true, quiet: true}} {
+		var b bytes.Buffer
+		(&view{w: &b, o: o}).stopView(r, engine.Job{Mode: engine.Prepare})
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("quiet %v:\n%s", o.quiet, b.String())
+		}
+	}
+	var b bytes.Buffer
+	r.Backup, r.Restore = "", ""
+	(&view{w: &b, o: viewOpts{plain: true}}).stopView(r, engine.Job{Mode: engine.Prepare})
+	if strings.Contains(b.String(), "Backup") {
+		t.Errorf("no backup:\n%s", b.String())
 	}
 }
 
@@ -769,5 +800,24 @@ func TestPreparedOnlyBox(t *testing.T) {
 	v.resultView(r, j, "", nil)
 	if strings.Contains(b.String(), "Search") {
 		t.Errorf("search line:\n%s", b.String())
+	}
+}
+
+// A copy from a live PostgreSQL database into a database says up front
+// that the target needs the schema; a MySQL source doesn't.
+func TestBeforeSaysRowsOnly(t *testing.T) {
+	pg := core.Endpoint{Kind: core.DSN, Driver: core.Postgres, Display: "postgres://ro@127.0.0.1:39002/app"}
+	to := core.Endpoint{Kind: core.DSN, Driver: core.Postgres, Display: "postgres://rw@127.0.0.1:39003/staging"}
+	var b bytes.Buffer
+	(&view{w: &b, o: viewOpts{plain: true}}).before(engine.Job{Mode: engine.Copy, From: pg, To: to})
+	if !strings.Contains(b.String(), "Schema: rows only: a live PostgreSQL source sends no CREATE TABLE, so every table must already be on the target") {
+		t.Errorf("copy:\n%s", b.String())
+	}
+	b.Reset()
+	my := pg
+	my.Driver = core.MySQL
+	(&view{w: &b, o: viewOpts{plain: true}}).before(engine.Job{Mode: engine.Copy, From: my, To: to})
+	if strings.Contains(b.String(), "Schema") {
+		t.Errorf("MySQL source:\n%s", b.String())
 	}
 }
