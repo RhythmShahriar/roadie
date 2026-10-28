@@ -52,6 +52,33 @@ type ruleJSON struct {
 	Path   string            `json:"path,omitempty"`
 	Action string            `json:"action"`
 	Fake   string            `json:"fake,omitempty"`
+	// Kept names the pseudonymise.keep part that keeps the value as it
+	// is ("country"), so the rule's action doesn't run.
+	Kept string `json:"kept,omitempty"`
+}
+
+// keptPart is the pseudonymise.keep part that keeps a rule's value, ""
+// when the rule runs.
+func keptPart(d profile.Def, ruleID string, keep []string) string {
+	if part := d.Parts[ruleID]; part != "" && slices.Contains(keep, part) {
+		return part
+	}
+	return ""
+}
+
+// keptLabel is how a kept rule reads: "kept (keep: country)".
+func keptLabel(part string) string { return "kept (keep: " + part + ")" }
+
+// profileKeep is the keep list of the config the command would use; the
+// default ([country, state]) when there is none or it doesn't load.
+func profileKeep(p *parsed) []string {
+	if cfg, _, err := p.loadConfig(); err == nil && cfg != nil {
+		return cfg.Pseudonymise.Keep
+	}
+	if cfg := dep.defaultConfig(); cfg != nil {
+		return cfg.Pseudonymise.Keep
+	}
+	return nil
 }
 
 // runProfiles is profiles [name] [--json] (PRD 6.10).
@@ -82,9 +109,9 @@ func runProfiles(ctx context.Context, p *parsed, stdout, stderr io.Writer) error
 	for _, d := range defs {
 		if d.ID == name {
 			if p.f.g.json {
-				return writeEnvelope(stdout, "profiles", map[string]any{"profile_pack": pack, "profiles": []profileJSON{toJSON(d)}})
+				return writeEnvelope(stdout, "profiles", map[string]any{"profile_pack": pack, "profiles": []profileJSON{toJSON(d, profileKeep(p))}})
 			}
-			printProfile(stdout, d)
+			printProfile(stdout, d, profileKeep(p))
 			return nil
 		}
 	}
@@ -99,18 +126,20 @@ func runProfiles(ctx context.Context, p *parsed, stdout, stderr io.Writer) error
 	return usageError(stderr, "profiles", "%s", msg)
 }
 
-func toJSON(d profile.Def) profileJSON {
+func toJSON(d profile.Def, keep []string) profileJSON {
 	j := profileJSON{ID: d.ID, Name: d.Name, CheckedAgainst: d.CheckedAgainst, Truncate: d.Truncate, Drop: d.Drop, Keep: d.Keep,
 		Detect: &detectJSON{TablesAny: d.Detect.TablesAny, OptionsAny: d.Detect.OptionsAny, Files: d.Detect.Files}}
 	for _, r := range d.Rules {
-		j.Rules = append(j.Rules, ruleJSON{ID: r.ID, Table: r.Table, Column: r.Column, Where: r.Where, Path: r.Path, Action: string(r.Action), Fake: string(r.Fake)})
+		j.Rules = append(j.Rules, ruleJSON{ID: r.ID, Table: r.Table, Column: r.Column, Where: r.Where, Path: r.Path, Action: string(r.Action), Fake: string(r.Fake),
+			Kept: keptPart(d, r.ID, keep)})
 	}
 	return j
 }
 
 // printProfile lists one profile: what detects it, then its rules as a
-// table, then what it truncates, drops and keeps.
-func printProfile(w io.Writer, d profile.Def) {
+// table, then what it truncates, drops and keeps. A rule whose address
+// part pseudonymise.keep names reads "kept (keep: country)".
+func printProfile(w io.Writer, d profile.Def, keep []string) {
 	fmt.Fprintf(w, "%s (%s)\nchecked against: %s\n", safe(d.Name), safe(d.ID), safe(d.CheckedAgainst))
 	var det []string
 	if len(d.Detect.TablesAny) > 0 {
@@ -138,6 +167,9 @@ func printProfile(w io.Writer, d profile.Def) {
 			rule := string(r.Action)
 			if r.Fake != "" {
 				rule += " " + string(r.Fake)
+			}
+			if part := keptPart(d, r.ID, keep); part != "" {
+				rule = keptLabel(part)
 			}
 			fmt.Fprintf(w, "  %-28s %-26s %s\n", safe(r.Table), safe(col), safe(rule))
 		}

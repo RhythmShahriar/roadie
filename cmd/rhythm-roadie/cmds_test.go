@@ -683,3 +683,28 @@ func TestDemoEndToEnd(t *testing.T) {
 		t.Errorf("demo left %q behind", left)
 	}
 }
+
+// Country and state rules are kept under the default keep: [country,
+// state], so profiles and config show say so instead of "blank"; a
+// config that keeps nothing shows the rule's action again.
+func TestProfilesShowKeptParts(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	out, _, code := run(t, "profiles", "woocommerce", "--offline")
+	if code != 0 || !strings.Contains(out, "(meta_key = _billing_country) kept (keep: country)") ||
+		!strings.Contains(out, "(meta_key = _shipping_state) kept (keep: state)") {
+		t.Errorf("profiles: exit %d\n%s", code, out)
+	}
+	out, _, code = run(t, "config", "show", "--offline")
+	if code != 0 || !strings.Contains(out, "(meta_key = _billing_country): kept (keep: country)") {
+		t.Errorf("config show: exit %d\n%s", code, out)
+	}
+	cfg := filepath.Join(dir, "nokeep.yaml")
+	if err := os.WriteFile(cfg, []byte("pseudonymise:\n  keep: []\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, _, _ = run(t, "profiles", "woocommerce", "--offline", "--config", cfg)
+	if strings.Contains(out, "kept (keep:") || !strings.Contains(out, "(meta_key = _billing_country) blank") {
+		t.Errorf("keep: []:\n%s", out)
+	}
+}

@@ -354,6 +354,7 @@ type shownRule struct {
 	Path   string            `json:"path,omitempty"`
 	Action string            `json:"action"`
 	Fake   string            `json:"fake,omitempty"`
+	Kept   string            `json:"kept,omitempty"` // the pseudonymise.keep part that keeps it
 }
 
 // line is a rule as one line: "wp_users.user_email (meta_key = x) → json:a: fake email".
@@ -367,6 +368,9 @@ func (r shownRule) line() string {
 	}
 	for _, w := range sortedWhere(r.Where) {
 		s += " (" + w + ")"
+	}
+	if r.Kept != "" {
+		return s + ": " + keptLabel(r.Kept)
 	}
 	s += ": " + r.Action
 	if r.Fake != "" {
@@ -416,7 +420,7 @@ func expandedRules(cfg *roadiecfg.Config, defs []profile.Def) ([]shownRule, stri
 		}
 		for _, r := range d.Rules {
 			out = append(out, shownRule{From: d.ID + " (" + d.Name + ")", Table: r.Table, Column: r.Column, Where: r.Where, Path: r.Path,
-				Action: string(r.Action), Fake: string(r.Fake)})
+				Action: string(r.Action), Fake: string(r.Fake), Kept: keptPart(d, r.ID, cfg.Pseudonymise.Keep)})
 		}
 		for _, l := range []struct {
 			action string
