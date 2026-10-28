@@ -126,6 +126,14 @@ type scanner struct {
 	err   error
 	qAt   int64 // input offset of the next quote nextQuote found, or -1
 	qUpto int64 // input offset nextQuote searched up to
+	// capped is the buffer whose growth limit bounds: once it holds more
+	// than limit bytes ensure reads no more and sets over, so a
+	// statement passed through whole, or the gaps and expressions of a
+	// row, can't grow past --max-value (plus one window) before their
+	// size is checked.
+	capped *[]byte
+	limit  int64
+	over   bool
 }
 
 var newline = []byte{'\n'}
@@ -176,6 +184,10 @@ func (s *scanner) ensure(n int) bool {
 		return false
 	}
 	s.flush()
+	if s.dst != nil && s.dst == s.capped && int64(len(*s.dst)) > s.limit {
+		s.over = true
+		return false
+	}
 	copy(s.buf, s.buf[s.pos:s.end])
 	s.base += int64(s.pos)
 	s.end -= s.pos
@@ -296,7 +308,20 @@ func (l *Lexer) Offset() int64 { return l.s.offset() }
 // Line is the line of the next byte to read.
 func (l *Lexer) Line() int64 { return l.s.lineAt() }
 
+// boundSlack is room over l.max for what surrounds a value at the limit:
+// its quotes, an introducer and the spaces around it.
+const boundSlack = 4 << 10
+
+// bound limits what is read into the current destination from here on
+// to l.max bytes and boundSlack.
+func (l *Lexer) bound() {
+	l.s.capped, l.s.limit, l.s.over = l.s.dst, int64(l.s.at())+l.max+boundSlack, false
+}
+
 func (l *Lexer) truncated() error {
+	if l.s.over {
+		return &TooLargeError{Line: l.stmtLine, Limit: l.max, Statement: true}
+	}
 	if err := l.s.readErr(); err != nil {
 		return err
 	}
@@ -354,6 +379,7 @@ func (l *Lexer) Next() (*Stmt, error) {
 	s := &l.s
 	l.text = l.text[:0]
 	s.setDst(&l.text)
+	l.bound()
 	l.client = false
 	// Blank lines before a statement belong to it.
 	for s.ensure(1) && isSpace(s.buf[s.pos]) {
@@ -800,6 +826,7 @@ func (l *Lexer) Row(a *Arena) (core.Row, bool, error) {
 		return core.Row{}, false, errors.New("mysql: Row called with no INSERT open")
 	}
 	s.setDst(&a.Src)
+	l.bound()
 	leadStart := len(a.Src)
 	if l.rows == 2 {
 		if !l.skipGap() {
@@ -825,6 +852,7 @@ func (l *Lexer) Row(a *Arena) (core.Row, bool, error) {
 	s.pos++ // '('
 	l.spans = l.spans[:0]
 	for {
+		l.bound()
 		if !l.skipRowSpace() {
 			return core.Row{}, false, l.truncated()
 		}
@@ -1169,6 +1197,7 @@ func (l *Lexer) Tail() ([]byte, error) {
 	}
 	l.text = append(l.text[:0], l.tailPre...)
 	l.s.setDst(&l.text)
+	l.bound()
 	if err := l.scanToDelim(); err != nil {
 		return nil, err
 	}

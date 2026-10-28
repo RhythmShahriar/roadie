@@ -253,6 +253,9 @@ func (l *Lexer) Next() (*Stmt, error) {
 		if i < len(b) || len(b) == 0 {
 			break
 		}
+		if int64(len(l.text)) > l.max {
+			return nil, &TooLargeError{Line: l.line, Limit: l.max, Statement: true}
+		}
 	}
 	if len(l.peek(1)) == 0 {
 		if l.err != nil {
