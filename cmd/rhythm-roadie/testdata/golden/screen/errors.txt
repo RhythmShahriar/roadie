@@ -479,6 +479,19 @@ rhythm roadie dev - shop.com → staging.shop.test
 Source: ssh://deploy@shop.com/var/www/shop
 Target: /var/www/staging
 
+STOPPED   wp-alias; the target is untouched
+
+wp-alias: WP-CLI alias not found: @nope is in no wp-cli.yml or wp-cli.local.yml from /srv/shop up. Add @nope to wp-cli.yml with ssh: user@host/path (or path: for a local site), or name the site as ssh://user@host/path.
+
+rhythm-roadie explain wp-alias
+--- exit 2
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
 STOPPED   wp-cli; the target is untouched
 
 wp-cli: wp isn't on PATH for deploy@shop.com. Install WP-CLI there, set remote.wp in .roadie/config.yaml to its path, or export the database yourself and use --from dump.sql.gz.

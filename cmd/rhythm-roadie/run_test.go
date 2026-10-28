@@ -133,6 +133,7 @@ var prdErrors = map[string]string{
 	core.ErrNotFound:              "not-found: shop.sql doesn't exist. Check the path you gave.",
 	core.ErrUnreachable:           "unreachable: db: connect to mysql://127.0.0.1:3306/shop: dial tcp 127.0.0.1:3306: connect: connection refused. Check that the database or host is running and reachable from here; then check the host and port you gave.",
 	core.ErrInterrupted:           "interrupted: the run was stopped by Ctrl-C or a signal. Run it again when you're ready.",
+	core.ErrWPAlias:               "wp-alias: WP-CLI alias not found: @nope is in no wp-cli.yml or wp-cli.local.yml from /srv/shop up. Add @nope to wp-cli.yml with ssh: user@host/path (or path: for a local site), or name the site as ssh://user@host/path.",
 	core.ErrCodeNotBuilt:          "not built yet",
 }
 

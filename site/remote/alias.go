@@ -32,7 +32,38 @@ var sshAliasRE = regexp.MustCompile(`^(?:ssh:)?(?:([^@/\s]+)@)?(\[[^\]]+\]|[^:/~
 // in dir or the nearest folder above it that has either file, as WP-CLI
 // does. An alias with ssh becomes an SSHSite with Alias set; one with only
 // a path becomes a LocalSite (a relative path is from the file's folder).
+//
+// Every error is *core.Error wp-alias (exit 2) with the next step. It
+// still matches ErrNoAlias when the alias is in no file.
 func ResolveAlias(dir, alias string) (core.Endpoint, error) {
+	e, err := resolveAlias(dir, alias)
+	if err != nil {
+		return core.Endpoint{}, aliasErr(alias, err)
+	}
+	return e, nil
+}
+
+// aliasError is a wp-alias stop that keeps the cause for errors.Is.
+type aliasError struct {
+	ce    *core.Error
+	cause error
+}
+
+func (e *aliasError) Error() string   { return e.ce.Msg }
+func (e *aliasError) Unwrap() []error { return []error{e.ce, e.cause} }
+
+// aliasErr words an alias that can't be used, with what to do next.
+func aliasErr(alias string, err error) error {
+	name := "@" + strings.TrimPrefix(alias, "@")
+	next := "Fix " + name + " in wp-cli.yml, or name the site as ssh://user@host/path"
+	if errors.Is(err, ErrNoAlias) {
+		next = "Add " + name + " to wp-cli.yml with ssh: user@host/path (or path: for a local site), or name the site as ssh://user@host/path"
+	}
+	msg := strings.TrimSuffix(err.Error(), ".")
+	return &aliasError{ce: core.Errorf(core.ErrWPAlias, 2, "%s: %s. %s.", core.ErrWPAlias, msg, next), cause: err}
+}
+
+func resolveAlias(dir, alias string) (core.Endpoint, error) {
 	name := strings.TrimPrefix(alias, "@")
 	cfgDir, files, err := findAliasFiles(dir)
 	if err != nil {

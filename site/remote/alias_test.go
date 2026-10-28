@@ -103,6 +103,19 @@ path: web
 		if err == nil || !strings.Contains(err.Error(), msg) {
 			t.Errorf("%s: %v, want %q", alias, err, msg)
 		}
+		// Every alias stop has the wp-alias code (PRD 17) and a next step.
+		var ce *core.Error
+		if !errors.As(err, &ce) || ce.Code != core.ErrWPAlias || ce.Exit != 2 ||
+			!strings.HasPrefix(ce.Msg, "wp-alias: ") || !strings.HasSuffix(ce.Msg, "or name the site as ssh://user@host/path.") {
+			t.Errorf("%s: %#v", alias, err)
+		}
+		if errors.Is(err, ErrNoAlias) != (alias == "@missing") {
+			t.Errorf("%s: matches ErrNoAlias %v", alias, errors.Is(err, ErrNoAlias))
+		}
+	}
+	_, err := ResolveAlias(deep, "@missing")
+	if want := "Add @missing to wp-cli.yml with ssh: user@host/path (or path: for a local site), or name the site as ssh://user@host/path."; !strings.HasSuffix(err.Error(), want) {
+		t.Errorf("missing: %v", err)
 	}
 	if _, err := ResolveAlias(t.TempDir(), "@prod"); !errors.Is(err, ErrNoAlias) {
 		t.Errorf("no wp-cli.yml: %v", err)
