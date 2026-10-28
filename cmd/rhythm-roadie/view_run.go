@@ -10,8 +10,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strconv"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
