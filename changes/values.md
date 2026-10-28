@@ -16,6 +16,8 @@ Normalisation before keying, so spellings of one value share a fake:
 | ip | canonical form, IPv4-mapped IPv6 unmapped | `::ffff:81.2.69.142`, `81.2.69.142` |
 | other kinds | trimmed | |
 
+The known set (what exact mode and the scrubber look values up in) finds a value of a kind that keeps its case (username, nicename, postcode, URL, date of birth, user agent, text) in any case: it stores the lower-case form and the NFC case-folded form, so `JaneDoe99`, `JANEDOE99`, a login written with a decomposed `ö` and `STRASSENUTZER` for `StraßeNutzer` are all found.
+
 Formats per kind (the examples come from one test key):
 
 | Kind | Format | Example |
