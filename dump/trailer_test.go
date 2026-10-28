@@ -181,6 +181,10 @@ func TestNoTrailerTools(t *testing.T) {
 		{pma + rows[:60], "dump-truncated: pma.sql ends inside table wp_users at 300 B, in the middle of a statement. Export it again; the target is untouched."},
 		{"-- phpMyAdmin SQL Dump\nSTART TRANSACTION;\n", "dump-truncated: pma.sql ends early at 42 B, with no COMMIT for its START TRANSACTION."},
 		{"-- phpMyAdmin SQL Dump\n-- nothing exported\n", ""},
+		// No tool line and no statement: an export that failed or never
+		// started (an empty file, an empty pipe).
+		{"", "dump-truncated: pma.sql holds no SQL statements (0 B): it is empty or ends before its first one, as an export that failed does. Export it again; the target is untouched."},
+		{"-- just a comment\n\n", "dump-truncated: pma.sql holds no SQL statements"},
 		{"-- Adminer 4.8.1 MySQL 8.0.36 dump\nCREATE TABLE `t` (`a` int);\n\n-- 2026-10-26 10:00:00\n", ""},
 		{"-- Adminer 4.8.1 MySQL 8.0.36 dump\nCREATE TABLE `t` (`a` int);\n", "with no closing COMMIT or complete INSERT"},
 	} {

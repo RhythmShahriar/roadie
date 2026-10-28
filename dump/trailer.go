@@ -41,6 +41,7 @@ type endCheck struct {
 	read     bool   // the end line was read at some point
 	after    string // the kind of the first statement that counts after it
 	adminer  bool
+	tool     bool   // the head names the tool that wrote the dump
 	dateSeen bool   // Adminer's closing date line was read last
 	closed   bool   // the last statement that counts closes an export
 	any      bool   // a statement that counts was read
@@ -60,7 +61,7 @@ func newEndCheck(head []byte) *endCheck {
 		case bytes.HasPrefix(line, []byte("-- Adminer")):
 			return &endCheck{adminer: true}
 		case bytes.HasPrefix(line, []byte("-- phpMyAdmin SQL Dump")):
-			return &endCheck{}
+			return &endCheck{tool: true}
 		}
 	}
 	return &endCheck{}
@@ -166,7 +167,10 @@ func (e *endCheck) whole() bool {
 	case e.txOpen:
 		return false
 	}
-	return !e.any || e.closed
+	// An input with no statement at all and no tool line is an export
+	// that failed or never started (an empty file, an empty pipe). A
+	// phpMyAdmin export of nothing names its tool.
+	return e.closed || !e.any && e.tool
 }
 
 // truncatedError is dump-truncated for a dump that ended cleanly between
@@ -178,6 +182,10 @@ func (e *endCheck) truncatedError(name, table string, raw int64) *core.Error {
 	}
 	what := `with no "` + e.trailer + `" line`
 	switch {
+	case !e.any && e.trailer == "" && !e.adminer && !e.tool:
+		return core.Errorf(core.ErrDumpTruncated, 3,
+			"dump-truncated: %s holds no SQL statements (%s): it is empty or ends before its first one, as an export that failed does. Export it again; the target is untouched.",
+			name, size.Human(raw))
 	case e.trailer != "" && e.read:
 		// The end line is there, with more after it: two dumps run
 		// together, the second cut short.
