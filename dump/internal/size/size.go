@@ -5,7 +5,10 @@
 // as "ends inside table wp_postmeta at 1.7 GB".
 package size
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 // Human formats n in decimal units with one decimal place: "1.7 GB",
 // "64.0 MB", "512 B". Decimal units match what file managers and df -H
@@ -40,6 +43,17 @@ func Binary(n int64) string {
 		return strconv.FormatInt(n>>10, 10) + " KiB"
 	}
 	return strconv.FormatInt(n, 10) + " bytes"
+}
+
+// Flag formats n as a --max-value argument the flag parser takes:
+// "1GiB", "16MiB", "4KiB" or a byte count, with no space, so the advice
+// can be pasted as it is.
+func Flag(n int64) string {
+	b := Binary(n)
+	if num, ok := strings.CutSuffix(b, " bytes"); ok {
+		return num
+	}
+	return strings.ReplaceAll(b, " ", "")
 }
 
 // Count formats n with thousands separators, "4,120", as PRD 17 writes

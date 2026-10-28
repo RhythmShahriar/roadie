@@ -367,8 +367,8 @@ func TestRowErrors(t *testing.T) {
 		"CREATE TABLE t (a int);\nINSERT INTO t VALUES (1), 2;\n":             "dump-format: prod.sql line 2: a row of the INSERT doesn't start with '('.",
 		"CREATE TABLE t (a int);\nINSERT INTO t VALUES ('abc":                 `dump-truncated: prod.sql ends inside table t at 50 B, with no "Dump completed" line. Export it again; the target is untouched.`,
 		"SELECT 'x": `dump-truncated: prod.sql ends inside a statement at line 1 at 9 B, with no "Dump completed" line. Export it again; the target is untouched.`,
-		"CREATE TABLE wp_options (a longtext);\nINSERT INTO wp_options VALUES ('" + strings.Repeat("x", 2048) + "');\n": "value-too-large: a value in wp_options at line 2 is over 1 KiB. Pass --max-value 4 KiB if it's real; the target is untouched.",
-		"SELECT '" + strings.Repeat("x", 2048) + "';\n":                                                                 "value-too-large: a statement at line 1 is over 1 KiB. Pass --max-value 4 KiB if it's real; the target is untouched.",
+		"CREATE TABLE wp_options (a longtext);\nINSERT INTO wp_options VALUES ('" + strings.Repeat("x", 2048) + "');\n": "value-too-large: a value in wp_options at line 2 is over 1 KiB. Pass --max-value 4KiB if it's real; the target is untouched.",
+		"SELECT '" + strings.Repeat("x", 2048) + "';\n":                                                                 "value-too-large: a statement at line 1 is over 1 KiB. Pass --max-value 4KiB if it's real; the target is untouched.",
 	} {
 		s := sourceOf([]byte(in), SourceOptions{MaxValue: 1024})
 		_, err := drain(t, s)
@@ -393,7 +393,7 @@ func TestValueTooLargeDefault(t *testing.T) {
 	s := sourceOf(nil, SourceOptions{})
 	s.ins = &core.Table{Name: "wp_options"}
 	err := s.fail(le)
-	if err.Error() != "value-too-large: a value in wp_options at line 88 is over 256 MiB. Pass --max-value 1 GiB if it's real; the target is untouched." {
+	if err.Error() != "value-too-large: a value in wp_options at line 88 is over 256 MiB. Pass --max-value 1GiB if it's real; the target is untouched." {
 		t.Errorf("%v", err)
 	}
 }

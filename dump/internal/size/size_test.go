@@ -33,3 +33,14 @@ func TestCount(t *testing.T) {
 		}
 	}
 }
+
+// The --max-value advice is pasted as an argument: no space in it.
+func TestFlag(t *testing.T) {
+	for n, want := range map[int64]string{
+		16 << 20: "16MiB", 1 << 30: "1GiB", 4 << 10: "4KiB", 1000: "1000",
+	} {
+		if got := Flag(n); got != want {
+			t.Errorf("Flag(%d) = %q, want %q", n, got, want)
+		}
+	}
+}

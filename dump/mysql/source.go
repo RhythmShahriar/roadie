@@ -367,7 +367,7 @@ func (s *Source) fail(err error) error {
 			what = "a value"
 		}
 		e := core.Errorf(core.ErrValueTooLarge, 3, "value-too-large: %s at line %s is over %s. Pass --max-value %s if it's real; the target is untouched.",
-			what, size.Count(le.Line), size.Binary(le.Limit), size.Binary(le.Limit*4))
+			what, size.Count(le.Line), size.Binary(le.Limit), size.Flag(le.Limit*4))
 		e.Line = le.Line
 		err = e
 	case errors.As(err, &se):
