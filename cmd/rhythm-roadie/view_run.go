@@ -634,7 +634,7 @@ func (v *view) resultView(r *core.Result, j engine.Job, reportPath string, tm *t
 		bigNum(s.ValuesPseudonymised), plural(int64(s.TablesPseudonymised), "table", "tables"), num(s.URLsRewritten)), ok)
 	v.keysLine(r, s)
 	v.effectsLine(r, j)
-	if isSite(j.To.Kind) && r.Stack.Name == core.StackWordPress {
+	if isSite(j.To.Kind) && r.Stack.Name == core.StackWordPress && partOn(j.Opts, "noindex") {
 		if j.Opts.NoIndex {
 			v.mark("·", "Search", "noindex off (--noindex=off)", lipgloss.Color(ui.Muted))
 		} else {
@@ -733,12 +733,50 @@ func verdict(r *core.Result, failOn core.Severity, name string) (word, line stri
 	return "PASS", name + " is a pseudonymised copy", lipgloss.Color(ui.Ok)
 }
 
+// preparedParts are prepare --only's parts, nil for all of them.
+func preparedParts(o engine.Options) []string {
+	var out []string
+	for _, p := range o.Only {
+		for _, part := range strings.Split(p, ",") {
+			if part = strings.TrimSpace(part); part != "" && !slices.Contains(out, part) {
+				out = append(out, part)
+			}
+		}
+	}
+	return out
+}
+
+// partOn reports whether prepare --only leaves a part on.
+func partOn(o engine.Options, part string) bool {
+	parts := preparedParts(o)
+	return parts == nil || slices.Contains(parts, part)
+}
+
+// preparedLine is the box line of a prepare that verify didn't follow:
+// what it prepared and why nothing was checked.
+func preparedLine(name string, o engine.Options) string {
+	what := "prepared " + name
+	if parts := preparedParts(o); parts != nil {
+		what += ": " + strings.Join(parts, ", ")
+	}
+	why := "--no-verify"
+	if !o.NoVerify {
+		// Only noindex: no data was read, so there is nothing to verify.
+		why = "--only " + strings.Join(preparedParts(o), ",") + " reads no data"
+	}
+	return what + "; not checked (" + why + ")"
+}
+
 // verdictBox prints the result box of a copy, prepare or verify.
 func (v *view) verdictBox(r *core.Result, j engine.Job) {
-	word, line, color := verdict(r, j.Opts.FailOn, shortName(j.Opts.URL, r.Target))
-	if r.Verify == nil && j.To.Kind == core.Stdio {
+	name := shortName(j.Opts.URL, r.Target)
+	word, line, color := verdict(r, j.Opts.FailOn, name)
+	switch {
+	case r.Verify == nil && j.To.Kind == core.Stdio:
 		// A stream can't be read back, so verify never ran.
 		line = "written to stdout; not checked"
+	case r.Verify == nil && j.Mode == engine.Prepare:
+		line = preparedLine(name, j.Opts)
 	}
 	v.box(word, line, counts(r.Summary()), color)
 }
@@ -920,7 +958,12 @@ func (v *view) stopView(r *core.Result, j engine.Job) {
 	if j.Mode == engine.Plan {
 		word = "PLAN"
 	}
-	v.box(word, e.Code+state, "", sevColor(core.SeverityCritical))
+	line := e.Code + state
+	if e.Code == "" {
+		// An error with no code: the state alone, without a lone "; ".
+		line = strings.TrimPrefix(state, "; ")
+	}
+	v.box(word, line, "", sevColor(core.SeverityCritical))
 	if v.o.quiet {
 		// -q drops progress and settings, never the reason a run
 		// stopped: a CI log must say why it failed.

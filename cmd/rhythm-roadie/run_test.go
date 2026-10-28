@@ -19,8 +19,10 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/db"
 	"github.com/RhythmShahriar/roadie/engine"
 	"github.com/RhythmShahriar/roadie/internal/testutil"
+	"github.com/RhythmShahriar/roadie/site/remote"
 	"github.com/RhythmShahriar/roadie/verify"
 )
 
@@ -719,5 +721,53 @@ func TestTableWhatGroupsColumns(t *testing.T) {
 	keep := []core.Change{{Rule: "k", Table: "t", Column: "c", Action: core.Keep}}
 	if got := tableWhat(core.TableReport{Name: "t", Action: string(core.Fake), Columns: []core.ColumnReport{{Name: "c"}}}, keep, true); got != "no column changes" {
 		t.Errorf("keep only: %q", got)
+	}
+}
+
+// An error with no code of its own gets one where Roadie knows it (a
+// remote command, a missing table); the stop box never shows a lone
+// "; " where the code would be.
+func TestStopBoxWithoutCode(t *testing.T) {
+	ce := asCoreError(&remote.RunError{Template: remote.TestFile, Exit: 2, Stderr: []byte("sh: 1: test: --: unexpected operator\n")})
+	if ce.Code != core.ErrSSH || !strings.HasPrefix(ce.Msg, "ssh: remote test -f exited 2") {
+		t.Errorf("remote: %+v", ce)
+	}
+	ce = asCoreError(&db.NoTableError{DB: "mysql://127.0.0.1/staging", Table: "wp_blogs"})
+	if ce.Code != core.ErrSiteConfig || !strings.Contains(ce.Msg, "has no table wp_blogs") {
+		t.Errorf("no table: %+v", ce)
+	}
+	var b bytes.Buffer
+	v := &view{w: &b, o: viewOpts{plain: true}}
+	v.stopView(&core.Result{Err: &core.Error{Exit: 3, Msg: "boom"}, TargetState: core.Untouched}, engine.Job{Mode: engine.Copy})
+	if strings.Contains(b.String(), " ; ") || !strings.Contains(b.String(), "STOPPED   the target is untouched") {
+		t.Errorf("stop box:\n%s", b.String())
+	}
+}
+
+// prepare --only noindex reads no data: its box says what it prepared
+// and why verify didn't run, never "copied" or "--no-verify".
+func TestPreparedOnlyBox(t *testing.T) {
+	var b bytes.Buffer
+	v := &view{w: &b, o: viewOpts{plain: true}}
+	r := &core.Result{Kind: "prepare", Target: core.EndpointInfo{Kind: core.LocalSite, Display: "./site"}, Stack: core.StackInfo{Name: core.StackWordPress}}
+	j := engine.Job{Mode: engine.Prepare, To: core.Endpoint{Kind: core.LocalSite, Display: "./site"},
+		Opts: engine.Options{URL: "https://staging.shop.test", Only: []string{"noindex"}}}
+	v.verdictBox(r, j)
+	out := b.String()
+	if !strings.Contains(out, "prepared staging.shop.test: noindex; not checked (--only noindex reads no data)") || strings.Contains(out, "copied") {
+		t.Errorf("box:\n%s", out)
+	}
+	b.Reset()
+	j.Opts.Only, j.Opts.NoVerify = []string{"side-effects,keys"}, true
+	v.verdictBox(r, j)
+	if !strings.Contains(b.String(), "prepared staging.shop.test: side-effects, keys; not checked (--no-verify)") {
+		t.Errorf("box:\n%s", b.String())
+	}
+	// --only side-effects shows no Search line: noindex wasn't touched.
+	b.Reset()
+	j.Opts.Only, j.Opts.NoVerify = []string{"side-effects"}, false
+	v.resultView(r, j, "", nil)
+	if strings.Contains(b.String(), "Search") {
+		t.Errorf("search line:\n%s", b.String())
 	}
 }

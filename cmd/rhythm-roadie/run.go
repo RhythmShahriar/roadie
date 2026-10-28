@@ -20,9 +20,11 @@ import (
 	"github.com/RhythmShahriar/rhythm/kit/cli"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/db"
 	"github.com/RhythmShahriar/roadie/engine"
 	"github.com/RhythmShahriar/roadie/report"
 	"github.com/RhythmShahriar/roadie/roadiecfg"
+	"github.com/RhythmShahriar/roadie/site/remote"
 )
 
 // tool name as reports record it.
@@ -203,6 +205,15 @@ func asCoreError(err error) *core.Error {
 	if unreachable(err) {
 		return core.Errorf(core.ErrUnreachable, cli.ExitUnavailable,
 			"unreachable: %s. Check that the database or host is running and reachable from here; then check the host and port you gave.", err)
+	}
+	var re *remote.RunError
+	if errors.As(err, &re) {
+		return core.Errorf(core.ErrSSH, cli.ExitUnavailable, "ssh: %s. Run that command on the host by hand to see why, then run Roadie again.", err)
+	}
+	var nt *db.NoTableError
+	if errors.As(err, &nt) {
+		return core.Errorf(core.ErrSiteConfig, cli.ExitUnavailable,
+			"site-config: %s has no table %s. Check the table prefix in wp-config.php or the config.", nt.DB, nt.Table)
 	}
 	return &core.Error{Exit: cli.ExitUnavailable, Msg: err.Error()}
 }
