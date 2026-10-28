@@ -4,6 +4,8 @@
 package verify
 
 import (
+	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -85,5 +87,35 @@ func TestRunUnknownCheckNotCounted(t *testing.T) {
 		Steps: killswitch.Steps(core.StackWordPress, killswitch.Options{})})
 	if c := checkByID(res, core.FindingConfigEnvironment); c.Status != "pass" || c.Checked != 1 {
 		t.Errorf("environment %+v", c)
+	}
+}
+
+// An Echo connector that differs from Roadie's fails the Echo seal's row:
+// the row never says "sealed" above the finding that it isn't Roadie's.
+func TestConnectorChangedFailsEchoRow(t *testing.T) {
+	steps := killswitch.Steps(core.StackWordPress, killswitch.Options{})
+	st := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\n"), killswitch.EchoPluginPath: []byte("<?php")})
+	st.StackName = core.StackWordPress
+	res := runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"})), Steps: steps})
+	if !slices.ContainsFunc(res.Findings, func(f core.Finding) bool { return f.ID == core.FindingSideEffectConnectorChange }) {
+		t.Fatalf("no connector-changed finding: %v", ids(res))
+	}
+	if c := checkByID(res, core.FindingSideEffectMail); c.Status != "fail" || !strings.Contains(c.Detail, core.FindingSideEffectConnectorChange) {
+		t.Errorf("changed connector: mail row %+v", c)
+	}
+	// Negative: Roadie's own connector, as the step installs it, passes
+	// the row.
+	st = testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\n")})
+	st.StackName = core.StackWordPress
+	for _, step := range steps {
+		if step.ID() == core.FindingSideEffectMail {
+			if err := step.Apply(context.Background(), st); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	res = runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"})), Steps: steps})
+	if c := checkByID(res, core.FindingSideEffectMail); c.Status != "pass" {
+		t.Errorf("Roadie's connector: mail row %+v (%v)", c, ids(res))
 	}
 }

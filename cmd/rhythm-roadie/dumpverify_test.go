@@ -197,3 +197,87 @@ func TestVerifyBoxNamesSiteByHost(t *testing.T) {
 		}
 	}
 }
+
+// A live key URL-encoded into a link ("%3Dsk_live_...") is a key: copy
+// blanks it and verify, standalone and exact, fails a dump that keeps it.
+func TestCopyBlanksURLEncodedKey(t *testing.T) {
+	dir := realShop(t)
+	shop, err := os.ReadFile(filepath.Join(dir, "shop.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := testutil.J("sk_", "live_", "Zx9Wq8Er7Ty6Ui5Op4As3Df2")
+	row := "INSERT INTO `wp_options` VALUES (9001,'x_url','https://hooks.example.net/cb?redirect=https%3A%2F%2Fpay.example.net%2Fauth%3Fkey%3D" + key + "','off');\n"
+	i := bytes.Index(shop, []byte("-- Dump completed"))
+	if i < 0 {
+		t.Fatal("the demo dump has no end line")
+	}
+	prodDump := append(append(append([]byte{}, shop[:i]...), row...), shop[i:]...)
+	if err := os.WriteFile("prod_url.sql", prodDump, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	prod := demo.Production()[0]
+	out, errOut, code := runCmd(t, "copy", "--from", "prod_url.sql", "--to", "out_url.sql", "--url", demoURL, "--production", prod, "--yes", "--offline", "--plain")
+	if code != 0 {
+		t.Fatalf("copy: exit %d\n%s\n%s", code, out, errOut)
+	}
+	b, err := os.ReadFile("out_url.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(b, []byte(key)) {
+		t.Fatal("the copy keeps the URL-encoded live key")
+	}
+	if !bytes.Contains(b, []byte("auth%3Fkey%3D")) {
+		t.Error("the copy lost the link around the key")
+	}
+	if j := bytes.Index(b, []byte("-- Dump completed")); j < 0 {
+		t.Fatal("the copy has no end line")
+	} else if err := os.WriteFile("leak_url.sql", append(append(append([]byte{}, b[:j]...), row...), b[j:]...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"prod_url.sql", "--production", prod, "--offline", "--json"},
+		{"leak_url.sql", "--production", prod, "--offline", "--json"},
+		{"leak_url.sql", "--from", "prod_url.sql", "--production", prod, "--offline", "--json"},
+	} {
+		out, errOut, code := runCmd(t, "verify", args...)
+		if data, _ := jsonData(t, out); code != 1 || !findingIDs(data)["key.stripe-live"] {
+			t.Errorf("%v: exit %d %v\n%s", args, code, findingIDs(data), errOut)
+		}
+	}
+}
+
+// A verify that --skip leaves data checks out never claims a whole PASS:
+// the box says "PASS (partial: ...)" and complete is false, as a sample's.
+func TestVerifySkipIsPartial(t *testing.T) {
+	realShop(t)
+	prod := demo.Production()[0]
+	if out, errOut, code := runCmd(t, "copy", "--from", "shop.sql", "--to", "out.sql", "--url", demoURL, "--production", prod, "--yes", "--offline", "--plain"); code != 0 {
+		t.Fatalf("copy: exit %d\n%s\n%s", code, out, errOut)
+	}
+	const all = "emails,keys,names,phones,addresses,ips,cards,urls"
+	out, errOut, code := runCmd(t, "verify", "out.sql", "--production", prod, "--offline", "--plain", "--skip", all)
+	if code != 0 || !strings.Contains(out, "PASS (partial: emails, phones, names, addresses, ips, cards, keys, urls)") ||
+		!strings.Contains(out, "checks left out by --skip: emails, phones") {
+		t.Errorf("--skip: exit %d\n%s\n%s", code, out, errOut)
+	}
+	var env struct {
+		Complete bool `json:"complete"`
+	}
+	out, _, _ = runCmd(t, "verify", "out.sql", "--production", prod, "--offline", "--json", "--skip", "emails")
+	if err := json.Unmarshal([]byte(out), &env); err != nil || env.Complete {
+		t.Errorf("--skip emails --json: complete %v (%v)\n%s", env.Complete, err, out)
+	}
+	if data, _ := jsonData(t, out); data["coverage"].(map[string]any)["skipped_checks"] == nil {
+		t.Errorf("no coverage.skipped_checks:\n%s", out)
+	}
+	out, _, _ = runCmd(t, "verify", "out.sql", "--production", prod, "--offline", "--json", "--skip", "side-effects")
+	if err := json.Unmarshal([]byte(out), &env); err != nil || !env.Complete {
+		t.Errorf("--skip side-effects leaves the data checks whole: complete %v (%v)", env.Complete, err)
+	}
+	out, _, _ = runCmd(t, "verify", "out.sql", "--production", prod, "--offline", "--plain")
+	if !strings.Contains(out, "PASS ") || strings.Contains(out, "partial") {
+		t.Errorf("no --skip:\n%s", out)
+	}
+}

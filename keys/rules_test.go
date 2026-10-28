@@ -307,7 +307,9 @@ func TestPlaceholderBody(t *testing.T) {
 	}
 }
 
-// Two keys in one value are two hits; a key glued to a word is none.
+// Two keys in one value are two hits. A distinctive marker glued to a
+// word or after a %XX escape is still a key; a plain one glued to a word
+// is none.
 func TestTokensInText(t *testing.T) {
 	a := testutil.J("sk_", "live_", keyBody("Ab3", 24))
 	b := testutil.J("pk_", "live_", keyBody("Cd4", 24))
@@ -315,8 +317,15 @@ func TestTokensInText(t *testing.T) {
 	if len(hits) != 2 || hits[0].Provider != "stripe" || hits[1].Provider != "stripe-publishable" {
 		t.Fatalf("got %+v", hits)
 	}
-	if hits := ScanValue([]byte("x"+a), core.Location{}, nil); len(hits) != 0 {
+	if hits := ScanValue([]byte("x"+a), core.Location{}, nil); len(hits) != 1 || hits[0].Env != EnvLive {
 		t.Fatalf("glued: got %+v", hits)
+	}
+	if hits := ScanValue([]byte("auth%3Fkey%3D"+a), core.Location{}, nil); len(hits) != 1 || hits[0].Env != EnvLive {
+		t.Fatalf("escaped: got %+v", hits)
+	}
+	m := testutil.J("live_", keyBody("Ef5", 30))
+	if hits := ScanValue([]byte("x"+m), core.Location{}, nil); len(hits) != 0 {
+		t.Fatalf("plain marker glued: got %+v", hits)
 	}
 }
 
@@ -459,15 +468,13 @@ func findTokensRef(v []byte, ctx string) []keyToken {
 				continue
 			}
 		}
-		if i > 0 && isWord(v[i-1]) {
-			continue
-		}
+		mid := inWord(v, i)
 		for _, ri := range rulesByFirst[v[i]] {
 			r := &tokenRules[ri]
 			if r.context != "" && !strings.Contains(ctx, r.context) {
 				continue
 			}
-			end, env, body := r.match(v, i)
+			end, env, body := r.match(v, i, mid)
 			if end < 0 {
 				continue
 			}

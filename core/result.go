@@ -33,6 +33,30 @@ type Coverage struct {
 	BytesScanned  int64
 	Skipped       []Skipped
 	Sample        int // rows sampled per table; 0 = every row
+	// SkippedChecks are the data checks --skip left out (emails, keys,
+	// urls and the like), in --skip's order of names. Such a run is not
+	// complete: its PASS reads "PASS (partial: ...)".
+	SkippedChecks []string
+}
+
+// Partial reports whether verify sampled rows or left a data check out,
+// so a PASS can't stand for the whole copy.
+func (c Coverage) Partial() bool { return c.Sample > 0 || len(c.SkippedChecks) > 0 }
+
+// PassWord is the word of a PASS on this coverage: "PASS", "PASS
+// (sample)" or "PASS (partial: emails, keys)".
+func (c Coverage) PassWord() string {
+	var q []string
+	if c.Sample > 0 {
+		q = append(q, "sample")
+	}
+	if len(c.SkippedChecks) > 0 {
+		q = append(q, "partial: "+strings.Join(c.SkippedChecks, ", "))
+	}
+	if len(q) == 0 {
+		return "PASS"
+	}
+	return "PASS (" + strings.Join(q, "; ") + ")"
 }
 
 // Skipped is a table verify couldn't or didn't read, with why.

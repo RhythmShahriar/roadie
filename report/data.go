@@ -142,6 +142,9 @@ type CoverageData struct {
 	BytesScanned  int64         `json:"bytes_scanned"`
 	Skipped       []SkippedData `json:"skipped"`
 	Sample        int           `json:"sample"`
+	// SkippedChecks are the data checks --skip left out; any makes the
+	// run partial and complete false.
+	SkippedChecks []string `json:"skipped_checks"`
 }
 
 // SkippedData is a table verify didn't read, with why.

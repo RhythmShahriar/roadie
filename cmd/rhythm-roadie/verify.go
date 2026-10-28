@@ -224,6 +224,9 @@ func (v *view) verifyView(r *core.Result, j engine.Job, exact bool, reportPath s
 	if len(r.Production) > 0 {
 		v.setting("Production", strings.Join(r.Production, ", "))
 	}
+	if len(vr.Coverage.SkippedChecks) > 0 {
+		v.setting("Skipped", "checks left out by --skip: "+strings.Join(vr.Coverage.SkippedChecks, ", "))
+	}
 	for _, s := range vr.Coverage.Skipped {
 		v.setting("Skipped", s.Table+": "+s.Reason)
 	}

@@ -149,6 +149,7 @@ func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 		r.res.Mode = "exact"
 	}
 	r.res.Coverage.Sample = max(0, j.Opts.Sample)
+	r.res.Coverage.SkippedChecks = r.skip.dataChecks()
 	if j.Progress != nil {
 		j.Progress.Phase("verify", 0)
 	}

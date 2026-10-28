@@ -719,18 +719,26 @@ func (v *view) effectsLine(r *core.Result, j engine.Job) {
 		v.mark("·", "Side effects", "left as they are (--no-kill-switch)", lipgloss.Color(ui.Muted))
 		return
 	}
+	// A database-only target can't hold the seal or the mu-plugin, so
+	// what Roadie can't tell there (PRD 13.4) is not applicable, not on.
+	dbOnly := j.To.Kind == core.DSN
 	var off, on []string
+	unknown := false
 	for _, e := range r.SideEffects {
-		switch e.Status {
-		case "off":
+		switch {
+		case e.Status == "off":
 			off = append(off, effectLabel(e.ID, true))
-		case "on", "unknown":
+		case e.Status == "unknown" && dbOnly:
+			unknown = true
+		case e.Status == "on" || e.Status == "unknown":
 			on = append(on, effectLabel(e.ID, true))
 		}
 	}
 	switch {
 	case len(on) > 0:
 		v.mark("✗", "Side effects", "still on: "+strings.Join(on, ", "), lipgloss.Color(ui.Danger))
+	case unknown:
+		v.mark("·", "Side effects", "not applicable to a database only target; turn mail and jobs off where the app runs", lipgloss.Color(ui.Muted))
 	case len(off) > 0:
 		line := strings.Join(off, ", ")
 		if k := j.To.Kind; k == core.DumpFile || k == core.Stdio {
@@ -753,10 +761,7 @@ func verdict(r *core.Result, failOn core.Severity, name string) (word, line stri
 	if r.Verify.Coverage.Unread() {
 		return "INCOMPLETE", name + " couldn't be read whole; coverage lists what wasn't", lipgloss.Color(ui.Warn)
 	}
-	word = "PASS"
-	if r.Verify.Coverage.Sample > 0 {
-		word = "PASS (sample)"
-	}
+	word = r.Verify.Coverage.PassWord()
 	// The box claims a pseudonymised copy only when the checks found
 	// nothing: findings below --fail-on or hidden by a baseline are named
 	// instead (an info note doesn't count).

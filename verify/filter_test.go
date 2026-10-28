@@ -269,10 +269,11 @@ func TestChecksListIsStableAndSorted(t *testing.T) {
 
 func TestCheckOf(t *testing.T) {
 	for id, want := range map[string]string{
-		core.KeyLiveID("stripe"): CheckKeyLive,
-		core.FindingKeyLiveMode:  core.FindingKeyLiveMode,
-		core.FindingKeyGeneric:   core.FindingKeyGeneric,
-		core.FindingPIIEmail:     core.FindingPIIEmail,
+		core.KeyLiveID("stripe"):              CheckKeyLive,
+		core.FindingKeyLiveMode:               core.FindingKeyLiveMode,
+		core.FindingKeyGeneric:                core.FindingKeyGeneric,
+		core.FindingPIIEmail:                  core.FindingPIIEmail,
+		core.FindingSideEffectConnectorChange: core.FindingSideEffectMail,
 	} {
 		if got := checkOf(id); got != want {
 			t.Errorf("checkOf(%s) = %s, want %s", id, got, want)

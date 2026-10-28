@@ -846,3 +846,26 @@ func TestBeforeSaysRowsOnly(t *testing.T) {
 		t.Errorf("MySQL source:\n%s", b.String())
 	}
 }
+
+// A database-only target's side effects are not applicable (PRD 13.4),
+// never a [FAIL] above a PASS; one a data rule finds on still fails.
+func TestEffectsLineDatabaseOnly(t *testing.T) {
+	to := core.Endpoint{Kind: core.DSN, Driver: core.MySQL, Display: "mysql://stg@127.0.0.1:40001/stg2"}
+	j := engine.Job{Mode: engine.Copy, To: to}
+	r := &core.Result{SideEffects: []core.SideEffect{
+		{ID: core.FindingSideEffectNotApplicable, Status: "unknown"},
+		{ID: core.FindingSideEffectActionScheduler, Status: "unknown"},
+		{ID: core.FindingSideEffectWebhooks, Status: "off"},
+	}}
+	var b bytes.Buffer
+	(&view{w: &b, o: viewOpts{plain: true}}).effectsLine(r, j)
+	if out := b.String(); !strings.Contains(out, "[-] Side effects: not applicable to a database only target; turn mail and jobs off where the app runs") || strings.Contains(out, "FAIL") {
+		t.Errorf("database target:\n%s", out)
+	}
+	r.SideEffects = append(r.SideEffects, core.SideEffect{ID: core.FindingSideEffectSubscriptions, Status: "on"})
+	b.Reset()
+	(&view{w: &b, o: viewOpts{plain: true}}).effectsLine(r, j)
+	if out := b.String(); !strings.Contains(out, "[FAIL] Side effects: still on:") {
+		t.Errorf("an effect still on:\n%s", out)
+	}
+}

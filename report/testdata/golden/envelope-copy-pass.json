@@ -206,7 +206,8 @@
       "rows_scanned": 1210044,
       "bytes_scanned": 2390000000,
       "skipped": [],
-      "sample": 0
+      "sample": 0,
+      "skipped_checks": []
     },
     "remote_commands": [],
     "not_covered": [

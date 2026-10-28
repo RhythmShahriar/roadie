@@ -19,7 +19,17 @@ cases:
   - {provider: stripe, env: test, value: "rk_test_{a:24}"}
   - {provider: stripe, env: none, value: "sk_live_xxxxxxxxxxxxxxxxxxxxxxxx", note: placeholder}
   - {provider: stripe, env: none, value: "sk_live_{a:10}", note: too short}
-  - {provider: stripe, env: none, value: "ask_live_{a:24}", note: not at a token start}
+  - {provider: stripe, env: live, value: "ask_live_{a:24}", note: a distinctive marker counts mid-word}
+  - {provider: stripe, env: live, value: "abcsk_live_{a:24}", note: a distinctive marker counts mid-word}
+  - {provider: stripe, env: live, value: "https://hooks.example.net/cb?redirect=https%3A%2F%2Fpay.example.net%2Fauth%3Fkey%3Dsk_live_{a:24}", note: URL-encoded after %3D}
+  - {provider: stripe, env: live, value: "%7B%22key%22%3A%22sk_live_{a:24}%22%7D", note: URL-encoded after %22}
+  - {provider: stripe-publishable, env: live, value: "cb%3Dpk_live_{a:24}", note: URL-encoded after %3D}
+  - {provider: stripe-webhook, env: unknown, value: "secret%22whsec_{a:32}", note: URL-encoded after %22}
+  - {provider: razorpay, env: live, value: "idrzp_live_{a:14}", note: a distinctive marker counts mid-word}
+  - {provider: mollie, env: none, value: "xlive_{a:30}", note: a plain marker needs a token start}
+  - {provider: mollie, env: live, value: "%3Dlive_{a:30}", note: a plain marker after a %XX escape}
+  - {provider: aws, env: none, value: "xAKIA{A:16}", note: a plain marker needs a token start}
+  - {provider: stripe, env: none, value: "a%3sk_test_xxxxxxxxxxxxxxxxxxxxxxxx", note: placeholder after a broken escape}
   - {provider: stripe, env: live, value: "Use this key on the shop: sk_live_{a:24}. It was set up by the agency in March for the checkout page."}
   - {provider: stripe, env: none, value: "Paste your secret key, which looks like sk_live_xxxxxxxxxxxxxxxxxxxxxxxx, into the field below and save.", note: placeholder in long text}
   - {provider: stripe, env: none, value: "sk_live_000000000000000000000000", note: zeros}

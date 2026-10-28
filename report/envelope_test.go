@@ -75,6 +75,15 @@ func TestEnvelopeVerdicts(t *testing.T) {
 		complete         bool
 		kind, verifyMode string
 	}{"sampled", sampled, VerdictOK, ResultPass, false, "copy", "exact"})
+	skipped := copyPass()
+	skipped.Verify.Coverage.SkippedChecks = []string{"emails", "keys"}
+	cases = append(cases, struct {
+		name             string
+		r                *core.Result
+		verdict, result  string
+		complete         bool
+		kind, verifyMode string
+	}{"data checks skipped", skipped, VerdictOK, ResultPass, false, "copy", "exact"})
 	nothing := verifyFail()
 	nothing.Verify.Coverage.RowsScanned = 0
 	nothing.FailOn = core.SeverityNone
@@ -125,7 +134,7 @@ func TestEnvelopeLeavesOutScreenOnlyFields(t *testing.T) {
 }
 
 // prdData is every data field PRD 16.2 lists, with the members of its
-// objects.
+// objects; v1 adds coverage.skipped_checks.
 var prdData = map[string][]string{
 	"":             {"result", "verify_mode", "fail_on", "started", "duration_ms", "source", "target", "target_state", "production", "url", "stack", "consistency", "input", "output", "ruleset_sha256", "config_sha256", "profile_pack", "echo_connector_sha256", "tables", "covered", "uncovered", "keys", "side_effects", "findings", "checks", "coverage", "remote_commands", "not_covered", "soundcheck"},
 	"source":       {"kind", "display", "engine", "server", "bytes"},
@@ -141,7 +150,7 @@ var prdData = map[string][]string{
 	"findings":     {"id", "severity", "title", "count", "locations", "examples", "fix"},
 	"locations":    {"table", "column", "row", "path", "file", "line", "count"},
 	"checks":       {"id", "status", "checked"},
-	"coverage":     {"tables_scanned", "tables_total", "rows_scanned", "bytes_scanned", "skipped", "sample"},
+	"coverage":     {"tables_scanned", "tables_total", "rows_scanned", "bytes_scanned", "skipped", "sample", "skipped_checks"},
 	"soundcheck":   {"ran", "exit_code", "schema", "counts"},
 	"error":        {"code", "message", "exit"},
 	"summary":      {"critical", "high", "medium", "low", "info", "tables", "tables_pseudonymised", "rows", "values_pseudonymised", "urls_rewritten", "keys_found", "keys_swapped", "keys_blanked", "side_effects_off", "side_effects_total", "uncovered_columns"},

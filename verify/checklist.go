@@ -132,12 +132,12 @@ func (r *run) checks() []core.Check {
 			continue
 		}
 		c := core.Check{ID: id, Status: "pass", Checked: n, Detail: r.note[id]}
-		if hits, all := r.hits(id); hits > 0 {
+		if hits, all, fid := r.hits(id); hits > 0 {
 			c.Status = "fail"
-			c.Detail = fmt.Sprintf("%d %s (%s)", hits, plural(hits, "finding", "findings"), id)
+			c.Detail = fmt.Sprintf("%d %s (%s)", hits, plural(hits, "finding", "findings"), fid)
 		} else if all > 0 {
 			c.Status = "warn"
-			c.Detail = fmt.Sprintf("%d %s below --fail-on %s (%s)", all, plural(all, "finding", "findings"), r.j.Opts.FailOn, id)
+			c.Detail = fmt.Sprintf("%d %s below --fail-on %s (%s)", all, plural(all, "finding", "findings"), r.j.Opts.FailOn, fid)
 		} else if r.unknown[id] {
 			// It ran and couldn't tell the state: not a pass.
 			c.Status = "skip"
@@ -151,7 +151,12 @@ func (r *run) checks() []core.Check {
 // hits counts the hits of check id's findings that fail it and all of
 // its hits of low severity or above (an info finding is a note, which
 // warns of nothing; it still fails at --fail-on info).
-func (r *run) hits(id string) (failing, all int64) {
+// hits counts the findings of check id that fail the run and all of them
+// at low or above. fid names them in the check's detail: id, or
+// side-effect.connector-changed when only that finding is under
+// side-effect.mail.
+func (r *run) hits(id string) (failing, all int64, fid string) {
+	fid = id
 	for _, f := range r.res.Findings {
 		if checkOf(f.ID) != id {
 			continue
@@ -163,13 +168,21 @@ func (r *run) hits(id string) (failing, all int64) {
 			all += f.Count
 		}
 	}
-	return failing, all
+	if all > 0 && id == core.FindingSideEffectMail && !slices.ContainsFunc(r.res.Findings, func(f core.Finding) bool { return f.ID == id }) {
+		fid = core.FindingSideEffectConnectorChange
+	}
+	return failing, all, fid
 }
 
-// checkOf returns the check a finding ID belongs to.
+// checkOf returns the check a finding ID belongs to. A changed Echo
+// connector is the Echo seal's check failing: the seal it reports as off
+// may not be the one Roadie ships.
 func checkOf(id string) string {
 	if p, ok := strings.CutPrefix(id, "key."); ok && strings.HasSuffix(p, "-live") {
 		return CheckKeyLive
+	}
+	if id == core.FindingSideEffectConnectorChange {
+		return core.FindingSideEffectMail
 	}
 	return id
 }

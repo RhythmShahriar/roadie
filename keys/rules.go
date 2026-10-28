@@ -27,7 +27,10 @@ const ProviderGeneric = "generic"
 
 // tokenRule finds one provider's key format by its own marker: one of
 // marks followed by body, tried at a token start (the byte before is not
-// [A-Za-z0-9_]). A mark's env is "live" or "test" when the format says,
+// [A-Za-z0-9_], or is the end of a %XX escape as in a URL-encoded
+// "%3Dsk_live_"). A distinctive mark (sk_live_, whsec_ and the like,
+// which no word holds) is tried after any byte, so "abcsk_live_..." is
+// still a key. A mark's env is "live" or "test" when the format says,
 // "" when only the settings next to the key can tell. A rule with no
 // marks uses whole instead, which matches from the token start.
 type tokenRule struct {
@@ -42,20 +45,26 @@ type tokenRule struct {
 	context string
 }
 
-// mark is a key prefix and the environment it means.
+// mark is a key prefix and the environment it means. distinct says the
+// prefix is a key's own and found in no word, so it counts mid-word.
 type mark struct {
 	text, env string
+	distinct  bool
 }
 
 // match tries the rule at i. body is where the key's own characters
-// start, after its marker.
-func (r *tokenRule) match(v []byte, i int) (end int, env string, body int) {
+// start, after its marker. inWord says i is not a token start: only a
+// distinctive mark is tried there.
+func (r *tokenRule) match(v []byte, i int, inWord bool) (end int, env string, body int) {
 	if r.whole != nil {
+		if inWord {
+			return -1, "", i
+		}
 		end, env = r.whole(v, i)
 		return end, env, i
 	}
 	for _, m := range r.marks {
-		if !bytes.HasPrefix(v[i:], []byte(m.text)) {
+		if inWord && !m.distinct || !bytes.HasPrefix(v[i:], []byte(m.text)) {
 			continue
 		}
 		if end := r.body(v, i+len(m.text)); end > 0 {
@@ -68,9 +77,33 @@ func (r *tokenRule) match(v []byte, i int) (end int, env string, body int) {
 func marks(pairs ...string) []mark {
 	out := make([]mark, 0, len(pairs)/2)
 	for i := 0; i+1 < len(pairs); i += 2 {
-		out = append(out, mark{pairs[i], pairs[i+1]})
+		out = append(out, mark{text: pairs[i], env: pairs[i+1]})
 	}
 	return out
+}
+
+// distinctMarks is marks for prefixes that only a key holds, which count
+// after any byte.
+func distinctMarks(pairs ...string) []mark {
+	out := marks(pairs...)
+	for i := range out {
+		out[i].distinct = true
+	}
+	return out
+}
+
+// inWord reports whether i is inside a word, so only a distinctive mark
+// may start there. The end of a %XX escape is a token start: a value
+// URL-encoded into a link keeps its keys behind "%3D" or "%22".
+func inWord(v []byte, i int) bool {
+	if i == 0 || !isWord(v[i-1]) {
+		return false
+	}
+	return i < 3 || v[i-3] != '%' || !isHex(v[i-2]) || !isHex(v[i-1])
+}
+
+func isHex(c byte) bool {
+	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F'
 }
 
 // tokenRules is Roadie's own table for PRD 12.2, specific formats first.
@@ -83,26 +116,26 @@ func marks(pairs ...string) []mark {
 // https://woocommerce.github.io/woocommerce-rest-api-docs/#authentication.
 var tokenRules = []tokenRule{
 	{provider: "stripe", sev: core.SeverityCritical, body: alnum(16, 255),
-		marks: marks("sk_live_", EnvLive, "rk_live_", EnvLive, "sk_test_", EnvTest, "rk_test_", EnvTest)},
+		marks: distinctMarks("sk_live_", EnvLive, "rk_live_", EnvLive, "sk_test_", EnvTest, "rk_test_", EnvTest)},
 	{provider: "stripe-publishable", sev: core.SeverityHigh, body: alnum(16, 255),
-		marks: marks("pk_live_", EnvLive, "pk_test_", EnvTest)},
-	{provider: "stripe-webhook", sev: core.SeverityHigh, body: alnum(16, 255), marks: marks("whsec_", "")},
+		marks: distinctMarks("pk_live_", EnvLive, "pk_test_", EnvTest)},
+	{provider: "stripe-webhook", sev: core.SeverityHigh, body: alnum(16, 255), marks: distinctMarks("whsec_", "")},
 	{provider: "braintree", sev: core.SeverityCritical, body: braintreeBody,
-		marks: marks("access_token$production$", EnvLive, "access_token$sandbox$", EnvTest)},
+		marks: distinctMarks("access_token$production$", EnvLive, "access_token$sandbox$", EnvTest)},
 	{provider: "square", sev: core.SeverityCritical, body: chars(22, 128, isTokenByte),
-		marks: marks("sandbox-sq0", EnvTest, "sq0idp-", "", "sq0atp-", "", "sq0csp-", "", "EAAA", "")},
+		marks: append(distinctMarks("sandbox-sq0", EnvTest, "sq0idp-", "", "sq0atp-", "", "sq0csp-", ""), marks("EAAA", "")...)},
 	{provider: "razorpay", sev: core.SeverityCritical, body: alnum(14, 40),
-		marks: marks("rzp_live_", EnvLive, "rzp_test_", EnvTest)},
+		marks: distinctMarks("rzp_live_", EnvLive, "rzp_test_", EnvTest)},
 	{provider: "mollie", sev: core.SeverityCritical, body: alnum(30, 30),
 		marks: marks("live_", EnvLive, "test_", EnvTest)},
 	{provider: "flutterwave", sev: core.SeverityCritical, body: flutterwaveBody,
-		marks: marks("FLWSECK_TEST-", EnvTest, "FLWSECK-", EnvLive)},
+		marks: distinctMarks("FLWSECK_TEST-", EnvTest, "FLWSECK-", EnvLive)},
 	{provider: "adyen", sev: core.SeverityCritical, context: "adyen", body: chars(60, 400, isAdyenByte), marks: marks("AQE", "")},
 	{provider: "woocommerce-rest", sev: core.SeverityHigh, body: lowerHex(40), marks: marks("ck_", EnvLive, "cs_", EnvLive)},
 	{provider: "aws", sev: core.SeverityHigh, body: chars(16, 16, isUpperAlnum), marks: marks("AKIA", EnvLive, "ASIA", EnvLive)},
 	{provider: "sendgrid", sev: core.SeverityHigh, body: sendgridBody, marks: marks("SG.", EnvLive)},
 	{provider: "mailgun", sev: core.SeverityHigh, body: lowerHex(32), marks: marks("key-", EnvLive)},
-	{provider: "brevo", sev: core.SeverityHigh, body: chars(70, 90, isTokenByte), marks: marks("xkeysib-", EnvLive, "xsmtpsib-", EnvLive)},
+	{provider: "brevo", sev: core.SeverityHigh, body: chars(70, 90, isTokenByte), marks: distinctMarks("xkeysib-", EnvLive, "xsmtpsib-", EnvLive)},
 	{provider: "mailersend", sev: core.SeverityHigh, body: alnum(40, 100), marks: marks("mlsn.", EnvLive)},
 	{provider: "resend", sev: core.SeverityHigh, body: resendBody, marks: marks("re_", EnvLive)},
 	{provider: "mailchimp", sev: core.SeverityHigh, whole: mailchimpKey, firsts: "0123456789abcdef"},
@@ -294,9 +327,7 @@ func findTokensFrom(v []byte, src ctxSource) []keyToken {
 				runEnd++
 			}
 		}
-		if i > 0 && isWord(v[i-1]) {
-			continue
-		}
+		mid := inWord(v, i)
 		for _, ri := range rulesByFirst[v[i]] {
 			r := &tokenRules[ri]
 			if r.context != "" {
@@ -307,7 +338,7 @@ func findTokensFrom(v []byte, src ctxSource) []keyToken {
 					continue
 				}
 			}
-			end, env, body := r.match(v, i)
+			end, env, body := r.match(v, i, mid)
 			if end < 0 {
 				continue
 			}

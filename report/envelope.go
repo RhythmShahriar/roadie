@@ -36,7 +36,7 @@ const (
 // in r is already masked (core.Mask*), so the envelope copies strings as
 // they are; BasicAuthPassword is left out and Backup and Restore are kept
 // only in data.error of a run that stopped. complete is false when verify
-// read a sample, when part of its input couldn't be read, when the run
+// read a sample or left a data check out (--skip), when part of its input couldn't be read, when the run
 // stopped and when it scanned nothing.
 func Envelope(r *core.Result, tool, version string) (*core.Envelope, error) {
 	if r == nil {
@@ -52,7 +52,7 @@ func Envelope(r *core.Result, tool, version string) (*core.Envelope, error) {
 		Kind:     r.Kind,
 		Tool:     tool,
 		Version:  version,
-		Complete: d.Result != ResultError && (r.Verify == nil || r.Verify.Coverage.Sample == 0 && !r.Verify.Coverage.Unread()),
+		Complete: d.Result != ResultError && (r.Verify == nil || !r.Verify.Coverage.Partial() && !r.Verify.Coverage.Unread()),
 		Summary:  r.Summary(),
 		Verdict:  VerdictOK,
 		Data:     data,
@@ -143,7 +143,7 @@ func buildData(r *core.Result) *Data {
 		}
 		c := v.Coverage
 		d.Coverage = &CoverageData{TablesScanned: c.TablesScanned, TablesTotal: c.TablesTotal, RowsScanned: c.RowsScanned,
-			BytesScanned: c.BytesScanned, Skipped: []SkippedData{}, Sample: c.Sample}
+			BytesScanned: c.BytesScanned, Skipped: []SkippedData{}, Sample: c.Sample, SkippedChecks: nonNil(c.SkippedChecks)}
 		for _, s := range c.Skipped {
 			d.Coverage.Skipped = append(d.Coverage.Skipped, SkippedData(s))
 		}

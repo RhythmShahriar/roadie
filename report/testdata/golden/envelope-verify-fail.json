@@ -198,7 +198,8 @@
           "reason": "a table Roadie was told to keep"
         }
       ],
-      "sample": 0
+      "sample": 0,
+      "skipped_checks": []
     },
     "remote_commands": [],
     "not_covered": [

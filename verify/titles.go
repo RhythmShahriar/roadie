@@ -105,6 +105,22 @@ var skipNames = map[string][]string{
 	"uploads":      {core.FindingUploadsPersonal},
 }
 
+// dataSkipNames are the --skip names of checks on the copy's data, in
+// help order: leaving one out means a PASS can't vouch for the data.
+// side-effects and config read settings, not the people in the copy.
+var dataSkipNames = []string{"emails", "phones", "names", "addresses", "ips", "cards", "keys", "urls", "uploads"}
+
+// dataChecks returns the data checks s leaves out, in help order.
+func (s skipper) dataChecks() []string {
+	var out []string
+	for _, n := range dataSkipNames {
+		if s[n] {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // skipper says which checks a run leaves out.
 type skipper map[string]bool
 

@@ -99,8 +99,9 @@ func (r *report) verdict() (word, line string) {
 		return "DONE", "copied to " + r.name() + "; not checked (--no-verify)"
 	case d.Result == ResultFail:
 		return "FAIL", r.name() + " is not a safe copy yet"
-	case d.Coverage != nil && d.Coverage.Sample > 0:
-		return "PASS (sample)", r.name() + " is a pseudonymised copy"
+	case d.Coverage != nil:
+		c := core.Coverage{Sample: d.Coverage.Sample, SkippedChecks: d.Coverage.SkippedChecks}
+		return c.PassWord(), r.name() + " is a pseudonymised copy"
 	}
 	return "PASS", r.name() + " is a pseudonymised copy"
 }
@@ -172,8 +173,18 @@ func size(n int64) string {
 }
 
 // coverageLine says how much verify read: "exact, every row of 61
-// tables" or "heuristic, a sample of 1,000 rows per table of 58 tables".
+// tables" or "heuristic, a sample of 1,000 rows per table of 58 tables",
+// with "; skipped: emails, keys" when --skip left data checks out.
 func (r *report) coverageLine() string {
+	line := r.coverageRows()
+	if c := r.data.Coverage; c != nil && r.data.VerifyMode != "none" && len(c.SkippedChecks) > 0 {
+		line += "; skipped: " + strings.Join(c.SkippedChecks, ", ")
+	}
+	return line
+}
+
+// coverageRows is coverageLine's part on tables and rows.
+func (r *report) coverageRows() string {
 	d := r.data
 	c := d.Coverage
 	if c == nil || d.VerifyMode == "none" {
