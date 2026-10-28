@@ -95,7 +95,7 @@ Source (read-only):
 - `wp --path=<path> option get siteurl|home --skip-plugins --skip-themes`
 - `wp --path=<path> db export - --skip-plugins --skip-themes --single-transaction --skip-triggers`
 - `wp --path=<path> db export - --tables=<list> --skip-plugins --skip-themes --single-transaction --skip-triggers` (options-only Source and `--only`)
-- `cat -- <path>` and `test -f -- <path>`: on a source only for `wp-config.php` and `.env`
+- `cat -- <path>` and `test -f <path>`: on a source only for `wp-config.php` and `.env`
 - `find <path> -maxdepth <n> -printf '%y %s %P\n'` (GNU find; on a host whose find has no `-printf`, such as BSD, macOS or busybox, List and Exists fail with `ssh: find on <user@host> has no -printf, so it isn't GNU find. Roadie lists remote files with GNU find; install findutils there.`, exit 3)
 - `mysqldump --defaults-extra-file=/dev/stdin --single-transaction --skip-triggers --no-tablespaces --hex-blob <db> [<table> ...]`
 - `IFS= read -r PGPASSWORD; export PGPASSWORD; exec pg_dump --format=plain --no-owner --no-privileges --host=<h> --port=<n> --username=<u> --dbname=<db> [<table> ...]`
@@ -111,7 +111,7 @@ Target, additionally:
 - write over an existing file, keeping its mode and, where the ssh user may set them, its owner and group: `umask 077 && cat > <tmp> && { chown <uid>:<gid> -- <tmp> 2>/dev/null || chgrp <gid> -- <tmp> 2>/dev/null || :; } && chmod <0nnn> -- <tmp> && mv -f -- <tmp> <path>`
 - `mkdir -p -- <path>`, `rm -f -- <path>`
 - `wp --path=<path> eval-file - --skip-plugins --skip-themes` (the Echo connector script on stdin; plugins and themes stay unloaded, so a copied plugin can't send mail before the connector is in place)
-- `cat -- <path>`, `test -f -- <path>` for any path (the kill-switch checks read the mu-plugins)
+- `cat -- <path>`, `test -f <path>` for any path (POSIX `test` takes no `--`; the path is always absolute) (the kill-switch checks read the mu-plugins)
 
 A template outside the list panics under `go test` and is an error otherwise (`remote command not in the allowlist`). Arguments with NUL or line breaks are refused.
 

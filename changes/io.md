@@ -29,12 +29,13 @@ What a user sees from `dump/` and `db/`: the inputs Roadie reads, the outputs it
 ## Limits
 
 - `--max-output-ratio N` (default 20): past the first 64 MiB of decompressed output, more than N times the compressed bytes read so far stops the run. Code dump-bomb, exit 3: `dump-bomb: <name> grew past 20 times its size (67.1 MB) while reading. If it's real, pass --max-output-ratio 50; the target is untouched.` Plain input is never capped. A zstd frame asking for a window over 128 MiB is refused by the decoder.
-- `--max-value SIZE` (default 256 MiB): the largest single value or statement. Code value-too-large, exit 3: `value-too-large: a value in wp_options at line 88 is over 256 MiB. Pass --max-value 1 GiB if it's real; the target is untouched.` (`a statement at line N` for a statement).
+- `--max-value SIZE` (default 256 MiB): the largest single value or statement. Code value-too-large, exit 3: `value-too-large: a value in wp_options at line 88 is over 256 MiB. Pass --max-value 1GiB if it's real; the target is untouched.` (`a statement at line N` for a statement).
 - The limit holds while a statement is read, not only once it ends: a statement passed through whole (CREATE TABLE, a comment, a client command, blank lines, what follows an INSERT's rows) and the spaces, comments and expressions between the values of a row stop at the limit plus one 256 KiB window, so a dump with an endless statement can't fill memory before the size check. MySQL and PostgreSQL alike.
 
 ## Cut and damaged dumps (dump-truncated, exit 3)
 
 - mysqldump, mariadb-dump and `wp db export` must end with `-- Dump completed`: `dump-truncated: prod.sql.gz ends inside table wp_postmeta at 1.7 GB, with no "Dump completed" line. Export it again; the target is untouched.` pg_dump must end with `-- PostgreSQL database dump complete` (the message names that line).
+- A `GRANT`, `REVOKE` or `FLUSH PRIVILEGES` after that line is dropped with its plan line and the dump is whole. Anything else after it: `dump-truncated: prod.sql has statements after its "Dump completed" line (the first a DROP TABLE) and ends at 1.6 MB without another one. Export it again, or remove what follows that line; the target is untouched.`; a second dump cut short after it says `..., after its "Dump completed" line (two dumps run together, the second cut short). ...`.
 - phpMyAdmin, Adminer and dumps without a tool line end cleanly after a COMMIT, a complete INSERT or REPLACE, an ALTER TABLE, UNLOCK TABLES or Adminer's closing date line: otherwise `..., with no closing COMMIT or complete INSERT. ...`, or `..., in the middle of a statement. ...`.
 - A gzip, zstd or bzip2 stream that is cut or damaged: `dump-truncated: <name> ends inside table wp_options at 1.7 GB: the gzip stream is cut or damaged. Export it again; the target is untouched.` (`ends early` before any table).
 - The error comes from the last read, before any output is committed: a dump file is only renamed into place on success.

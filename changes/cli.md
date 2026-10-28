@@ -65,7 +65,7 @@ The error codes and their messages are PRD 17's; `explain <code>` has each.
 
 Reference layouts: `cmd/rhythm-roadie/testdata/golden/screen/*.txt` (plain and colour). The pinned strings of PRD 16.1 are all there:
 
-- `PASS   <host> is a pseudonymised copy`, `PASS (sample)   ...`, `FAIL   <name> is not a safe copy yet`, `PLAN   copy would stop: <n> uncovered column(s)`, `PLAN   ready: nothing changes until you run copy`, `DONE   copied to <name>; not checked (--no-verify)`, `STOPPED   <code>; the target is untouched|is in a mixed state|was replaced`
+- `PASS   <host> is a pseudonymised copy`, `PASS (sample)   ...`, `FAIL   <name> is not a safe copy yet`, `PLAN   copy would stop: <n> uncovered column(s)`, `PLAN   ready: nothing changes until you run copy`, `DONE   copied to <name>; not checked (--no-verify)`, `DONE   prepared <name>: <parts>; not checked (--only noindex reads no data|--no-verify)`, `STOPPED   <code>; the target is untouched|is in a mixed state|was replaced` (an error without a code shows the state alone; a failed remote command is `ssh`, a table the database lacks `site-config`)
 - `<n> critical · <n> high · <n> medium · <n> low · <n> info`
 - `Pseudonymised, not anonymised. The copy still holds order totals, dates, products and anything Roadie can't recognise in free text. Treat it as personal data.` (after every copy, prepare and verify; not with `-q`)
 - `Mail from this copy goes to Echo at <url>. Run rhythm echo up on the staging host, or the copy's mail will fail closed.`
@@ -73,7 +73,7 @@ Reference layouts: `cmd/rhythm-roadie/testdata/golden/screen/*.txt` (plain and c
 - `▸ Mode          exact: every value Roadie replaced was checked` / `▸ Mode          heuristic: this copy wasn't made by Roadie in this run`
 - the prepare question, `config init`'s three lines and the first-run note of PRD 6.11
 
-A wrapped check detail in the VERIFY block lines up under the first line of its detail.
+A wrapped check detail in the VERIFY block lines up under the first line of its detail. Every check has a readable label (`No secret-looking settings`, `Off: WP-Cron`; `Secret-looking settings`, `WP-Cron` when it warns or fails), never its ID. The Markdown checks table gives one total per failing check: `❌ 280 hits in 8 columns`.
 
 The ALSO block's rsync line for uploads passes a non-default SSH port as `-e 'ssh -p N'`. With SSH on both ends it runs rsync on production and pushes to staging: `ssh [-p N] user@prod 'rsync -a [-e '\''ssh -p M'\''] --exclude ... /prod/path/ user@staging:/staging/path/'`.
 
@@ -113,7 +113,7 @@ Envelope: `schema`, `kind` (`plan`, `copy`, `prepare`, `verify`, `config`, `prof
 - `config init`: `Wrote .roadie/config.yaml for a WooCommerce site.` / `Set source:, target: and url: in it, then run rhythm-roadie plan.` / `Added .roadie/reports, .roadie/key, .roadie/backups and .roadie/basic-auth to .git/info/exclude.`; `--from` lists columns that look personal as commented suggestions; CR, LF, NEL, U+2028 and U+2029 in a table or column name become a space there, so a name can't end the comment.
 - `config check`: `<path> is valid.` and `Unset: ROADIE_X (line n); set it before a run that reads it.` for a `${ROADIE_*}` in a value, never for one in a trailing comment.
 - `config key show|rotate|forget` messages: lane notes, batch 1, item 5.
-- `profiles` lists the 24 profiles of PRD 6.10 with what each was checked against; `explain` has an offline text for every finding ID, live-key rule, error code and profile, plus `pseudonymised`.
+- `profiles` lists the 24 profiles of PRD 6.10 with what each was checked against; `profiles <name>` and `config show` print a rule whose address part `pseudonymise.keep` names as `kept (keep: country)` (`"kept": "country"` in JSON); `explain` has an offline text for every finding ID, live-key rule, error code and profile, plus `pseudonymised`.
 - `demo`: a 40-customer shop with fake people only, planned, copied, the copy verified (PASS) and the shop verified (FAIL), in a 0700 folder deleted at the end unless `--keep`. No network. `demo --json` that can't run prints `rhythm-roadie: <reason>` once on stderr with its exit code and nothing on stdout.
 
 ## update and the router
