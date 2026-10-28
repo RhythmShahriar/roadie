@@ -73,10 +73,10 @@ var templates = map[Template]template{
 	Cat:            {format: "cat -- %q"},
 	// test takes no "--" (POSIX test reads it as an operand, so sh exits
 	// 2); the path is always absolute, so it never starts with a dash.
-	TestFile:       {format: "test -f %q"},
-	Find:           {format: `find %q -maxdepth %n -printf '%y %s %P\n'`},
-	MySQLDump:      {format: "mysqldump --defaults-extra-file=/dev/stdin --single-transaction --skip-triggers --no-tablespaces --hex-blob %q%v"},
-	PGDump:         {format: pgWrapper + "pg_dump --format=plain --no-owner --no-privileges --host=%q --port=%n --username=%q --dbname=%q%v"},
+	TestFile:  {format: "test -f %q"},
+	Find:      {format: `find %q -maxdepth %n -printf '%y %s %P\n'`},
+	MySQLDump: {format: "mysqldump --defaults-extra-file=/dev/stdin --single-transaction --skip-triggers --no-tablespaces --hex-blob %q%v"},
+	PGDump:    {format: pgWrapper + "pg_dump --format=plain --no-owner --no-privileges --host=%q --port=%n --username=%q --dbname=%q%v"},
 
 	DBImport: {format: "%w db import -", target: true},
 	MySQL:    {format: mysqlWrapper, target: true},
