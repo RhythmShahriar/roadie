@@ -891,6 +891,10 @@ func TestRunEndpoints(t *testing.T) {
 	if len(f.opened) != 0 {
 		t.Errorf("opened %d sites", len(f.opened))
 	}
+	_, err := Run(context.Background(), Job{Mode: Prepare, To: core.Endpoint{Kind: core.DumpFile, Display: "shop.sql"}})
+	if want := "prepare needs a staging site or database (a site folder, ssh://user@host/path, @alias or DSN); shop.sql is a dump file. Use rhythm-roadie copy for dump files."; err == nil || err.Error() != want {
+		t.Errorf("prepare a dump: %v", err)
+	}
 }
 
 // VerifyJob compiles the target's rules and, with from, a sealed Known

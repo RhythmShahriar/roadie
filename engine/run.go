@@ -444,7 +444,7 @@ func (r *runner) endpoints() error {
 	case Prepare:
 		if !isSite(to.Kind) {
 			return core.Errorf(core.ErrConfig, 2,
-				"prepare needs a staging site or database; %s is a %s. Use rhythm-roadie copy for dump files.", to.Display, kindName(to.Kind))
+				"prepare needs a staging site or database (a site folder, ssh://user@host/path, @alias or DSN); %s is a %s. Use rhythm-roadie copy for dump files.", to.Display, kindName(to.Kind))
 		}
 		// prepare reads and writes one staging: a source: in the config
 		// (production) is never read, so prepare can't become a copy

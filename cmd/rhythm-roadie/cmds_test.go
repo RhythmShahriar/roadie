@@ -511,6 +511,14 @@ func TestExplainGolden(t *testing.T) {
 	if out, _, code := runCmd(t, "explain", "woocommerce.wc_orders.billing_email"); code != 0 || !strings.HasPrefix(out, "# woocommerce: ") {
 		t.Errorf("rule family: exit %d %q", code, out)
 	}
+	// prepare's stop for a dump file points at explain config, so that
+	// page says what each command takes; wp-alias has its own page.
+	if out, _, code := runCmd(t, "explain", "config"); code != 0 || !strings.Contains(out, "prepare: a staging site or database only") || !strings.Contains(out, "on the command line") {
+		t.Errorf("explain config: exit %d %q", code, out)
+	}
+	if out, _, code := runCmd(t, "explain", "wp-alias"); code != 0 || !strings.HasPrefix(out, "# wp-alias: ") {
+		t.Errorf("explain wp-alias: exit %d %q", code, out)
+	}
 	if _, errOut, code := runCmd(t, "explain", "uncoverd-column"); code != 2 || !strings.Contains(errOut, "did you mean: rhythm-roadie explain uncovered-column") {
 		t.Errorf("unknown: exit %d %q", code, errOut)
 	}
