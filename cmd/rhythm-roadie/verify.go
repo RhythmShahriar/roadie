@@ -72,7 +72,7 @@ func runVerify(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 	}
 	r.Duration = dep.now().Sub(started)
 	if err != nil {
-		r.Err = asCoreError(err)
+		r.Err = verifyWording(asCoreError(err))
 	}
 
 	reportPath, werr := out.write(r)
@@ -98,6 +98,23 @@ func runVerify(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 		return &cli.ExitError{Code: code, Err: r.Err}
 	}
 	return &cli.ExitError{Code: code}
+}
+
+// verifyWording words a stop for verify: verify only reads, so a message
+// written for copy (the dump readers' "the target is untouched") loses
+// that ending.
+func verifyWording(e *core.Error) *core.Error {
+	if e == nil {
+		return nil
+	}
+	msg := strings.ReplaceAll(e.Msg, "; the target is untouched.", ".")
+	msg = strings.ReplaceAll(msg, " The target is untouched.", "")
+	if msg == e.Msg {
+		return e
+	}
+	c := *e
+	c.Msg = msg
+	return &c
 }
 
 // verifyParts is what verifyJob gathers from the command line.
@@ -149,10 +166,20 @@ func (p *parsed) verifyJob(cfg *roadiecfg.Config, stderr io.Writer) (verifyParts
 		return parts, engine.Job{}, runError(err)
 	}
 	vo.Clock = dep.now
+	// A dump that compresses better than 20 times, or holds one value
+	// over 256 MiB, is verified as copy reads it: with the same flags.
+	vo.MaxValue, vo.MaxRatio = defaultMaxValue, defaultMaxOutputRatio
+	if p.set["max-value"] {
+		vo.MaxValue, _ = parseSize(p.f.maxValue) // checked by parse
+	}
+	if p.set["max-output-ratio"] {
+		vo.MaxRatio = p.f.maxOutputRatio
+	}
 	parts.opts, parts.prod = vo, prod
 	ej := engine.Job{
 		To: to, Config: cfg, Clock: dep.now,
-		Opts: engine.Options{Production: prod, Offline: p.offline(dep.env), FailOn: vo.FailOn},
+		Opts: engine.Options{Production: prod, Offline: p.offline(dep.env), FailOn: vo.FailOn,
+			MaxValue: vo.MaxValue, MaxOutputRatio: vo.MaxRatio},
 	}
 	if parts.from != nil {
 		ej.From = *parts.from

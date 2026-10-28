@@ -231,7 +231,8 @@ func openTarget(ctx context.Context, j Job) (core.Source, core.Site, func(), err
 			}
 			// KeepRoutines: verify reads the dump and never runs it, so a
 			// trigger or a function is no reason to refuse it.
-			src, err := dump.Open(ctx, rd, dump.Options{Name: name, Progress: j.Progress, KeepRoutines: true})
+			src, err := dump.Open(ctx, rd, dump.Options{Name: name, Progress: j.Progress, KeepRoutines: true,
+				MaxValue: j.Opts.MaxValue, MaxRatio: j.Opts.MaxRatio})
 			if err != nil {
 				return fail(err)
 			}

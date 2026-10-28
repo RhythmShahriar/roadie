@@ -176,7 +176,7 @@ func demoVerify(ctx context.Context, target core.Endpoint, opts engine.Options) 
 		r.Verify, err = dep.verify(ctx, j)
 	}
 	if err != nil {
-		r.Err = asCoreError(err)
+		r.Err = verifyWording(asCoreError(err))
 	}
 	r.Duration = dep.now().Sub(started)
 	return r

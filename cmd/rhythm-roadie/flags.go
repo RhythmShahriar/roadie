@@ -339,6 +339,8 @@ func (f *runFlags) flagSet(cmd string) *flag.FlagSet {
 			str(&f.insecureTLS, "insecure-tls", "a staging host with a self-signed certificate")
 			value(&f.echo, "echo", "ask Echo")
 			integer(&f.sample, "sample", "rows per table")
+			str(&f.maxValue, "max-value", "largest single value")
+			integer(&f.maxOutputRatio, "max-output-ratio", "largest growth of a compressed dump")
 			value(&f.skip, "skip", "checks left out")
 			str(&f.failOn, "fail-on", "exit 1 at or above this level")
 			str(&f.baseline, "baseline", "accepted findings")

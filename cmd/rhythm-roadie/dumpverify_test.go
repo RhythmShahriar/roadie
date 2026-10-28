@@ -5,11 +5,13 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -98,5 +100,65 @@ func TestVerifyDumpSideEffects(t *testing.T) {
 		if !bytes.Contains([]byte(out), []byte(want)) {
 			t.Errorf("checks lack %q\n%s", want, out)
 		}
+	}
+}
+
+// verify takes --max-output-ratio and --max-value as copy does; its
+// stop doesn't speak of a target it never writes.
+func TestVerifyDumpLimits(t *testing.T) {
+	dir := realShop(t)
+	shop, err := os.ReadFile(filepath.Join(dir, "shop.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Padding past the 64 MiB grace that compresses far better than 20
+	// times.
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	_, _ = zw.Write(shop)
+	line := []byte("-- " + strings.Repeat("a", 1<<20) + "\n")
+	for range 70 {
+		_, _ = zw.Write(line)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("bomb.sql.gz", gz.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := runCmd(t, "verify", "bomb.sql.gz", "--offline", "--plain")
+	if code != 3 || !strings.Contains(out+errOut, "dump-bomb") || !strings.Contains(out+errOut, "--max-output-ratio") || strings.Contains(out+errOut, "untouched") {
+		t.Errorf("bomb: exit %d\n%s\n%s", code, out, errOut)
+	}
+	out, errOut, code = runCmd(t, "verify", "bomb.sql.gz", "--max-output-ratio", "100000", "--offline", "--plain")
+	if code == 2 || code == 3 {
+		t.Errorf("bomb with --max-output-ratio: exit %d\n%s\n%s", code, out, errOut)
+	}
+
+	out, errOut, code = runCmd(t, "verify", "shop.sql", "--max-value", "1KiB", "--offline", "--plain")
+	if code != 3 || !strings.Contains(out+errOut, "value-too-large") || !strings.Contains(out+errOut, "--max-value") || strings.Contains(out+errOut, "untouched") {
+		t.Errorf("max-value 1KiB: exit %d\n%s\n%s", code, out, errOut)
+	}
+	if _, errOut, code = runCmd(t, "verify", "shop.sql", "--max-value", "1GiB", "--offline", "--plain"); code == 2 || code == 3 {
+		t.Errorf("max-value 1GiB: exit %d\n%s", code, errOut)
+	}
+	if _, errOut, code = runCmd(t, "verify", "shop.sql", "--max-value", "lots", "--offline", "--plain"); code != 2 || !strings.Contains(errOut, "--max-value") {
+		t.Errorf("bad --max-value: exit %d\n%s", code, errOut)
+	}
+}
+
+func TestVerifyWording(t *testing.T) {
+	for in, want := range map[string]string{
+		"dump-bomb: x grew. If it's real, pass --max-output-ratio 20; the target is untouched.": "dump-bomb: x grew. If it's real, pass --max-output-ratio 20.",
+		"dump-truncated: x is cut. Export it again; the target is untouched.":                   "dump-truncated: x is cut. Export it again.",
+		"stopped. The target is untouched.":                                                     "stopped.",
+		"nothing to change":                                                                     "nothing to change",
+	} {
+		if got := verifyWording(&core.Error{Msg: in}).Msg; got != want {
+			t.Errorf("%q: got %q", in, got)
+		}
+	}
+	if verifyWording(nil) != nil {
+		t.Error("nil")
 	}
 }

@@ -65,6 +65,11 @@ type Options struct {
 	Ignore    []Ignore
 	Jobs      int
 	Clock     core.Clock
+	// MaxValue and MaxRatio cap a dump target's largest value and its
+	// decompressed growth, as --max-value and --max-output-ratio do for
+	// copy; 0 is the dump package's default.
+	MaxValue int64
+	MaxRatio int
 }
 
 // Ignore hides a finding by ID and location until a date.

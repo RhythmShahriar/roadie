@@ -20,6 +20,9 @@ What to check:
       --sample <n>           rows checked per table (default 0: every row)
       --skip <checks>        leave these checks out: emails, phones, names, addresses, ips,
                              cards, keys, urls, side-effects, config, uploads
+      --max-value <size>     largest single value read from a dump (default 256MiB)
+      --max-output-ratio <n> stop when a dump grows past n times its compressed size
+                             (default 20); both apply to --from too
 
 CI:
       --fail-on <level>      exit 1 at or above none, info, low, medium, high (default) or

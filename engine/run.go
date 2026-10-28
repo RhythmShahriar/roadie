@@ -1348,7 +1348,8 @@ func production(cfg *roadiecfg.Config, found []string) []string {
 func (r *runner) verifyOptions() verify.Options {
 	o := verify.Options{FailOn: r.opts.FailOn, Skip: slices.Clone(r.cfg.Verify.Skip),
 		Allow:   detect.Allow{Emails: slices.Clone(r.cfg.Verify.AllowEmails), Phones: slices.Clone(r.cfg.Verify.AllowPhones)},
-		EchoURL: r.cfg.SideEffects.Echo.URL, Jobs: r.opts.Jobs, Clock: r.j.Clock}
+		EchoURL: r.cfg.SideEffects.Echo.URL, Jobs: r.opts.Jobs, Clock: r.j.Clock,
+		MaxValue: r.opts.MaxValue, MaxRatio: r.opts.MaxOutputRatio}
 	if r.res != nil {
 		o.EchoSince = r.res.Started
 	}
