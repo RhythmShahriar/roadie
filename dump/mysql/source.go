@@ -356,7 +356,7 @@ func (s *Source) fail(err error) error {
 			what = "in the middle of a statement"
 		}
 		e := core.Errorf(core.ErrDumpTruncated, 3, `dump-truncated: %s %s at %s, %s. Export it again; the target is untouched.`,
-			s.o.Name, where, size.GB(s.offset()), what)
+			s.o.Name, where, size.Human(s.offset()), what)
 		e.Line = te.Line
 		err = e
 	case errors.As(err, &le):

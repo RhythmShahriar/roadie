@@ -130,7 +130,7 @@ func TestNoDumpCompleted(t *testing.T) {
 		"CREATE TABLE `wp_postmeta` (`meta_id` int, `meta_value` longtext);\n" +
 		"INSERT INTO `wp_postmeta` VALUES (1,'x');\n"
 	err := openAll(t, []byte(in), "prod.sql")
-	want := `dump-truncated: prod.sql ends inside table wp_postmeta at 0.0 GB, with no "Dump completed" line. Export it again; the target is untouched.`
+	want := `dump-truncated: prod.sql ends inside table wp_postmeta at 165 B, with no "Dump completed" line. Export it again; the target is untouched.`
 	if err == nil || err.Error() != want {
 		t.Fatalf("got  %v\nwant %s", err, want)
 	}
@@ -146,7 +146,7 @@ func TestNoDumpCompleted(t *testing.T) {
 	}
 	// mariadb-dump: the same end line after the sandbox line.
 	maria := "/*M!999999\\- enable the sandbox mode */ \n-- MariaDB dump 10.19-11.4.2-MariaDB\nCREATE TABLE `t` (`a` int);\n"
-	if err := openAll(t, []byte(maria), "m.sql"); err == nil || !strings.Contains(err.Error(), `ends inside table t at 0.0 GB, with no "Dump completed" line`) {
+	if err := openAll(t, []byte(maria), "m.sql"); err == nil || !strings.Contains(err.Error(), `ends inside table t at 106 B, with no "Dump completed" line`) {
 		t.Errorf("mariadb: %v", err)
 	}
 	if err := openAll(t, []byte(maria+"-- Dump completed on 2026-10-26 10:00:00\n"), "m.sql"); err != nil {
@@ -173,13 +173,13 @@ func TestNoTrailerTools(t *testing.T) {
 		{pma + rows + "ALTER TABLE `wp_users`\n  ADD PRIMARY KEY (`ID`);\nCOMMIT;\n", ""},
 		{pma + rows + "BEGIN;\nCOMMIT;\n", ""},
 		// phpMyAdmin stopped between statements: the transaction is open.
-		{pma + rows, "dump-truncated: pma.sql ends inside table wp_users at 0.0 GB, with no COMMIT for its START TRANSACTION. Export it again; the target is untouched."},
+		{pma + rows, "dump-truncated: pma.sql ends inside table wp_users at 331 B, with no COMMIT for its START TRANSACTION. Export it again; the target is untouched."},
 		{pma + rows + "ALTER TABLE `wp_users`\n  ADD PRIMARY KEY (`ID`);\n", "with no COMMIT for its START TRANSACTION"},
 		{pma + rows + "COMMIT;\nSTART TRANSACTION;\n" + rows, "with no COMMIT for its START TRANSACTION"},
-		{noTx, "dump-truncated: pma.sql ends inside table wp_users at 0.0 GB, with no closing COMMIT or complete INSERT. Export it again; the target is untouched."},
+		{noTx, "dump-truncated: pma.sql ends inside table wp_users at 221 B, with no closing COMMIT or complete INSERT. Export it again; the target is untouched."},
 		{pma, "with no COMMIT for its START TRANSACTION"},
-		{pma + rows[:60], "dump-truncated: pma.sql ends inside table wp_users at 0.0 GB, in the middle of a statement. Export it again; the target is untouched."},
-		{"-- phpMyAdmin SQL Dump\nSTART TRANSACTION;\n", "dump-truncated: pma.sql ends early at 0.0 GB, with no COMMIT for its START TRANSACTION."},
+		{pma + rows[:60], "dump-truncated: pma.sql ends inside table wp_users at 300 B, in the middle of a statement. Export it again; the target is untouched."},
+		{"-- phpMyAdmin SQL Dump\nSTART TRANSACTION;\n", "dump-truncated: pma.sql ends early at 42 B, with no COMMIT for its START TRANSACTION."},
 		{"-- phpMyAdmin SQL Dump\n-- nothing exported\n", ""},
 		{"-- Adminer 4.8.1 MySQL 8.0.36 dump\nCREATE TABLE `t` (`a` int);\n\n-- 2026-10-26 10:00:00\n", ""},
 		{"-- Adminer 4.8.1 MySQL 8.0.36 dump\nCREATE TABLE `t` (`a` int);\n", "with no closing COMMIT or complete INSERT"},

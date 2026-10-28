@@ -160,5 +160,5 @@ func (e *endCheck) truncatedError(name, table string, raw int64) *core.Error {
 		what = "with no closing COMMIT or complete INSERT"
 	}
 	return core.Errorf(core.ErrDumpTruncated, 3, "dump-truncated: %s %s at %s, %s. Export it again; the target is untouched.",
-		name, where, size.GB(raw), what)
+		name, where, size.Human(raw), what)
 }

@@ -16,15 +16,6 @@ func TestHuman(t *testing.T) {
 	}
 }
 
-func TestGB(t *testing.T) {
-	if got := GB(1_740_000_000); got != "1.7 GB" {
-		t.Errorf("GB = %q", got)
-	}
-	if got := GB(0); got != "0.0 GB" {
-		t.Errorf("GB(0) = %q", got)
-	}
-}
-
 func TestBinary(t *testing.T) {
 	for n, want := range map[int64]string{
 		256 << 20: "256 MiB", 1 << 30: "1 GiB", 3 << 10: "3 KiB", 1000: "1000 bytes", 1<<20 + 1: "1048577 bytes",

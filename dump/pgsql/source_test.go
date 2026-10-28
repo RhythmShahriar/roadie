@@ -439,9 +439,9 @@ func wantCode(t *testing.T, err error, code string, exit int) *core.Error {
 
 func TestTruncated(t *testing.T) {
 	for _, c := range []struct{ in, msg string }{
-		{"CREATE TABLE t (a text);\nCOPY t (a) FROM stdin;\nx\n", "dump-truncated: app.sql ends inside table t at 0.0 GB, with no \"PostgreSQL database dump complete\" line. Export it again; the target is untouched."},
+		{"CREATE TABLE t (a text);\nCOPY t (a) FROM stdin;\nx\n", "dump-truncated: app.sql ends inside table t at 50 B, with no \"PostgreSQL database dump complete\" line. Export it again; the target is untouched."},
 		{"CREATE TABLE t (a text);\nCOPY t (a) FROM stdin;\nx", ""},
-		{"SELECT 'open;\n", "dump-truncated: app.sql ends inside a statement at line 1 at 0.0 GB"},
+		{"SELECT 'open;\n", "dump-truncated: app.sql ends inside a statement at line 1 at 14 B"},
 		{"CREATE FUNCTION f() AS $$ x;\n", ""},
 		{"/* open\n", ""},
 		{"CREATE TABLE t (a int)", ""},

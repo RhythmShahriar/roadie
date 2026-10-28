@@ -127,7 +127,7 @@ func TestOpenCutGzip(t *testing.T) {
 	_, err = drainAll(t, src)
 	var ce *core.Error
 	if !errors.As(err, &ce) || ce.Code != core.ErrDumpTruncated || ce.Exit != 3 ||
-		!strings.HasPrefix(ce.Msg, "dump-truncated: prod.sql.gz ends inside table wp_options at 0.0 GB: the gzip stream is cut or damaged.") {
+		!strings.HasPrefix(ce.Msg, "dump-truncated: prod.sql.gz ends inside table wp_options at 46.4 KB: the gzip stream is cut or damaged.") {
 		t.Fatalf("err = %v", err)
 	}
 }

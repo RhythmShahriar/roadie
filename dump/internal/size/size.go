@@ -24,12 +24,6 @@ func Human(n int64) string {
 	return strconv.FormatFloat(v, 'f', 1, 64) + " " + units[u]
 }
 
-// GB formats n in gigabytes with one decimal place, "1.7 GB", for the
-// offsets in dump-truncated messages.
-func GB(n int64) string {
-	return strconv.FormatFloat(float64(n)/1e9, 'f', 1, 64) + " GB"
-}
-
 // MiB is the binary mebibyte, for the --max-value wording ("256 MiB").
 const MiB = 1 << 20
 

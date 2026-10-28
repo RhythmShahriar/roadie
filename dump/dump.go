@@ -222,5 +222,5 @@ func streamError(name, table string, err error) error {
 		where = "ends inside table " + table
 	}
 	return core.Errorf(core.ErrDumpTruncated, 3, `dump-truncated: %s %s at %s: the %s stream is cut or damaged. Export it again; the target is untouched.`,
-		name, where, size.GB(se.Raw), se.Kind)
+		name, where, size.Human(se.Raw), se.Kind)
 }

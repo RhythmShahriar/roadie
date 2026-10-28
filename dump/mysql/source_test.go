@@ -365,8 +365,8 @@ func TestRowErrors(t *testing.T) {
 		"CREATE TABLE t (a int, b int);\nINSERT INTO t VALUES (1,2),\n(3);\n": "dump-format: prod.sql line 3: a row of t has 1 values for 2 columns.",
 		"CREATE TABLE t (a int);\nINSERT INTO t (`zz`) VALUES (1);\n":         "dump-format: prod.sql line 2: the INSERT into t names column zz, which its CREATE TABLE doesn't have.",
 		"CREATE TABLE t (a int);\nINSERT INTO t VALUES (1), 2;\n":             "dump-format: prod.sql line 2: a row of the INSERT doesn't start with '('.",
-		"CREATE TABLE t (a int);\nINSERT INTO t VALUES ('abc":                 `dump-truncated: prod.sql ends inside table t at 0.0 GB, with no "Dump completed" line. Export it again; the target is untouched.`,
-		"SELECT 'x": `dump-truncated: prod.sql ends inside a statement at line 1 at 0.0 GB, with no "Dump completed" line. Export it again; the target is untouched.`,
+		"CREATE TABLE t (a int);\nINSERT INTO t VALUES ('abc":                 `dump-truncated: prod.sql ends inside table t at 50 B, with no "Dump completed" line. Export it again; the target is untouched.`,
+		"SELECT 'x": `dump-truncated: prod.sql ends inside a statement at line 1 at 9 B, with no "Dump completed" line. Export it again; the target is untouched.`,
 		"CREATE TABLE wp_options (a longtext);\nINSERT INTO wp_options VALUES ('" + strings.Repeat("x", 2048) + "');\n": "value-too-large: a value in wp_options at line 2 is over 1 KiB. Pass --max-value 4 KiB if it's real; the target is untouched.",
 		"SELECT '" + strings.Repeat("x", 2048) + "';\n":                                                                 "value-too-large: a statement at line 1 is over 1 KiB. Pass --max-value 4 KiB if it's real; the target is untouched.",
 	} {

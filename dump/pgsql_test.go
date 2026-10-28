@@ -162,7 +162,7 @@ func TestPostgresTruncated(t *testing.T) {
 				table = string(in[m[4]:m[5]])
 			}
 		}
-		ok := strings.HasPrefix(ce.Msg, "dump-truncated: prod.sql ends inside table "+table+" at 0.0 GB")
+		ok := strings.HasPrefix(ce.Msg, "dump-truncated: prod.sql ends inside table "+table+" at ")
 		if table == "" {
 			// Before any table: "ends early" or "ends inside a statement".
 			ok = strings.HasPrefix(ce.Msg, "dump-truncated: prod.sql ends ") && !strings.Contains(ce.Msg, "inside table")
