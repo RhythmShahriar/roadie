@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -490,5 +491,69 @@ func BenchmarkScan(b *testing.B) {
 		if rows == 0 {
 			b.Fatal("no rows")
 		}
+	}
+}
+
+// Consecutive INSERTs share one arena, each past the last one's bytes:
+// mysqldump starts an INSERT every megabyte and an arena per INSERT left
+// most of each unused. Every row keeps its own values and a row's slices
+// are capped, so growing one can't write over the next INSERT's.
+func TestInsertsShareArena(t *testing.T) {
+	var in bytes.Buffer
+	in.WriteString("CREATE TABLE `t` (`id` int NOT NULL, `s` text);\n")
+	for i := range 50 {
+		fmt.Fprintf(&in, "INSERT INTO `t` VALUES (%d,'a%d'),(%d,'b\\'%d');\n", 2*i, i, 2*i+1, i)
+	}
+	all, err := drain(t, sourceOf(in.Bytes(), SourceOptions{NoTrailer: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var batches []*core.Batch
+	for _, b := range all {
+		if len(b.Rows) > 0 {
+			batches = append(batches, b)
+		}
+	}
+	if len(batches) != 50 {
+		t.Fatalf("%d batches", len(batches))
+	}
+	for i, b := range batches {
+		for j, r := range b.Rows {
+			id, s := string(r.Values[0].Raw), string(r.Values[1].Raw)
+			want := fmt.Sprintf("a%d", i)
+			if j == 1 {
+				want = fmt.Sprintf("b'%d", i)
+			}
+			if id != fmt.Sprint(2*i+j) || s != want {
+				t.Errorf("batch %d row %d: %s %q", i, j, id, s)
+			}
+			if cap(r.Values) != len(r.Values) || cap(r.Values[1].Raw) != len(r.Values[1].Raw) || cap(r.Src) != len(r.Src) {
+				t.Errorf("batch %d row %d: slices not capped", i, j)
+			}
+		}
+	}
+	// Growing a row's value in place must leave the next INSERT alone.
+	v := batches[0].Rows[1].Values[1].Raw
+	_ = append(v, "XXXXXXXX"...)
+	if got := string(batches[1].Rows[0].Values[1].Raw); got != "a1" {
+		t.Errorf("next INSERT's value %q after an append", got)
+	}
+
+	// reuse goes on past the spare's bytes while it has room for a
+	// first batch; it starts a new arena when it hasn't.
+	s := sourceOf(nil, SourceOptions{})
+	spare := &Arena{Src: make([]byte, 10, 10+firstSrc), Raw: make([]byte, 3, 100), Vals: make([]core.Value, 2, 2+firstVals)}
+	s.spare = spare
+	a := s.reuse()
+	if s.spare != nil || len(a.Src) != 0 || cap(a.Src) != firstSrc || len(a.Raw) != 0 || cap(a.Raw) != 97 || cap(a.Vals) != firstVals {
+		t.Errorf("reuse: src %d/%d raw %d/%d vals %d", len(a.Src), cap(a.Src), len(a.Raw), cap(a.Raw), cap(a.Vals))
+	}
+	a.Src = append(a.Src, 'x')
+	if spare.Src[:11][10] != 'x' {
+		t.Error("the reused arena isn't the spare's room")
+	}
+	s.spare = &Arena{Src: make([]byte, 10, 20), Vals: make([]core.Value, 0, firstVals)}
+	if a := s.reuse(); cap(a.Src) < firstSrc {
+		t.Errorf("a spare with no room was reused: cap %d", cap(a.Src))
 	}
 }

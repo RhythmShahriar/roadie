@@ -41,11 +41,13 @@ type Source struct {
 	table  string // the table being read, for messages
 
 	// The open INSERT, when ins is set.
-	ins     *core.Table
-	cols    []int
-	stmt    *Stmt
-	line    int64 // the first line of the last INSERT or REPLACE
-	arena   *Arena
+	ins   *core.Table
+	cols  []int
+	stmt  *Stmt
+	line  int64 // the first line of the last INSERT or REPLACE
+	arena *Arena
+	// spare is the arena of the INSERT that closed last (reuse).
+	spare   *Arena
 	pending core.Row
 	hasPend bool
 
@@ -212,7 +214,7 @@ func (s *Source) open(st *Stmt) error {
 			cols[i] = i
 		}
 	}
-	s.ins, s.cols, s.stmt, s.arena = tb, cols, st, s.newArena()
+	s.ins, s.cols, s.stmt, s.arena = tb, cols, st, s.reuse()
 	s.line = st.Line
 	s.enter(tb.Name)
 	return nil
@@ -289,6 +291,22 @@ func (s *Source) newArena() *Arena {
 	}
 }
 
+// reuse returns the arena of a new INSERT: the room left in the last
+// INSERT's arena when it has room for a first batch, else a new arena.
+// mysqldump starts an INSERT about every megabyte while an arena is
+// sized for a whole batch, so an arena per INSERT left most of each one
+// unused for as long as its rows were in flight (220 MB of a 400 MB
+// copy). The new INSERT's slices start past the last one's bytes: rows
+// hold capped slices, so neither can reach into the other's.
+func (s *Source) reuse() *Arena {
+	a := s.spare
+	s.spare = nil
+	if a == nil || cap(a.Src)-len(a.Src) < firstSrc || cap(a.Vals)-len(a.Vals) < firstVals {
+		return s.newArena()
+	}
+	return &Arena{Src: a.Src[len(a.Src):], Raw: a.Raw[len(a.Raw):], Vals: a.Vals[len(a.Vals):]}
+}
+
 // learn grows the hint from a finished batch. a is the arena the batch's
 // last rows went into.
 func (s *Source) learn(b *core.Batch, a *Arena) {
@@ -309,6 +327,7 @@ func (s *Source) close(b *core.Batch) error {
 		return err
 	}
 	b.Tail, b.Last = tail, true
+	s.spare = s.arena
 	s.ins, s.cols, s.stmt, s.arena = nil, nil, nil, nil
 	return nil
 }

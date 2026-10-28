@@ -30,6 +30,12 @@ import (
 	"github.com/RhythmShahriar/roadie/site/killswitch"
 )
 
+// fakerCache is each worker's cache of fakes, in entries. Every worker
+// clones the faker with its own cache, so eight of pseudo's default 65,536
+// held about 90 MB of a 400 MB copy (PRD 22.3: 300 MB peak); a person's
+// rows sit close together in a dump, so a smaller cache still finds them.
+const fakerCache = 16384
+
 // maxJobs is the most workers a run uses (PRD 10.2): past eight the
 // ordered writer, not the transform, is what limits the speed.
 const maxJobs = 8
@@ -419,12 +425,20 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 	}
 	known := newKnown(p.key)
 	faker, err := newFaker(p.key, pseudo.Options{EmailDomain: p.cfg.Pseudonymise.EmailDomain,
-		Locale: p.cfg.Pseudonymise.Locale, PhoneStyle: p.cfg.Pseudonymise.PhoneStyle})
+		Locale: p.cfg.Pseudonymise.Locale, PhoneStyle: p.cfg.Pseudonymise.PhoneStyle, CacheSize: fakerCache})
 	if err != nil {
 		return out, err
 	}
 	if known == nil || faker == nil {
 		return out, core.ErrNotBuilt
+	}
+	if !p.opts.OnePass {
+		// Pass 1 reads in one goroutine; Known's keyed hashes run on
+		// the workers the transform uses later.
+		known = newParallelAdds(known, p.jobs())
+		if pa, ok := known.(*parallelAdds); ok {
+			defer pa.wait() // a stop in pass 1 never leaves workers behind
+		}
 	}
 	starts := newTextStarts(known)
 	known = starts
