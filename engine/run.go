@@ -677,9 +677,10 @@ func printable(s string) string {
 }
 
 // confirmNames are the names the target may be confirmed by, the one to
-// show first: a database's name, else the site's host (from --url), its
-// ssh host or its alias.
-func (r *runner) confirmNames(ctx context.Context) (names []string, what string) {
+// show first: a database's name, else the site's host (from --url, then
+// with withSite the host of the siteurl it holds), its ssh host or its
+// alias.
+func (r *runner) confirmNames(ctx context.Context, withSite bool) (names []string, what string) {
 	add := func(s string) {
 		s = strings.TrimSpace(s)
 		if s != "" && !slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(n, s) }) {
@@ -697,6 +698,13 @@ func (r *runner) confirmNames(ctx context.Context) (names []string, what string)
 		if u, err := url.Parse(r.opts.URL); err == nil {
 			add(u.Hostname())
 		}
+		// The host the site calls itself (copy takes it from --url),
+		// unless that is still production's: a fresh restore.
+		if withSite && r.to != nil {
+			if _, h, ok := parseOrigin(siteURLOf(ctx, r.to)); ok && !namedBy(bareHost(h), r.cfg.Production) {
+				add(bareHost(h))
+			}
+		}
 		add(to.Host)
 		add(strings.TrimPrefix(to.Alias, "@"))
 	}
@@ -713,10 +721,16 @@ func (r *runner) confirm(ctx context.Context) error {
 	if r.to == nil {
 		return nil
 	}
-	names, what := r.confirmNames(ctx)
-	host := names[0]
+	names, what := r.confirmNames(ctx, false)
 	ct := strings.TrimSpace(r.opts.ConfirmTarget)
-	if ct != "" && !slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(n, ct) }) {
+	match := func(n string) bool { return strings.EqualFold(n, ct) }
+	if r.mode == Prepare && r.j.To.Kind != core.DSN && (r.opts.URL == "" || ct != "" && !slices.ContainsFunc(names, match)) {
+		// prepare without --url names the site by the host it calls
+		// itself, read only when it is needed.
+		names, what = r.confirmNames(ctx, true)
+	}
+	host := names[0]
+	if ct != "" && !slices.ContainsFunc(names, match) {
 		return core.Errorf(core.ErrPrepareConfirm, 2,
 			"prepare-confirm: --confirm-target %s doesn't name this target, which is %s. Pass --confirm-target %s (%s) to go on.", ct, host, host, what)
 	}

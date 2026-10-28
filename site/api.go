@@ -71,6 +71,13 @@ func Guard(ctx context.Context, in GuardInput) error {
 	return guard(ctx, in)
 }
 
+// SiteURL is the site's siteurl (home when siteurl is empty), through
+// WP-CLI or the options table; "" when neither tells.
+func SiteURL(ctx context.Context, s core.Site) string {
+	u, _ := readSiteURL(ctx, s)
+	return u
+}
+
 // Lock takes the run lock for target; unlock releases it.
 func Lock(target core.Endpoint) (unlock func(), err error) {
 	return LockNotify(target, nil)

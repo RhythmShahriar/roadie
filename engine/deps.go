@@ -65,6 +65,7 @@ var (
 	// The orchestration's calls (run.go).
 	openSite       = site.Open
 	guardTarget    = site.Guard
+	siteURLOf      = site.SiteURL
 	lockTarget     = site.Lock
 	killSteps      = killswitch.Steps
 	killDataRules  = killswitch.DataRules

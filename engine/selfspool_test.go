@@ -275,3 +275,30 @@ func TestVerifyScanTable(t *testing.T) {
 		t.Error("--only side-effects scans for uncovered columns")
 	}
 }
+
+// prepare without --url takes the host the staging calls itself, as copy
+// does from --url, and names it as the host to confirm by; a siteurl that
+// is still production's is never offered.
+func TestPrepareConfirmBySiteHost(t *testing.T) {
+	for _, c := range []struct {
+		siteURL, confirm, wantErr string
+	}{
+		{"https://staging.shop.test", "staging.shop.test", ""},
+		{"https://staging.shop.test", "nope", "Pass --confirm-target staging.shop.test (the site's host)"},
+		{"https://shop.com", "shop.com", "Pass --confirm-target /srv/staging"},
+	} {
+		f := useRunFakes(t)
+		old := siteURLOf
+		siteURLOf = func(context.Context, core.Site) string { return c.siteURL }
+		j := f.job(Prepare)
+		j.Opts.URL, j.Opts.ConfirmTarget = "", c.confirm
+		_, err := Run(context.Background(), j)
+		siteURLOf = old
+		switch {
+		case c.wantErr == "" && err != nil:
+			t.Errorf("%s: %v", c.confirm, err)
+		case c.wantErr != "" && (err == nil || !strings.Contains(err.Error(), c.wantErr)):
+			t.Errorf("%s: %v, want %q", c.confirm, err, c.wantErr)
+		}
+	}
+}
