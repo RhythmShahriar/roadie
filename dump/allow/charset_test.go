@@ -41,6 +41,16 @@ func TestCharsetRefused(t *testing.T) {
 		"SET character_set_client = @@global.character_set_client;",
 		"SET character_set_client = @`a\\b`;",
 		"SET NAMES utf8mb4, character_set_client = gbk;",
+		// A number is a collation ID (28 is gbk_chinese_ci) and DEFAULT
+		// is the staging server's own global value.
+		"SET character_set_client = 28;",
+		"SET collation_connection = '28';",
+		"SET NAMES 28;",
+		"SET character_set_client = DEFAULT;",
+		"SET NAMES DEFAULT;",
+		"SET character_set_client = 'gbk ';",
+		"SET NAMES utf8mb4 COLLATE gbk_bin;",
+		"SET NAMES utf8mb4 COLLATE 28;",
 	} {
 		d, err := check(text, Options{Name: "prod.sql"})
 		var ce *core.Error
@@ -58,7 +68,7 @@ func TestCharsetRefused(t *testing.T) {
 func TestCharsetKept(t *testing.T) {
 	for _, text := range []string{
 		"SET NAMES utf8mb4;", "SET NAMES 'utf8';", "SET NAMES latin1 COLLATE latin1_swedish_ci;",
-		"SET NAMES DEFAULT;", "SET CHARACTER SET binary;", "SET character_set_client = ujis;",
+		"SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;", "SET CHARACTER SET binary;", "SET character_set_client = ujis;",
 		"SET character_set_client = @@character_set_client;",
 		"SET character_set_results = @@session.character_set_results;",
 		"SET collation_connection = utf8mb4_0900_ai_ci;",
@@ -94,6 +104,7 @@ func TestCharsetVars(t *testing.T) {
 		{"SET @x = 'latin1';", "SET character_set_client = @X;"},
 		{"SET @x = 'gbk';", "SET @x = @@character_set_client;", "SET character_set_client = @x;"},
 		{"SET character_set_client = @never_set;"},
+		{"SET @x = 'utf8mb4';", "SET NAMES @x;"},
 	}
 	for _, c := range kept {
 		if err := runFilter(t, c); err != nil {
@@ -103,6 +114,7 @@ func TestCharsetVars(t *testing.T) {
 	refused := [][]string{
 		{"SET @x = 'gbk';", "SET NAMES @x;"},
 		{"SET @x = 'gbk';", "SET character_set_client = @x;"},
+		{"SET @x = 28;", "SET character_set_client = @x;"},
 		{"SET @x = @@character_set_client;", "SET @x = CONCAT('gb', 'k');", "SET character_set_client = @x;"},
 		{"SET @x = @@character_set_server;", "SET character_set_client = @x;"},
 		// Not every supported server runs a gated save.

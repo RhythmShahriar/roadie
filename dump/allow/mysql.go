@@ -611,6 +611,9 @@ func mysqlSet(st core.Statement, t toks, o Options) Decision {
 		}
 		charset = cs[0][words:]
 		if t.w(1) == "names" && charset.w(len(charset)-2) == "collate" {
+			if !charsetValue(charset[len(charset)-1:], o, nil) {
+				return refuse(labelCharset, whyCharset)
+			}
 			charset = charset[:len(charset)-2]
 		}
 		cs = cs[1:]
@@ -769,7 +772,7 @@ func varKey(x tok) string {
 
 // charsetValue reports whether v, the value of a client character set
 // setting, is one Roadie reads rows under: a plain name outside
-// mbCharsets (a collation counts by its character set), DEFAULT, a read
+// mbCharsets (a collation counts by its character set), a read
 // of the session's own character set settings (each change of which
 // Roadie has judged) or a user variable o.Charsets marks judged (or the
 // dump never set) that the same statement doesn't assign.
@@ -783,7 +786,7 @@ func charsetValue(v toks, o Options, assigned map[string]bool) bool {
 		case str:
 			n = strings.ToLower(v[0].w[1 : len(v[0].w)-1])
 		}
-		if n == "" || strings.ContainsAny(n, "\\'\"`") {
+		if !charsetName(n) {
 			return false
 		}
 		cs, _, _ := strings.Cut(n, "_")
@@ -806,6 +809,24 @@ func charsetValue(v toks, o Options, assigned map[string]bool) bool {
 		return k != "" && !assigned[k] && judged
 	}
 	return false
+}
+
+// charsetName reports whether n is spelled as a character set or
+// collation name: a letter, then letters, digits and underscores. A
+// number is refused since the server reads it as a collation ID (28 is
+// gbk_chinese_ci); DEFAULT is refused since it takes the staging
+// server's own global value, which Roadie can't see.
+func charsetName(n string) bool {
+	if n == "" || n == "default" || n[0] < 'a' || n[0] > 'z' {
+		return false
+	}
+	for i := 0; i < len(n); i++ {
+		c := n[i]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 // mysqlAssign judges one assignment of a SET.
