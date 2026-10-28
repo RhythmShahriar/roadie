@@ -147,6 +147,19 @@ rhythm roadie dev - shop.com → staging.shop.test
 Source: ssh://deploy@shop.com/var/www/shop
 Target: /var/www/staging
 
+STOPPED   interrupted; the target is untouched
+
+interrupted: the run was stopped by Ctrl-C or a signal. Run it again when you're ready.
+
+rhythm-roadie explain interrupted
+--- exit 130
+
+$ rhythm-roadie copy --from ssh://deploy@shop.com/var/www/shop --to /var/www/staging --url https://staging.shop.test --no-config --plain
+rhythm roadie dev - shop.com → staging.shop.test
+
+Source: ssh://deploy@shop.com/var/www/shop
+Target: /var/www/staging
+
 STOPPED   key-manual; the target is untouched
 
 key.stripe-live: wp-content/themes/shop/functions.php line 12 holds a live Stripe key. Roadie only edits the database, wp-config.php and .env. Move it into wp-config.php or blank it by hand, then run verify.

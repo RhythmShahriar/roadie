@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -128,6 +129,7 @@ var prdErrors = map[string]string{
 	core.ErrDiskFull:              "not enough free disk space: need about 2.4 GB, 1.1 GB free in /var/tmp",
 	core.ErrNotFound:              "not-found: shop.sql doesn't exist. Check the path you gave.",
 	core.ErrUnreachable:           "unreachable: db: connect to mysql://127.0.0.1:3306/shop: dial tcp 127.0.0.1:3306: connect: connection refused. Check that the database or host is running and reachable from here; then check the host and port you gave.",
+	core.ErrInterrupted:           "interrupted: the run was stopped by Ctrl-C or a signal. Run it again when you're ready.",
 	core.ErrCodeNotBuilt:          "not built yet",
 }
 
@@ -631,6 +633,17 @@ func TestPlainErrorsGetCodes(t *testing.T) {
 	}
 	if ce := asCoreError(errors.New("something else")); ce.Code != "" || ce.Exit != 3 {
 		t.Errorf("other: %+v", ce)
+	}
+	// Ctrl-C: the box names a code, not "STOPPED   ; the target is untouched".
+	ce = asCoreError(fmt.Errorf("transform: %w", context.Canceled))
+	if ce.Code != core.ErrInterrupted || ce.Exit != 130 || !strings.HasPrefix(ce.Msg, "interrupted: ") {
+		t.Errorf("interrupted: %+v", ce)
+	}
+	var b bytes.Buffer
+	v := &view{w: &b, o: viewOpts{plain: true}}
+	v.stopView(&core.Result{Err: ce, TargetState: core.Untouched}, engine.Job{Mode: engine.Copy})
+	if !strings.Contains(b.String(), "interrupted; the target is untouched") {
+		t.Errorf("stop box:\n%s", b.String())
 	}
 }
 

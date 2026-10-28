@@ -92,6 +92,9 @@ const (
 	// doesn't answer.
 	ErrNotFound    = "not-found"
 	ErrUnreachable = "unreachable"
+	// ErrInterrupted (exit 130, as kit gives Ctrl-C) is the stop of a
+	// run cut by Ctrl-C or a signal, so its box names a code too.
+	ErrInterrupted = "interrupted"
 	// ErrCodeNotBuilt is the code of ErrNotBuilt, which a frozen API stub
 	// returns until its lane lands the real code.
 	ErrCodeNotBuilt = "not-built"
@@ -107,7 +110,7 @@ var codeExit = map[string]int{
 	ErrURLMap: 2, ErrKeyManual: 1, ErrKillSwitch: 1, ErrTestKeyIsLive: 2, ErrConfig: 2,
 	ErrNothingScanned: 3, ErrLock: 3, ErrFakeCollision: 3, ErrEchoUnreachable: 1,
 	ErrReportEdited: 1, ErrReportUnsigned: 3, ErrDiskFull: 3, ErrCodeNotBuilt: 3,
-	ErrNotFound: 2, ErrUnreachable: 3,
+	ErrNotFound: 2, ErrUnreachable: 3, ErrInterrupted: 130,
 }
 
 // CodeExit returns the exit code PRD 17 gives an error code.

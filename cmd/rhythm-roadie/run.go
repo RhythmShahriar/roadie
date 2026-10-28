@@ -191,6 +191,10 @@ func asCoreError(err error) *core.Error {
 	if errors.As(err, &ce) {
 		return ce
 	}
+	if errors.Is(err, context.Canceled) {
+		return core.Errorf(core.ErrInterrupted, cli.ExitInterrupted,
+			"interrupted: the run was stopped by Ctrl-C or a signal. Run it again when you're ready.")
+	}
 	var pe *fs.PathError
 	if errors.Is(err, fs.ErrNotExist) && errors.As(err, &pe) {
 		return core.Errorf(core.ErrNotFound, cli.ExitUsage,

@@ -207,7 +207,15 @@ func TestKnownID(t *testing.T) {
 		}
 	}
 	for _, c := range core.ErrorCodes() {
-		if exit, _ := core.CodeExit(c); exit < 1 || exit > 3 {
+		exit, _ := core.CodeExit(c)
+		if c == core.ErrInterrupted {
+			// Ctrl-C exits 130 as kit gives it, 128 + SIGINT.
+			if exit != 130 {
+				t.Errorf("%s: exit %d", c, exit)
+			}
+			continue
+		}
+		if exit < 1 || exit > 3 {
 			t.Errorf("%s: exit %d", c, exit)
 		}
 	}
