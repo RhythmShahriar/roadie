@@ -23,6 +23,7 @@ import (
 
 	echowp "github.com/RhythmShahriar/echo/connectors/wordpress"
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/db"
 	"github.com/RhythmShahriar/roadie/detect"
 	"github.com/RhythmShahriar/roadie/dump"
 	"github.com/RhythmShahriar/roadie/profile"
@@ -227,9 +228,14 @@ func (r *runner) run(ctx context.Context) error {
 	if r.mode == Plan {
 		r.planSteps(ctx, applied)
 	}
+	// The side effects the kill switch turns off, from each step's plan,
+	// so plan, the screen and --no-verify name them; verify's read-back
+	// replaces them.
+	r.res.SideEffects = plannedEffects(ctx, r.to, applied)
 
 	p := &pipeline{mode: r.mode, cfg: cfg, opts: r.opts, defs: defs, site: r.from, key: key,
-		progress: r.j.Progress, result: r.res, indexOnly: r.mode == Plan && r.opts.SchemaOnly}
+		progress: r.j.Progress, result: r.res, indexOnly: r.mode == Plan && r.opts.SchemaOnly,
+		samePlace: r.samePlace}
 	if !r.opts.NoKillSwitch && r.part(partSideEffects) {
 		p.dataRules = func(st core.Stack) []core.Rule {
 			// The gateways the source holds are known once pass 1 has
@@ -752,6 +758,36 @@ func (r *runner) killOptions() killswitch.Options {
 		Version: r.opts.Version}
 }
 
+// plannedEffects lists the side effects steps turn off, one per
+// side-effect step, with what the step does from its plan.
+func plannedEffects(ctx context.Context, s core.Site, steps []core.Step) []core.SideEffect {
+	var out []core.SideEffect
+	for _, st := range steps {
+		if !strings.HasPrefix(st.ID(), "side-effect.") || s == nil {
+			continue
+		}
+		se := core.SideEffect{ID: st.ID(), Status: "off", How: "turned off"}
+		if edits, err := st.Plan(ctx, s); err == nil {
+			var how []string
+			for _, e := range edits {
+				w := strings.TrimPrefix(e.What, killswitch.ManualPrefix)
+				if w != "" && !slices.Contains(how, w) {
+					how = append(how, w)
+				}
+			}
+			if len(how) > 3 {
+				// The gateway step plans every gateway it knows.
+				how = append(how[:2], fmt.Sprintf("%d more", len(how)-2))
+			}
+			if len(how) > 0 {
+				se.How = strings.Join(how, "; ")
+			}
+		}
+		out = append(out, se)
+	}
+	return out
+}
+
 // planSteps asks each step what it would change, for plan.
 func (r *runner) planSteps(ctx context.Context, steps []core.Step) {
 	for _, st := range steps {
@@ -857,7 +893,22 @@ func (r *runner) dumpOptions(ctx context.Context, name string) (dump.Options, er
 // input is the source both passes read. limited exports only the kill
 // switch's tables (prepare --only side-effects).
 func (r *runner) input(ctx context.Context, limited bool) (input, error) {
-	return r.inputFor(ctx, r.j.From, r.from, limited, r.opts.OnePass)
+	in, err := r.inputFor(ctx, r.j.From, r.from, limited, r.opts.OnePass)
+	if err != nil || !r.samePlace || r.mode == Plan {
+		return in, err
+	}
+	switch in.(type) {
+	case *siteInput, *tablesInput:
+		// prepare reads the database it then imports into: pass 2 reads
+		// a spool, so no read of the database is open while the import
+		// replaces its tables.
+		dir, err := spoolDir()
+		if err != nil {
+			return nil, err
+		}
+		return &selfInput{in: in, dir: dir}, nil
+	}
+	return in, nil
 }
 
 // inputFor opens an endpoint as a pass input.
@@ -885,9 +936,15 @@ func (r *runner) inputFor(ctx context.Context, e core.Endpoint, s core.Site, lim
 	if s == nil {
 		return nil, core.Errorf(core.ErrConfig, 2, "engine: %s isn't open", e.Display)
 	}
-	if limited {
+	// A site over ssh or an alias is read whole: its export of a table
+	// it lacks fails, and its tables can't be listed without one.
+	if limited && e.Kind != core.SSHSite && e.Kind != core.WPAlias {
 		id, err := s.DBIdentity(ctx)
 		if err == nil && s.Stack() == core.StackWordPress {
+			// A single site has no blogs table, and a site without
+			// WooCommerce webhooks or AutomateWoo lacks theirs: the
+			// database leaves a missing one out.
+			ctx := db.SkipMissing(ctx)
 			blogs, err := blogPrefixes(ctx, s, id.Prefix)
 			if err != nil {
 				return nil, err
@@ -924,11 +981,11 @@ func (r *runner) inputFor(ctx context.Context, e core.Endpoint, s core.Site, lim
 }
 
 // blogPrefixes returns the table prefix of every blog of a WordPress
-// site: "wp_" first, then "wp_2_" and so on for each other blog of a
-// multisite's blogs table. A single site has no blogs table, so the
-// list is the main prefix alone. Each blog keeps its own options,
-// webhooks and AutomateWoo queue, so the kill switch has to reach them
-// all. The site skips a listed table it doesn't have.
+// multisite: "wp_" first, then "wp_2_" and so on for each other blog of
+// its blogs table. Each blog keeps its own options, webhooks and
+// AutomateWoo queue, so the kill switch has to reach them all. A single
+// site has no blogs table, so the list is the main prefix alone; the
+// caller's context leaves a missing table out (db.SkipMissing).
 func blogPrefixes(ctx context.Context, s core.Site, prefix string) ([]string, error) {
 	out := []string{prefix}
 	src, err := s.Source(ctx, []string{prefix + "blogs"})
@@ -978,7 +1035,34 @@ type tablesInput struct {
 }
 
 func (t *tablesInput) open(ctx context.Context, _ int) (core.Source, error) {
-	return t.s.Source(ctx, t.tables)
+	src, err := t.s.Source(db.SkipMissing(ctx), t.tables)
+	if err != nil {
+		return nil, err
+	}
+	return &listedSource{Source: src, tables: t.tables}, nil
+}
+
+// listedSource is a source of some tables whose schema shows only them:
+// a database's schema names every table, and the run would report all
+// of them imported.
+type listedSource struct {
+	core.Source
+	tables []string
+}
+
+func (l *listedSource) Schema() *core.Schema {
+	s := l.Source.Schema()
+	if s == nil {
+		return nil
+	}
+	cp := *s
+	cp.Tables = nil
+	for _, tb := range s.Tables {
+		if slices.Contains(l.tables, tb.Name) {
+			cp.Tables = append(cp.Tables, tb)
+		}
+	}
+	return &cp
 }
 func (t *tablesInput) close() error { return nil }
 
@@ -1218,6 +1302,13 @@ func (r *runner) verify(ctx context.Context, out *output, checks []core.Step) er
 	if r.mode == Copy {
 		vj.ProductionPairs = productionPairs(ctx, r.from, r.cfg)
 	}
+	switch {
+	case !r.part(partData):
+		vj.ScanTable = func(string) bool { return false }
+	case out.Compiled != nil:
+		c := out.Compiled
+		vj.ScanTable = func(t string) bool { return scanTable(c, t) }
+	}
 	if isSite(r.j.To.Kind) {
 		s, err := openSite(ctx, r.j.To, r.siteOptions(true))
 		if err != nil {
@@ -1234,6 +1325,19 @@ func (r *runner) verify(ctx context.Context, out *output, checks []core.Step) er
 		return err
 	}
 	r.res.Verify = v
+	if v != nil && len(v.SideEffects) > 0 {
+		// What the target holds now, read back: the side effects only,
+		// not the config and noindex steps verify checks with them.
+		var got []core.SideEffect
+		for _, se := range v.SideEffects {
+			if strings.HasPrefix(se.ID, "side-effect.") {
+				got = append(got, se)
+			}
+		}
+		if len(got) > 0 {
+			r.res.SideEffects = got
+		}
+	}
 	if v != nil && r.opts.Soundcheck && r.opts.URL != "" {
 		v.Soundcheck = runSoundcheck(ctx, r.opts.URL, r.cfg.SideEffects.Echo.URL)
 		// A Soundcheck that exits 1 is soundcheck.failed (PRD 15.2): a

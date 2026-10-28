@@ -623,7 +623,7 @@ func (v *view) resultView(r *core.Result, j engine.Job, reportPath string, tm *t
 	v.setting("Stack", stackLine(r.Stack))
 	v.setting("Plan", fmt.Sprintf("%s pseudonymised, %s, %s (plan -v for all)",
 		plural(int64(s.TablesPseudonymised), "table", "tables"), plural(int64(len(liveKeys(r.Keys))), "live key", "live keys"),
-		plural(int64(len(r.SideEffects)), "side effect", "side effects")))
+		plural(int64(s.SideEffectsTotal), "side effect", "side effects")))
 	if v.o.verbose {
 		v.dataSection(r, true)
 		v.editsBlock(r)

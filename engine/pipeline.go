@@ -343,6 +343,10 @@ type pipeline struct {
 	beforeWrite func(ctx context.Context) error
 	// aborted is set once the sink was told to take its writes back.
 	aborted bool
+	// samePlace is a run that reads and writes one staging (prepare):
+	// the staging's own siteurl isn't production's once production is
+	// known.
+	samePlace bool
 }
 
 // output is a run's result plus what verify and the orchestration need.
@@ -454,6 +458,11 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 		if plan, err = p.urlPlan(ctx, idx, final); err != nil {
 			return out, err
 		}
+		// A pair the rewrite would refuse stops here, before a file of
+		// the target is edited.
+		if err := checkPairs(plan, p.parts); err != nil {
+			return out, err
+		}
 		p.fill(out, idx, final, schema, plan, uncov, nil)
 		if len(uncov.Uncovered) > 0 && p.mode != Plan && !p.opts.AllowUncovered {
 			return out, uncoveredError(uncov.Uncovered)
@@ -464,6 +473,9 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 		}
 	} else if !p.parts.noURLs {
 		if plan, err = buildURLPlan(urlSources{Production: p.cfg.Production}, p.opts.URL, p.cfg.URLMap); err != nil {
+			return out, err
+		}
+		if err := checkPairs(plan, p.parts); err != nil {
 			return out, err
 		}
 	}
@@ -669,6 +681,9 @@ func (p *pipeline) urlPlan(ctx context.Context, idx *indexer, c *profile.Compile
 				src.SiteURLs = append(src.SiteURLs, v)
 			}
 		}
+	}
+	if p.samePlace {
+		src.SiteURLs = ownURLs(src.SiteURLs, p.opts.URL, p.cfg.Production)
 	}
 	return buildURLPlan(src, p.opts.URL, p.cfg.URLMap)
 }

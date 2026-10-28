@@ -199,6 +199,58 @@ func buildURLPlan(src urlSources, staging string, urlMap map[string]string) (url
 	return plan, nil
 }
 
+// ownURLs drops from a prepare's site URLs the ones that are the
+// staging's own: a host that is --url's (it would map to itself) and,
+// once production is known, a host production doesn't name. A staging
+// that still calls itself production keeps that URL, so it is rewritten.
+func ownURLs(siteURLs []string, staging string, production []string) []string {
+	_, sHost, sOK := parseOrigin(staging)
+	var out []string
+	for _, u := range siteURLs {
+		_, h, ok := parseOrigin(u)
+		if !ok {
+			continue
+		}
+		if sOK && bareHost(h) == bareHost(sHost) {
+			continue
+		}
+		if len(production) > 0 && !namedBy(bareHost(h), production) {
+			continue
+		}
+		out = append(out, u)
+	}
+	return out
+}
+
+// namedBy reports whether a production: entry (a host, a URL or a
+// *.host glob) names host.
+func namedBy(host string, production []string) bool {
+	for _, p := range production {
+		p = strings.ToLower(strings.TrimSpace(p))
+		if rest, ok := strings.CutPrefix(p, "*."); ok {
+			if host == rest || strings.HasSuffix(host, "."+rest) {
+				return true
+			}
+			continue
+		}
+		if _, h, ok := parseOrigin(p); ok && (bareHost(h) == host || "www."+bareHost(h) == host || bareHost(h) == "www."+host) {
+			return true
+		}
+	}
+	return false
+}
+
+// checkPairs builds the URL map once, so a pair it refuses (a host that
+// maps to itself) stops the run in pass 1 rather than once the target's
+// files are edited.
+func checkPairs(plan urlPlan, pt parts) error {
+	if len(plan.Pairs) == 0 || pt.noURLs {
+		return nil
+	}
+	_, err := newURLMap(plan.Pairs)
+	return err
+}
+
 // urlMapError is the PRD 17 url-map stop for blog hosts that have no
 // staging URL, with a suggested pair for each.
 func urlMapError(hosts []string, stagingHost string) *core.Error {
