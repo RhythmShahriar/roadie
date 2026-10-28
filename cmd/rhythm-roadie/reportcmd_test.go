@@ -176,7 +176,7 @@ func TestReportRender(t *testing.T) {
 	b, _ := os.ReadFile(fail)
 	edited := filepath.Join(dir, "edited.json")
 	os.WriteFile(edited, bytes.Replace(b, []byte(`"verdict": "findings"`), []byte(`"verdict": "ok"`), 1), 0o600)
-	if _, errOut, code := runCmd(t, "report", edited, "-o", filepath.Join(dir, "e.html")); code != 1 || !strings.Contains(errOut, "edited.json was changed after it was signed") {
+	if _, errOut, code := runCmd(t, "report", edited, "-o", filepath.Join(dir, "e.html")); code != 1 || !strings.Contains(errOut, "report: edited.json was changed after it was signed") || strings.Contains(errOut, "report check") {
 		t.Errorf("edited: exit %d %q", code, errOut)
 	}
 	// An unsigned report renders and says so.
@@ -195,7 +195,7 @@ func TestReportRender(t *testing.T) {
 	}
 	notJSON := filepath.Join(dir, "x.json")
 	os.WriteFile(notJSON, []byte("{"), 0o600)
-	if _, _, code := runCmd(t, "report", notJSON, "--md"); code != 1 {
-		t.Errorf("not a report: exit %d, want 1", code)
+	if _, errOut, code := runCmd(t, "report", notJSON, "--md"); code != 1 || strings.Contains(errOut, "report check") || !strings.Contains(errOut, " report: x.json") {
+		t.Errorf("not a report: exit %d %q, want 1 naming report", code, errOut)
 	}
 }

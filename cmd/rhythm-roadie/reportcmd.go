@@ -59,7 +59,7 @@ func runReport(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 		if _, err := report.CheckReport(name, b, pinned, nil); err != nil {
 			var ce *core.Error
 			if !errors.As(err, &ce) || ce.Code != core.ErrReportUnsigned {
-				return reportCheckError(stderr, err)
+				return reportRenderError(stderr, err)
 			}
 			// An unsigned report renders; its footer says it isn't signed.
 		}
@@ -194,6 +194,14 @@ func runReportCheck(_ context.Context, p *parsed, stdout, stderr io.Writer) erro
 // reportCheckError prints a check's message and returns its exit code.
 func reportCheckError(stderr io.Writer, err error) error {
 	fmt.Fprintf(stderr, "%s %s\n", prog(), err.Error())
+	return &cli.ExitError{Code: exitOf(err)}
+}
+
+// reportRenderError is reportCheckError for report (render): the check's
+// message names report check, which the user didn't run.
+func reportRenderError(stderr io.Writer, err error) error {
+	msg := strings.TrimPrefix(err.Error(), "report check: ")
+	fmt.Fprintf(stderr, "%s report: %s\n", prog(), msg)
 	return &cli.ExitError{Code: exitOf(err)}
 }
 
