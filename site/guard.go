@@ -25,6 +25,7 @@ import (
 	"github.com/RhythmShahriar/roadie/site/internal/wpdb"
 	"github.com/RhythmShahriar/roadie/site/remote"
 	"github.com/RhythmShahriar/roadie/site/wpconfig"
+	"golang.org/x/text/unicode/norm"
 )
 
 // The GuardInput modes; any other value guards like a copy.
@@ -114,7 +115,16 @@ func normHost(h string) string {
 		h = hh
 	}
 	h = strings.Trim(h, "[]")
-	return strings.TrimSuffix(h, ".")
+	h = strings.TrimRight(h, ".")
+	// One spelling per IP address: ::ffff:127.0.0.1 is 127.0.0.1 and an
+	// IPv6 literal is written short.
+	if ip := net.ParseIP(h); ip != nil {
+		if v4 := ip.To4(); v4 != nil {
+			ip = v4
+		}
+		h = ip.String()
+	}
+	return h
 }
 
 // urlHost is the host of a URL, or of a bare host.
@@ -237,8 +247,93 @@ func readTarget(ctx context.Context, in GuardInput) (*targetFacts, error) {
 		}
 		t.siteURL = u
 	}
+	if s.Stack() == core.StackSQL {
+		// A database named by a DSN may hold a WordPress site under any
+		// prefix (an ssh tunnel to production's database looks like a
+		// loopback host), so every options table's siteurl and home and
+		// every network host count.
+		urls, err := dbSiteURLs(ctx, s)
+		if err != nil {
+			return nil, err
+		}
+		for _, u := range urls {
+			if t.siteURL == "" {
+				t.siteURL = u
+			}
+			t.add(urlHost(u), "is", true, true)
+		}
+	}
 	t.add(urlHost(t.siteURL), "is", true, true)
 	return t, nil
+}
+
+// dbSiteURLs reads the site URLs a database holds: siteurl and home of
+// every table named *options with option_name and option_value (the main
+// prefix's first) plus the domains of the network's blogs and site
+// tables. A database that can't be reached is an error, as in
+// readSiteURL.
+func dbSiteURLs(ctx context.Context, s core.Site) ([]string, error) {
+	src, err := s.Source(ctx, []string{})
+	if err != nil {
+		return nil, netErr(s, err)
+	}
+	if src == nil {
+		return nil, nil
+	}
+	sc := src.Schema()
+	_ = src.Close()
+	if sc == nil {
+		return nil, nil
+	}
+	var urls []string
+	read := func(tb *core.Table) error {
+		name := strings.ToLower(tb.Name)
+		var cols []string
+		switch {
+		case strings.HasSuffix(name, "options") && tb.Col("option_name") >= 0 && tb.Col("option_value") >= 0:
+			cols = []string{"option_name", "option_value"}
+		case sc.Prefix != "" && (strings.EqualFold(name, sc.Prefix+"blogs") || strings.EqualFold(name, sc.Prefix+"site")) && tb.Col("domain") >= 0:
+			cols = []string{"domain"}
+		default:
+			return nil
+		}
+		return wpdb.Rows(ctx, s, tb.Name, cols, func(v [][]byte) error {
+			switch {
+			case len(cols) == 1 && len(v[0]) > 0:
+				urls = append(urls, printableURL(string(v[0])))
+			case len(cols) == 2 && (string(v[0]) == "siteurl" || string(v[0]) == "home") && len(v[1]) > 0:
+				urls = append(urls, printableURL(string(v[1])))
+			}
+			return nil
+		})
+	}
+	tables := slices.Clone(sc.Tables)
+	if main := sc.Table(sc.Prefix + "options"); sc.Prefix != "" && main != nil {
+		tables = slices.DeleteFunc(tables, func(tb *core.Table) bool { return tb == main })
+		tables = append([]*core.Table{main}, tables...)
+	}
+	for _, tb := range tables {
+		if err := read(tb); err != nil {
+			if e := netErr(s, err); e != nil {
+				return nil, e
+			}
+		}
+	}
+	return urls, nil
+}
+
+// netErr turns a network error into the unreachable stop and drops any
+// other: a database that answers without the tables has no URL to check.
+func netErr(s core.Site, err error) error {
+	var oe *net.OpError
+	var de *net.DNSError
+	switch {
+	case errors.As(err, &oe):
+		return unreachableErr(s, oe)
+	case errors.As(err, &de):
+		return unreachableErr(s, de)
+	}
+	return nil
 }
 
 // readReason says why a config file couldn't be read without echoing
@@ -305,16 +400,16 @@ func printableURL(s string) string {
 	}, s))
 }
 
-// productionHosts turns production: entries into host globs.
+// productionHosts turns production: entries into host globs. Each entry
+// is read on its own, so one urlrw.Hosts can't read (a bare IPv6
+// address) doesn't lose the punycode and www. forms of the others.
 func productionHosts(prod []string) []string {
-	hosts, err := urlrw.Hosts(prod)
-	if err == nil {
-		return hosts
-	}
-	// Until the values lane lands urlrw.Hosts, read the hosts here: a URL,
-	// a bare host or a glob such as *.shop.com.
 	var out []string
 	for _, p := range prod {
+		if hosts, err := urlrw.Hosts([]string{p}); err == nil {
+			out = append(out, hosts...)
+			continue
+		}
 		h := p
 		if strings.Contains(p, "://") || strings.Contains(p, "/") {
 			h = urlHost(p)
@@ -326,8 +421,18 @@ func productionHosts(prod []string) []string {
 	return out
 }
 
-// matchHost reports the production glob host matches.
+// idnDots are the dots IDNA reads as a label separator besides '.'
+// (NFKC already folds the fullwidth one).
+var idnDots = strings.NewReplacer("\u3002", ".", "\uff61", ".")
+
+// matchHost reports the production glob host matches. The host is
+// compared as IDNA reads it too: fullwidth letters folded (NFKC) and an
+// IDN in Unicode matched with its punycode, so a target that spells
+// production's host another way is still production.
 func matchHost(host string, globs []string) bool {
+	if urlrw.MatchHost(globs, idnDots.Replace(norm.NFKC.String(host))) {
+		return true
+	}
 	for _, g := range globs {
 		g = normHost(g)
 		if g == host {

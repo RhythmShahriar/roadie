@@ -1,0 +1,95 @@
+// Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+// SPDX-License-Identifier: MIT
+
+package site
+
+import (
+	"context"
+	"database/sql"
+	"path/filepath"
+	"testing"
+
+	"github.com/RhythmShahriar/roadie/core"
+)
+
+// sqliteWP writes a SQLite database whose options tables hold the given
+// siteurl per prefix and returns its DSN endpoint.
+func sqliteWP(t *testing.T, urls map[string]string) core.Endpoint {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "wp.sqlite")
+	db, err := sql.Open("sqlite", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	for prefix, u := range urls {
+		for _, q := range []string{
+			"CREATE TABLE " + prefix + "options (option_id INTEGER PRIMARY KEY, option_name TEXT, option_value TEXT, autoload TEXT)",
+			"CREATE TABLE " + prefix + "posts (ID INTEGER PRIMARY KEY, post_title TEXT)",
+			"CREATE TABLE " + prefix + "users (ID INTEGER PRIMARY KEY, user_login TEXT)",
+			"CREATE TABLE " + prefix + "usermeta (umeta_id INTEGER PRIMARY KEY, meta_key TEXT)",
+			"CREATE TABLE " + prefix + "postmeta (meta_id INTEGER PRIMARY KEY, meta_key TEXT)",
+		} {
+			if _, err := db.Exec(q); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := db.Exec("INSERT INTO "+prefix+"options (option_name, option_value, autoload) VALUES ('siteurl', ?, 'yes'), ('home', ?, 'yes')", u, u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e, err := ParseEndpoint("sqlite://" + p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+// A database target named by a DSN is checked by the siteurl it holds,
+// under any prefix: a tunnel to production's database has a loopback
+// host and no wp-config.php to say production.
+func TestGuardDSNTargetSiteURL(t *testing.T) {
+	ctx := context.Background()
+	for _, prefix := range []string{"wp_", "shop_"} {
+		to := sqliteWP(t, map[string]string{prefix: "https://www.shop.com"})
+		s, err := Open(ctx, to, Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		in := GuardInput{From: dumpEP(), To: to, ToSite: s, Production: []string{"shop.com", "www.shop.com"}, URL: "https://staging.shop.test", Mode: "copy"}
+		wantCode(t, Guard(ctx, in), core.ErrTargetIsProduction, 3,
+			"target-is-production: "+to.Display+" is www.shop.com, which production: lists. Roadie never writes to production. Point --to at the staging copy.")
+		_ = s.Close()
+	}
+	// A staging database passes.
+	to := sqliteWP(t, map[string]string{"wp_": "https://staging.shop.test"})
+	s, err := Open(ctx, to, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	if err := Guard(ctx, GuardInput{From: dumpEP(), To: to, ToSite: s, Production: []string{"shop.com"}, Mode: "copy"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A host production: lists matches however the target spells it: an IDN
+// in Unicode or punycode, fullwidth letters, an ideographic dot, a
+// trailing dot, upper case or a port.
+func TestGuardHostSpellings(t *testing.T) {
+	globs := productionHosts([]string{"bücher.de", "https://shop.com", "*.example.org", "203.0.113.7", "2001:db8::1"})
+	for _, h := range []string{
+		"bücher.de", "BÜCHER.DE", "xn--bcher-kva.de", "www.bücher.de", "ｓｈｏｐ.com", "shop。com",
+		"SHOP.COM.", "SHOP.COM..", "shop.com:8443", "a.b.example.org",
+		"[::ffff:203.0.113.7]", "203.0.113.7.", "[2001:0db8:0000::0001]:8443",
+	} {
+		if !matchHost(normHost(urlHost(h)), globs) {
+			t.Errorf("%q isn't production", h)
+		}
+	}
+	for _, h := range []string{"staging.shop.test", "example.org", "bucher.de", "shop.co"} {
+		if matchHost(normHost(urlHost(h)), globs) {
+			t.Errorf("%q is production", h)
+		}
+	}
+}
