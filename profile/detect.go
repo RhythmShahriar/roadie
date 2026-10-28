@@ -7,6 +7,7 @@ import (
 	"context"
 	"path"
 	"slices"
+	"strings"
 
 	"github.com/RhythmShahriar/roadie/core"
 )
@@ -44,6 +45,14 @@ func detects(ctx context.Context, dd DetectDef, s *core.Schema, st core.Site, op
 				if ok, _ := path.Match(name, tb.Name); ok {
 					return true
 				}
+			}
+		}
+	}
+	for _, tc := range dd.ColumnsAny {
+		t, c, _ := strings.Cut(tc, ".")
+		for _, name := range Expand(t, prefix, sites) {
+			if s != nil && s.Table(name).Col(c) >= 0 {
+				return true
 			}
 		}
 	}

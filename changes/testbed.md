@@ -23,7 +23,7 @@ Nothing prints a secret. Passwords, Echo's token, the SSH keys, the signing and 
 ## Ports
 
 - The gate publishes `127.0.0.1:18920-18929` only: 18920 prod-wp, 18921 staging-wp, 18922 Laravel, 18923 Mailpit, 18924 Echo's API, 18925 sshd, 18926 prod-db, 18927 staging-db, 18928 laravel-db, 18929 PostgreSQL; 18930-18939 are reserved and not published.
-- PRD 22.1 gives Go test listeners `127.0.0.1:23240-23259`. Roadie's tests listen on `127.0.0.1:32900-32949` instead: 32900-32919 verify's HTTP checks, 32920-32929 the cmd tests (32921 a port nothing listens on, 32922-32929 the update check's release fixture), 32930 and 32931 the sinkhole, 32932 the stubs, 32933 the tools fetch test, 32934 and 32935 the traffic generator and Echo stand-in, 32936 and 32937 the Soundcheck seal and its site, 32949 a port nothing listens on. The db Docker tests keep 33010-33019.
+- PRD 22.1 gives Go test listeners `127.0.0.1:23240-23259`. The testbed's tests use it: 23240 and 23241 the sinkhole, 23242 the stubs, 23243 the tools fetch test, 23244 and 23245 the traffic generator and Echo stand-in, 23246 and 23247 the Soundcheck seal and its site, 23259 a port nothing listens on. They used 32930-32949 until a gate run failed with "address already in use": that range sits inside Linux's ephemeral ports (32768-60999), which any outgoing connection may hold; `TestPortsOutsideEphemeralRange` in each package keeps them out of it. The 20 ports can't hold the rest, so verify's HTTP checks scan 32900-32919 for a free port and the cmd tests use 32920-32929 (32921 a port nothing listens on, 32922-32929 the update check's release fixture, scanned too). The db Docker tests keep 33010-33019.
 
 ## The testbed
 

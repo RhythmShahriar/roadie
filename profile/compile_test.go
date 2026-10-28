@@ -107,10 +107,18 @@ func TestParseRefuses(t *testing.T) {
 		"bad stack":       "id: x\nname: X\nstack: drupal\nchecked_against: \"docs: x\"\n",
 		"bad checked":     "id: x\nname: X\nstack: sql\nchecked_against: \"memory\"\n",
 		"bad id":          "id: \"a b\"\nname: X\nstack: sql\nchecked_against: \"docs: x\"\n",
+		"column no table": head + "detect: {columns_any: [stripe_id]}\n",
+		"column glob":     head + "detect: {columns_any: [\"users.stripe_*\"]}\n",
+		"column too deep": head + "detect: {columns_any: [db.users.stripe_id]}\n",
 	} {
 		if _, err := Parse(name, []byte(body)); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+	// Positive: a table.column pair, with the prefix placeholder too.
+	d, err := Parse("columns", []byte(head+"detect: {columns_any: [users.stripe_id, \"{prefix}users.billing_id\"]}\n"))
+	if err != nil || len(d.Detect.ColumnsAny) != 2 {
+		t.Errorf("columns_any: %v %+v", err, d.Detect)
 	}
 }
 
@@ -297,7 +305,7 @@ func TestStackResolution(t *testing.T) {
 	_, err := Compile(nil, defs, plain, roadiecfg.Default())
 	var ce *core.Error
 	if !errors.As(err, &ce) || ce.Code != core.ErrStack || ce.Exit != 2 ||
-		ce.Msg != "stack: no profile matches this dump (no wp_options or migrations table). For your own schema, list the tables under columns: and set stack: sql." {
+		ce.Msg != "stack: no profile matches this dump (no wp_options or migrations table). For a Laravel app with no migrations table, set stack: laravel (or pass --stack laravel); for your own schema, list the tables under columns: and set stack: sql." {
 		t.Fatalf("no stack: %v", err)
 	}
 	cfg := roadiecfg.Default()

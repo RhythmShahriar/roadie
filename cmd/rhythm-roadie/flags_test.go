@@ -563,6 +563,53 @@ func TestDSNPasswords(t *testing.T) {
 	}
 }
 
+// The inline-password warning names where the DSN came from: a flag,
+// the <staging> argument or source: or target: in the config file.
+func TestDSNPasswordWarningNamesItsPlace(t *testing.T) {
+	testDeps(t, nil)
+	pw := "pw" + "1"
+	src, tgt := "mysql://shop:"+pw+"@db.shop.com/shop", "mysql://stg:"+pw+"@127.0.0.1:40301/stg2"
+	cfg := &roadiecfg.Config{Source: src, Target: tgt, URL: "https://s.test"}
+	warning := func(where, env string) string {
+		return "the password in " + where + " is visible to other users of this machine; use " + env + "\n"
+	}
+	for _, c := range []struct {
+		cmd  string
+		args []string
+		mode engine.Mode
+		want []string
+	}{
+		{"plan", nil, engine.Plan, []string{warning("source: in .roadie/config.yaml", "ROADIE_FROM_PASSWORD"), warning("target: in .roadie/config.yaml", "ROADIE_TO_PASSWORD")}},
+		{"copy", []string{"--to", "staging.sql"}, engine.Copy, []string{warning("source: in .roadie/config.yaml", "ROADIE_FROM_PASSWORD")}},
+		{"copy", []string{"--from", src}, engine.Copy, []string{warning("--from", "ROADIE_FROM_PASSWORD"), warning("target: in .roadie/config.yaml", "ROADIE_TO_PASSWORD")}},
+		{"prepare", nil, engine.Prepare, []string{warning("target: in .roadie/config.yaml", "ROADIE_TO_PASSWORD")}},
+		{"prepare", []string{tgt}, engine.Prepare, []string{warning("the <staging> argument", "ROADIE_TO_PASSWORD")}},
+		{"plan", []string{"--config", "ci/roadie.yaml"}, engine.Plan, []string{warning("source: in ci/roadie.yaml", "ROADIE_FROM_PASSWORD"), warning("target: in ci/roadie.yaml", "ROADIE_TO_PASSWORD")}},
+	} {
+		var errb bytes.Buffer
+		p := mustParse(t, c.cmd, c.args...)
+		if _, err := p.buildJob(c.mode, cfg, &errb); err != nil {
+			t.Fatalf("%s %v: %v", c.cmd, c.args, err)
+		}
+		got := errb.String()
+		for _, w := range c.want {
+			if !strings.Contains(got, "rhythm-roadie "+c.cmd+": "+w) {
+				t.Errorf("%s %v: no %q in %q", c.cmd, c.args, w, got)
+			}
+		}
+		if strings.Count(got, "\n") != len(c.want) || strings.Contains(got, pw) {
+			t.Errorf("%s %v: stderr %q", c.cmd, c.args, got)
+		}
+	}
+	var errb bytes.Buffer
+	if _, _, err := mustParse(t, "verify").verifyJob(cfg, &errb); err != nil {
+		t.Fatal(err)
+	}
+	if got := errb.String(); got != "rhythm-roadie verify: "+warning("target: in .roadie/config.yaml", "ROADIE_TO_PASSWORD") {
+		t.Errorf("verify: %q", got)
+	}
+}
+
 // --no-config skips the file, --config picks one and otherwise the
 // nearest .roadie/config.yaml is read; none found gives the defaults.
 func TestLoadConfig(t *testing.T) {

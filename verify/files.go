@@ -555,19 +555,17 @@ func (r *run) uploads(ctx context.Context, s core.Site) {
 // databaseSteps runs the steps a target without a site has: only the
 // database-only step, whose check reads no files.
 func (r *run) databaseSteps(ctx context.Context, tables []*core.Table) {
-	var steps []core.Step
 	var data []core.DataStep
 	for _, st := range r.j.Steps {
 		switch ds, ok := st.(core.DataStep); {
 		case st.ID() == core.FindingSideEffectNotApplicable:
-			steps = append(steps, st)
+			r.notApplicable(ctx, st)
 		case ok && r.capt != nil:
 			data = append(data, ds)
 		default:
 			r.skipCheck(st.ID(), killswitch.NoFilesReasonFor(st.ID()))
 		}
 	}
-	r.runSteps(ctx, nil, steps)
 	if len(data) == 0 {
 		return
 	}
@@ -576,6 +574,29 @@ func (r *run) databaseSteps(ctx context.Context, tables []*core.Table) {
 		ds := data[i]
 		return ds.ID(), func() (core.SideEffect, []core.Finding, error) { return ds.CheckData(ctx, s) }
 	})
+}
+
+// notApplicable records the database-only step. Its side effect and
+// note go in the report; it reads nothing, so its check is skipped
+// with nothing checked rather than counted as one thing read.
+func (r *run) notApplicable(ctx context.Context, st core.Step) {
+	id := st.ID()
+	if why := r.skipReason(id); why != "" {
+		r.skipCheck(id, why)
+		return
+	}
+	se, found, err := st.Check(ctx, nil)
+	if err != nil {
+		se = core.SideEffect{ID: id, Status: "unknown", How: "the check failed: " + err.Error()}
+	}
+	if se.ID == "" {
+		se.ID = id
+	}
+	r.skipCheck(id, cmp.Or(se.How, killswitch.DatabaseOnlyLine))
+	r.res.SideEffects = append(r.res.SideEffects, se)
+	for _, f := range found {
+		r.add(f)
+	}
 }
 
 // hasDataSteps reports a step whose check can run on rows alone.

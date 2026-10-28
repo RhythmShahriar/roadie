@@ -131,6 +131,10 @@ func TestRunDataStepsOnDSN(t *testing.T) {
 	if se := sideEffect(res, core.FindingSideEffectNotApplicable); se.ID == "" {
 		t.Errorf("no not-applicable note: %+v", res.SideEffects)
 	}
+	// The note reads nothing: a skipped check with nothing checked.
+	if c := checkByID(res, core.FindingSideEffectNotApplicable); c.Status != "skip" || c.Checked != 0 || c.Detail != killswitch.DatabaseOnlyLine {
+		t.Errorf("not-applicable check %+v", c)
+	}
 	if find(res, core.FindingSideEffectWebhooks) == nil {
 		t.Errorf("active webhook on a DSN: %v", ids(res))
 	}

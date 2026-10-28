@@ -16,12 +16,17 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/RhythmShahriar/roadie/internal/testutil"
 )
+
+// stubsTestAddr is the stubs' TLS test listener, in the testbed's test
+// ports (127.0.0.1:23240-23259).
+const stubsTestAddr = "127.0.0.1:23242"
 
 func records(t *testing.T, b *bytes.Buffer) []Record {
 	t.Helper()
@@ -125,7 +130,7 @@ func TestCertificates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ln, err := tls.Listen("tcp", "127.0.0.1:32932", &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
+	ln, err := tls.Listen("tcp", stubsTestAddr, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +142,7 @@ func TestCertificates(t *testing.T) {
 		TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 			var d net.Dialer
-			return d.DialContext(ctx, network, "127.0.0.1:32932")
+			return d.DialContext(ctx, network, stubsTestAddr)
 		},
 	}}
 	for _, host := range []string{"api.stripe.com", "us21.api.mailchimp.com", "hooks.zapier.com"} {
@@ -150,5 +155,18 @@ func TestCertificates(t *testing.T) {
 	if resp, err := client.Get("https://shop.example.com/"); err == nil {
 		resp.Body.Close()
 		t.Error("the host certificate covers a name it should not")
+	}
+}
+
+// The test listeners use PRD 22's 127.0.0.1:23240-23259, below Linux's
+// ephemeral range (32768-60999): a fixed port in that range can be taken
+// by any outgoing connection, which made the gate fail at random.
+func TestPortsOutsideEphemeralRange(t *testing.T) {
+	for _, addr := range []string{stubsTestAddr} {
+		_, p, err := net.SplitHostPort(addr)
+		n, _ := strconv.Atoi(p)
+		if err != nil || n < 23240 || n > 23259 {
+			t.Errorf("%s is outside 127.0.0.1:23240-23259", addr)
+		}
 	}
 }

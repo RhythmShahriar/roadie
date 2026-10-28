@@ -9,6 +9,9 @@ stack: laravel
 checked_against: "docs: https://github.com/laravel/cashier-stripe/tree/15.x/database/migrations"
 detect:
   tables_any: [subscription_items]
+  # Cashier's customer column on the billable model: a shop with one-off
+  # charges only has no subscription tables.
+  columns_any: [users.stripe_id]
 rules:
   - {table: users, column: stripe_id, rule: "null", explain: "the live Stripe customer ID; null so the copy can't charge it"}
   - {table: users, column: pm_type, rule: "null", explain: "the saved card's brand"}

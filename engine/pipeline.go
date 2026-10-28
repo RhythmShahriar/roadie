@@ -313,15 +313,20 @@ type job struct {
 
 // pipeline is one run of the two passes.
 type pipeline struct {
-	mode     Mode
-	cfg      *roadiecfg.Config // the effective settings: config with the flags over it
-	opts     Options
-	defs     []profile.Def
-	in       input
-	sink     core.Sink // nil: a discard sink (plan)
-	site     core.Site // the source site, or nil for a dump
-	key      pseudo.Key
-	progress core.Progress
+	mode Mode
+	cfg  *roadiecfg.Config // the effective settings: config with the flags over it
+	opts Options
+	defs []profile.Def
+	in   input
+	sink core.Sink // nil: a discard sink (plan)
+	site core.Site // the source site, or nil for a dump
+	// targetSite is the target's site files, which tell the stack and
+	// the file-detected profiles when the source is a dump (a dump of a
+	// Laravel app with no migrations table copied into a Laravel site).
+	// nil for a database or dump target; never read for URLs.
+	targetSite core.Site
+	key        pseudo.Key
+	progress   core.Progress
 	// importing names pass 2 "import" (a database target) instead of
 	// "transform".
 	importing bool
@@ -448,7 +453,7 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 	}
 	starts := newTextStarts(known)
 	known = starts
-	idx := newIndexer(ctx, p.cfg, p.defs, p.site, known)
+	idx := newIndexer(ctx, p.cfg, p.defs, p.appSite(), known)
 	idx.siteBlogs = p.opts.Sites
 	if p.opts.OnePass {
 		idx.entries = nil // Known is sealed before the field-type rules exist
@@ -616,7 +621,7 @@ func (p *pipeline) finalCompile(idx *indexer, schema *core.Schema) (*profile.Com
 			schema = &cp
 		}
 	}
-	c, err := profile.CompileWith(nil, p.defs, schema, p.cfg, profile.Hints{Options: idx.options, Site: p.site, Ctx: idx.ctx})
+	c, err := profile.CompileWith(nil, p.defs, schema, p.cfg, profile.Hints{Options: idx.options, Site: p.appSite(), Ctx: idx.ctx})
 	if err != nil {
 		return nil, err
 	}
@@ -683,7 +688,7 @@ func (p *pipeline) dropOtherBlogs(idx *indexer, schema *core.Schema, c *profile.
 			cfg.Drop = append(cfg.Drop, c.Prefix()+s+"*")
 		}
 	}
-	nc, err := profile.CompileWith(nil, p.defs, schema, &cfg, profile.Hints{Options: idx.options, Site: p.site, Ctx: idx.ctx})
+	nc, err := profile.CompileWith(nil, p.defs, schema, &cfg, profile.Hints{Options: idx.options, Site: p.appSite(), Ctx: idx.ctx})
 	if err != nil {
 		return nil, err
 	}
@@ -701,6 +706,15 @@ func humanSites(sites []string) string {
 		return ns[0]
 	}
 	return strings.Join(ns[:len(ns)-1], ", ") + " and " + ns[len(ns)-1]
+}
+
+// appSite is the site whose files tell the app: the source site, else
+// the target site.
+func (p *pipeline) appSite() core.Site {
+	if p.site != nil {
+		return p.site
+	}
+	return p.targetSite
 }
 
 // urlPlan builds the URL pairs from what pass 1 found, the settings and,

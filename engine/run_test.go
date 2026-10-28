@@ -1586,3 +1586,38 @@ func TestRowsOnly(t *testing.T) {
 		}
 	}
 }
+
+// A Laravel dump with no migrations table, copied into a Laravel site,
+// is read as Laravel: with no source site, the target's artisan and .env
+// tell the stack. The source's own site still wins when there is one.
+func TestRunStackFromTargetSite(t *testing.T) {
+	f := useRunFakes(t)
+	f.staging = testutil.FakeSite(map[string][]byte{"artisan": []byte("#!/usr/bin/env php\n"), ".env": []byte("APP_URL=http://laravel\n")})
+	f.staging.EP, f.staging.StackName = stagingEP, core.StackLaravel
+	old := openDump
+	openDump = func(context.Context, io.Reader, dump.Options) (core.Source, error) {
+		td := []tableData{{table("users", "id:bigint", "name", "email", "password", "stripe_id"), rows{
+			{1, "Ada Kowalczyk", "ada.kowalczyk@example.com", "$2y$12$abcdefghijklmnopqrstuv", "cus_" + "Q1w2E3r4T5y6U7"}}}}
+		return testutil.FakeSource(schemaOf("", td), batches(td)), nil
+	}
+	t.Cleanup(func() { openDump = old })
+	in := filepath.Join(t.TempDir(), "db.sql")
+	if err := os.WriteFile(in, []byte("-- dump\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	j := Job{Mode: Plan, From: core.Endpoint{Kind: core.DumpFile, Raw: in, Display: "db.sql", Path: in}, To: stagingEP,
+		Config: roadiecfg.Default(), Opts: Options{URL: "http://laravel"}}
+	res, err := Run(context.Background(), j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Stack.Name != core.StackLaravel {
+		t.Errorf("stack %q, want laravel", res.Stack.Name)
+	}
+	// Negative: into a dump file there is no site to ask, so the dump
+	// alone decides and it says nothing.
+	j.To = core.Endpoint{Kind: core.DumpFile, Raw: "out.sql", Display: "out.sql", Path: filepath.Join(t.TempDir(), "out.sql")}
+	if _, err := Run(context.Background(), j); !isCode(err, core.ErrStack) {
+		t.Errorf("no site: %v", err)
+	}
+}

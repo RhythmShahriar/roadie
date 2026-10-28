@@ -311,6 +311,50 @@ func TestConfigCheck(t *testing.T) {
 	}
 }
 
+// config check warns about a database password written into source: or
+// target:, which the template says never to put there; one read from a
+// ${ROADIE_*} variable, or none at all, is fine.
+func TestConfigCheckWarnsOfPasswords(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	pw := "s3cret" + "pw"
+	body := "# source: \"mysql://x:in-a-comment@db/x\"\nsource: \"mysql://shop:" + pw + "@db.shop.test/shop\"\n" +
+		"target: \"mysql://stg:${ROADIE_TO_PW}@127.0.0.1:40301/stg2\"\nurl: \"https://s.test\"\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	testDeps(t, func(d *deps) {
+		d.loadConfig = func(string, func(string) (string, bool)) (*roadiecfg.Config, error) { return &roadiecfg.Config{}, nil }
+		d.env = func(string) (string, bool) { return "", false }
+	})
+	out, _, code := runCmd(t, "config", "check", "--config", path)
+	want := "Password: source: (line 2) holds the database password, which other users of this machine can see. Remove it and set ROADIE_FROM_PASSWORD.\n"
+	if code != 0 || !strings.Contains(out, path+" is valid.\n") || !strings.Contains(out, want) || strings.Contains(out, "target: (line") || strings.Contains(out, pw) {
+		t.Errorf("exit %d %q", code, out)
+	}
+	out, _, code = runCmd(t, "config", "check", "--config", path, "--json")
+	var env struct {
+		Data struct {
+			Passwords []struct {
+				Key  string `json:"key"`
+				Line int    `json:"line"`
+				Env  string `json:"env"`
+			} `json:"passwords"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil || code != 0 || strings.Contains(out, pw) ||
+		len(env.Data.Passwords) != 1 || env.Data.Passwords[0].Key != "source" || env.Data.Passwords[0].Line != 2 || env.Data.Passwords[0].Env != "ROADIE_FROM_PASSWORD" {
+		t.Errorf("json: exit %d %v %s", code, err, out)
+	}
+	// Negative: no password anywhere, no warning.
+	if err := os.WriteFile(path, []byte("source: \"mysql://shop@db.shop.test/shop\"\ntarget: \"/var/www/staging\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, _, code := runCmd(t, "config", "check", "--config", path); code != 0 || strings.Contains(out, "Password:") {
+		t.Errorf("no password: exit %d %q", code, out)
+	}
+}
+
 func TestYAMLCode(t *testing.T) {
 	for in, want := range map[string]string{
 		"# all comment":                 "",

@@ -148,14 +148,14 @@ type verifyParts struct {
 // engine.VerifyJob turns into the verify job, with verify's options.
 func (p *parsed) verifyJob(cfg *roadiecfg.Config, stderr io.Writer) (verifyParts, engine.Job, error) {
 	var parts verifyParts
-	target := ""
+	target, targetName := "", p.configKeyName("target")
 	if cfg != nil {
 		target = cfg.Target
 	}
 	switch len(p.args) {
 	case 0:
 	case 1:
-		target = p.args[0]
+		target, targetName = p.args[0], stagingArgName
 	default:
 		return parts, engine.Job{}, usageError(stderr, p.cmd, "one staging at a time; got %d", len(p.args))
 	}
@@ -170,7 +170,7 @@ func (p *parsed) verifyJob(cfg *roadiecfg.Config, stderr io.Writer) (verifyParts
 			fmt.Fprintf(stderr, "%s %s: %s\n", prog(), p.cmd, msg)
 		}
 	}
-	to, err := parseEndpoint(target, "the staging", "ROADIE_TO_PASSWORD", warn)
+	to, err := parseEndpoint(target, targetName, "ROADIE_TO_PASSWORD", warn)
 	if err != nil {
 		return parts, engine.Job{}, endpointError(stderr, p.cmd, err)
 	}

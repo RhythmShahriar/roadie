@@ -53,8 +53,27 @@ func TestBuiltinDetection(t *testing.T) {
 	if !slices.Equal(laravel, []string{"laravel", "laravel-cashier"}) {
 		t.Errorf("Laravel: %v", laravel)
 	}
-	if got := Detect(schemaWithout(loadSchema(t, "laravel-docs.sql"), "subscriptions", "subscription_items"), nil, defs); !slices.Equal(got, []string{"laravel"}) {
+	// Cashier's customer column alone, with no subscription tables (a
+	// shop that charges one-off payments), still detects it.
+	noSubs := schemaWithout(loadSchema(t, "laravel-docs.sql"), "subscriptions", "subscription_items")
+	if got := Detect(noSubs, nil, defs); !slices.Equal(got, []string{"laravel", "laravel-cashier"}) {
+		t.Errorf("Laravel with Cashier's users.stripe_id only: %v", got)
+	}
+	users := noSubs.Table("users")
+	bare := *users
+	bare.Columns = slices.DeleteFunc(slices.Clone(users.Columns), func(c core.Column) bool {
+		return c.Name == "stripe_id" || c.Name == "pm_type" || c.Name == "pm_last_four" || c.Name == "trial_ends_at"
+	})
+	noCashier := schemaWithout(noSubs, "users")
+	noCashier.Tables = append(noCashier.Tables, &bare)
+	if got := Detect(noCashier, nil, defs); !slices.Equal(got, []string{"laravel"}) {
 		t.Errorf("Laravel without Cashier: %v", got)
+	}
+	// A stripe_id column on another table is no Cashier billable.
+	other := schemaWithout(noCashier)
+	other.Tables = append(other.Tables, &core.Table{Name: "orders", Columns: []core.Column{{Name: "id"}, {Name: "stripe_id"}}})
+	if got := Detect(other, nil, defs); !slices.Equal(got, []string{"laravel"}) {
+		t.Errorf("orders.stripe_id: %v", got)
 	}
 
 	for _, d := range defs {

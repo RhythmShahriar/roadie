@@ -263,6 +263,7 @@ Usage:
 
   init     write .roadie/config.yaml with every key commented
   check    parse and validate it, list the ${ROADIE_*} variables that are unset
+           and any database password written into source: or target:
   show     the effective config with defaults, where each value comes from
            (production: of .soundcheck/ and .echo/ too) and the rules expanded:
            columns: and each profile it may apply; secrets masked

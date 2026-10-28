@@ -17,7 +17,7 @@ import (
 // ErrNoStack is the PRD 17 stack error: nothing in the schema says which
 // application it belongs to and the config lists no columns of its own.
 var ErrNoStack = &core.Error{Code: core.ErrStack, Exit: 2,
-	Msg: "stack: no profile matches this dump (no wp_options or migrations table). For your own schema, list the tables under columns: and set stack: sql."}
+	Msg: "stack: no profile matches this dump (no wp_options or migrations table). For a Laravel app with no migrations table, set stack: laravel (or pass --stack laravel); for your own schema, list the tables under columns: and set stack: sql."}
 
 // Stacks lists the values --stack and stack: take.
 func Stacks() []string { return []string{"auto", "wordpress", "laravel", "sql"} }

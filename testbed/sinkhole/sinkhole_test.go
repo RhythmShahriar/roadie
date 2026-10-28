@@ -11,16 +11,17 @@ import (
 	"encoding/json"
 	"net"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
 
-// The testbed's local test ports are 127.0.0.1:32930-32949.
+// The testbed's local test ports are 127.0.0.1:23240-23259 (PRD 22).
 const (
-	dnsTestAddr = "127.0.0.1:32930"
-	tcpTestAddr = "127.0.0.1:32931"
+	dnsTestAddr = "127.0.0.1:23240"
+	tcpTestAddr = "127.0.0.1:23241"
 )
 
 type syncBuf struct {
@@ -244,5 +245,18 @@ func TestMaskHeaders(t *testing.T) {
 	recs := log.records(t)
 	if len(recs) != 1 || strings.Contains(string(recs[0].First), "live_") || !strings.Contains(string(recs[0].First), "Authorization: [masked]") {
 		t.Errorf("the log holds the key: %+v", recs)
+	}
+}
+
+// The test listeners use PRD 22's 127.0.0.1:23240-23259, below Linux's
+// ephemeral range (32768-60999): a fixed port in that range can be taken
+// by any outgoing connection, which made the gate fail at random.
+func TestPortsOutsideEphemeralRange(t *testing.T) {
+	for _, addr := range []string{dnsTestAddr, tcpTestAddr} {
+		_, p, err := net.SplitHostPort(addr)
+		n, _ := strconv.Atoi(p)
+		if err != nil || n < 23240 || n > 23259 {
+			t.Errorf("%s is outside 127.0.0.1:23240-23259", addr)
+		}
 	}
 }

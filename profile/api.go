@@ -39,7 +39,11 @@ type Def struct {
 
 // DetectDef says when a profile applies.
 type DetectDef struct {
-	TablesAny  []string
+	TablesAny []string
+	// ColumnsAny are "table.column" pairs: a profile that adds columns to
+	// a core table (Cashier's users.stripe_id) is there when one is,
+	// even without a table of its own.
+	ColumnsAny []string
 	OptionsAny []string
 	Files      []string
 }
@@ -60,9 +64,9 @@ func Load(ctx context.Context, offline bool) ([]Def, string, error) {
 }
 
 // Detect returns the IDs of the profiles that apply, sorted: a table of
-// the profile's tables_any is in the schema (with the WordPress prefix
-// and every multisite blog) or a file of its files: is on the site. site
-// may be nil for a dump.
+// the profile's tables_any (with the WordPress prefix and every multisite
+// blog) or a column of its columns_any is in the schema, or a file of its
+// files: is on the site. site may be nil for a dump.
 func Detect(s *core.Schema, site core.Site, defs []Def) []string {
 	return DetectWithOptions(context.Background(), s, site, defs, nil)
 }

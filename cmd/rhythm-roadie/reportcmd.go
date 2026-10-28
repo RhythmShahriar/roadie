@@ -165,7 +165,7 @@ func runReportCheck(_ context.Context, p *parsed, stdout, stderr io.Writer) erro
 	}
 	var input io.Reader
 	if p.f.input != "" {
-		f, err := os.Open(p.f.input)
+		f, err := os.Open(p.f.input) // #nosec G304 G703 -- the report the user named with --input
 		if err != nil {
 			return usageError(stderr, cmd, "--input: %v", err)
 		}
@@ -281,14 +281,14 @@ func isSigningKeyFile(path string) bool {
 	if err != nil {
 		return false
 	}
-	a, errA := os.Stat(path)
+	a, errA := os.Stat(path) // #nosec G703 -- a stat of the key file the user named, to compare it
 	b, errB := os.Stat(report.DefaultKeyPath(dir))
 	return errA == nil && errB == nil && os.SameFile(a, b)
 }
 
 // readLimited reads a file the user named, refusing one over limit bytes.
 func readLimited(path string, limit int64) ([]byte, error) {
-	f, err := os.Open(path) // #nosec G304 -- a file the user named on the command line
+	f, err := os.Open(path) // #nosec G304 G703 -- a file the user named on the command line
 	if err != nil {
 		return nil, err
 	}

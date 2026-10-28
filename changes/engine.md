@@ -102,8 +102,9 @@ A profile names the tables and columns of one stack or plugin and the rule for e
 - A `columns:` rule replaces the profile's rule on the same table, column, where clause and path; without a where clause it replaces every profile rule on that column. A `columns:` table glob (`wp_*meta`) replaces the profile rules on every table it matches the same way.
 - Table actions, first match wins: config drop, config truncate, a table `columns:` names, profile drop, profile truncate, profile keep, has rules, else kept.
 - `pseudonymise.keep` keeps the address parts it names; `free_text: blank|keep` turns text rules into blank or keep; `passwords: keep` keeps password hashes.
-- Errors (exit 2): `profiles names "mini-cor", which isn't a profile; did you mean mini-core? rhythm-roadie profiles lists them.`, `profiles names laravel, which is for laravel; this is a wordpress schema. Remove it or set stack:.`, `stack: no profile matches this dump (no wp_options or migrations table). For your own schema, list the tables under columns: and set stack: sql.`
+- Errors (exit 2): `profiles names "mini-cor", which isn't a profile; did you mean mini-core? rhythm-roadie profiles lists them.`, `profiles names laravel, which is for laravel; this is a wordpress schema. Remove it or set stack:.`, `stack: no profile matches this dump (no wp_options or migrations table). For a Laravel app with no migrations table, set stack: laravel (or pass --stack laravel); for your own schema, list the tables under columns: and set stack: sql.`
 - Field-type row fixes read the form definitions in pass 1 and add a rule per field: Gravity Forms (`gf_form_meta.display_meta`), WPForms (`wpforms` posts) and Ninja Forms (`nf3_fields`). Email fields become email, phone phone, name parts first and last names, address parts street, city, state, postcode and country.
+- Detectors: `tables_any` (a table), `columns_any` (a `table.column` pair, for a profile that adds columns to a core table), `options_any` (an option name) and `files` (a file on the site). The stack and the file detectors ask the source's site; with a dump source they ask the target's site (not a database's), so a Laravel dump with no migrations table copied into a Laravel site is read as Laravel.
 - Fixtures: every rule has a positive and a negative row in `profile/testdata/fixtures/`.
 
 The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrubs names, emails, phones and IPs out of free text; `reset-password` gives an unusable hash):
@@ -278,7 +279,7 @@ The built-in profiles, as `rhythm-roadie profiles` lists them (rule `text` scrub
 #### `laravel-cashier` (Laravel Cashier)
 
 - Stack: laravel. Checked against: `docs: https://github.com/laravel/cashier-stripe/tree/15.x/database/migrations`.
-- Detected by: table `subscription_items`.
+- Detected by: table `subscription_items`, column `users.stripe_id` (a shop with one-off charges has Cashier's customer column but no subscription tables).
 - Kept as they are: `subscription_items`.
 
 | Table | Column | Where | Path | Rule | Why |

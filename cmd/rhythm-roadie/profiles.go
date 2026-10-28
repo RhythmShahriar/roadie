@@ -41,6 +41,7 @@ type profileJSON struct {
 
 type detectJSON struct {
 	TablesAny  []string `json:"tables_any,omitempty"`
+	ColumnsAny []string `json:"columns_any,omitempty"`
 	OptionsAny []string `json:"options_any,omitempty"`
 	Files      []string `json:"files,omitempty"`
 }
@@ -131,7 +132,7 @@ func runProfiles(ctx context.Context, p *parsed, stdout, stderr io.Writer) error
 
 func toJSON(d profile.Def, keep []string) profileJSON {
 	j := profileJSON{ID: d.ID, Name: d.Name, CheckedAgainst: d.CheckedAgainst, Truncate: d.Truncate, Drop: d.Drop, Keep: d.Keep,
-		Detect: &detectJSON{TablesAny: d.Detect.TablesAny, OptionsAny: d.Detect.OptionsAny, Files: d.Detect.Files}}
+		Detect: &detectJSON{TablesAny: d.Detect.TablesAny, ColumnsAny: d.Detect.ColumnsAny, OptionsAny: d.Detect.OptionsAny, Files: d.Detect.Files}}
 	for _, r := range d.Rules {
 		j.Rules = append(j.Rules, ruleJSON{ID: r.ID, Table: r.Table, Column: r.Column, Where: r.Where, Path: r.Path, Action: string(r.Action), Fake: string(r.Fake),
 			Kept: keptPart(d, r.ID, keep)})
@@ -147,6 +148,9 @@ func printProfile(w io.Writer, d profile.Def, keep []string) {
 	var det []string
 	if len(d.Detect.TablesAny) > 0 {
 		det = append(det, "a table of "+strings.Join(d.Detect.TablesAny, ", "))
+	}
+	if len(d.Detect.ColumnsAny) > 0 {
+		det = append(det, "a column of "+strings.Join(d.Detect.ColumnsAny, ", "))
 	}
 	if len(d.Detect.OptionsAny) > 0 {
 		det = append(det, "an option of "+strings.Join(d.Detect.OptionsAny, ", "))

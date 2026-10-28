@@ -13,21 +13,24 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
 
-// The testbed's test ports (127.0.0.1:32930-32949). The sinkhole's tests
-// hold 32930 and 32931 and the stubs' 32932; packages test in
-// parallel, so these differ.
+// The testbed's test ports (127.0.0.1:23240-23259, PRD 22). The
+// sinkhole's tests hold 23240 and 23241 and the stubs' 23242; packages
+// test in parallel, so these differ.
 const (
-	portTraffic = "127.0.0.1:32934"
-	portEcho    = "127.0.0.1:32935"
+	portTraffic = "127.0.0.1:23244"
+	portEcho    = "127.0.0.1:23245"
 	// portSeal is Soundcheck's seal proxy, portSealSite the site behind it.
-	portSeal     = "127.0.0.1:32936"
-	portSealSite = "127.0.0.1:32937"
+	portSeal     = "127.0.0.1:23246"
+	portSealSite = "127.0.0.1:23247"
+	// portNothing is a port nothing listens on.
+	portNothing = "127.0.0.1:23259"
 )
 
 func writeLines(t *testing.T, path string, recs ...any) {
@@ -350,7 +353,7 @@ func TestWindow(t *testing.T) {
 	}
 
 	// Echo stopped on purpose (r22) is a note, not an error.
-	down := Echo{Base: "http://127.0.0.1:32949", Token: token}
+	down := Echo{Base: "http://" + portNothing, Token: token}
 	w = &Window{Logs: l, Echo: down, EchoDown: true}
 	if err := w.Start(context.Background(), Traffic{}, 0); err != nil {
 		t.Fatal(err)
@@ -428,5 +431,18 @@ func TestReadEnvFile(t *testing.T) {
 	m, err := readEnvFile(p)
 	if err != nil || m["A"] != "1" || m["B"] != "two=2" || len(m) != 2 {
 		t.Errorf("%v %v", m, err)
+	}
+}
+
+// The test listeners use PRD 22's 127.0.0.1:23240-23259, below Linux's
+// ephemeral range (32768-60999): a fixed port in that range can be taken
+// by any outgoing connection, which made the gate fail at random.
+func TestPortsOutsideEphemeralRange(t *testing.T) {
+	for _, addr := range []string{portFetch, portTraffic, portEcho, portSeal, portSealSite, portNothing} {
+		_, p, err := net.SplitHostPort(addr)
+		n, _ := strconv.Atoi(p)
+		if err != nil || n < 23240 || n > 23259 {
+			t.Errorf("%s is outside 127.0.0.1:23240-23259", addr)
+		}
 	}
 }

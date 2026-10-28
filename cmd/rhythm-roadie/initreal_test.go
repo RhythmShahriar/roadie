@@ -15,8 +15,13 @@ import (
 // config init --from reads a dump no profile matches with the real
 // engine: a plain SQL schema (persona C) gets the sql template and its
 // personal-looking columns as suggestions, with or without --stack sql;
-// --stack laravel reads a Laravel dump with no migrations table.
+// --stack laravel reads a Laravel dump with no migrations table; a
+// pg_dump with a function and a trigger is read without --keep-routines.
 func TestConfigInitFromRealEngine(t *testing.T) {
+	pg, err := os.ReadFile(filepath.Join("..", "..", "dump", "pgsql", "testdata", "pg16-inserts.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	dir := t.TempDir()
 	t.Chdir(dir)
 	t.Setenv("RHYTHM_CACHE_DIR", t.TempDir())
@@ -37,6 +42,11 @@ func TestConfigInitFromRealEngine(t *testing.T) {
 	if err := os.WriteFile("lara.sql", []byte(lara), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// A pg_dump with a function and a trigger: config init only reads the
+	// schema, so the routine allowlist doesn't stop it.
+	if err := os.WriteFile("pg.sql", pg, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct {
 		args []string
 		says string
@@ -45,6 +55,8 @@ func TestConfigInitFromRealEngine(t *testing.T) {
 		{[]string{"--from", "app.sql"}, "your own SQL schema", []string{"stack: sql", "#  - table: contacts\n#    column: email\n#    rule: email\n", "#    column: phone\n"}},
 		{[]string{"--from", "app.sql", "--stack", "sql"}, "your own SQL schema", []string{"stack: sql", "#    column: email\n"}},
 		{[]string{"--from", "lara.sql", "--stack", "laravel"}, "a Laravel app", []string{"#  - table: customers\n#    column: mobile\n"}},
+		{[]string{"--from", "pg.sql", "--stack", "sql"}, "your own SQL schema", []string{"stack: sql"}},
+		{[]string{"--from", "pg.sql"}, "your own SQL schema", []string{"stack: sql"}},
 	} {
 		_ = os.RemoveAll(".roadie")
 		out, errOut, code := runCmd(t, "config", append([]string{"init"}, c.args...)...)

@@ -30,8 +30,8 @@ import (
 )
 
 // portFetch is this file's test listener (the testbed's ports are
-// 127.0.0.1:32930-32949; see drill_test.go for the others).
-const portFetch = "127.0.0.1:32933"
+// 127.0.0.1:23240-23259; see drill_test.go for the others).
+const portFetch = "127.0.0.1:23243"
 
 func TestCountHost(t *testing.T) {
 	prod := []string{

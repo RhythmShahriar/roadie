@@ -343,7 +343,7 @@ Target: /var/www/staging
 
 STOPPED   stack; the target is untouched
 
-stack: no profile matches this dump (no wp_options or migrations table). For your own schema, list the tables under columns: and set stack: sql.
+stack: no profile matches this dump (no wp_options or migrations table). For a Laravel app with no migrations table, set stack: laravel (or pass --stack laravel); for your own schema, list the tables under columns: and set stack: sql.
 
 rhythm-roadie explain stack
 --- exit 2

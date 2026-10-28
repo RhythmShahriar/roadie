@@ -23,6 +23,8 @@ import (
 	"github.com/RhythmShahriar/roadie/engine"
 	"github.com/RhythmShahriar/roadie/profile"
 	"github.com/RhythmShahriar/roadie/roadiecfg"
+
+	"gopkg.in/yaml.v3"
 )
 
 // gitExcludes are the paths config init keeps out of git (PRD 6.8).
@@ -132,9 +134,12 @@ func initScan(ctx context.Context, p *parsed, stderr io.Writer) (*core.Result, e
 	if stack == "woocommerce" {
 		stack = "wordpress"
 	}
+	// KeepRoutines: init reads the schema and never writes or runs the
+	// dump, so a function or trigger in it is no reason to stop (verify
+	// reads dumps the same way).
 	scan := func(stack string) (*core.Result, error) {
 		j := engine.Job{Mode: engine.Plan, From: from, Clock: dep.now,
-			Opts: engine.Options{SchemaOnly: true, Offline: p.offline(dep.env), Keys: "swap", EmailDomain: defaultEmailDomain, Stack: stack}}
+			Opts: engine.Options{SchemaOnly: true, Offline: p.offline(dep.env), Keys: "swap", EmailDomain: defaultEmailDomain, Stack: stack, KeepRoutines: true}}
 		r, err := dep.run(ctx, j)
 		if err == nil && r != nil && r.Err != nil {
 			err = r.Err
@@ -262,14 +267,51 @@ func configCheck(p *parsed, stdout, stderr io.Writer) error {
 			}
 		}
 	}
+	pws := storedPasswords(b)
 	if p.f.g.json {
-		return writeEnvelope(stdout, "config-check", map[string]any{"path": path, "valid": true, "unset": unset})
+		return writeEnvelope(stdout, "config-check", map[string]any{"path": path, "valid": true, "unset": unset, "passwords": pws})
 	}
 	fmt.Fprintf(stdout, "%s is valid.\n", path)
 	for _, u := range unset {
 		fmt.Fprintf(stdout, "Unset: %s (line %d); set it before a run that reads it.\n", u.Name, u.Line)
 	}
+	for _, pw := range pws {
+		fmt.Fprintf(stdout, "Password: %s: (line %d) holds the database password, which other users of this machine can see. Remove it and set %s.\n", pw.Key, pw.Line, pw.Env)
+	}
 	return nil
+}
+
+// storedPassword is a source: or target: DSN with its password written
+// into the config file.
+type storedPassword struct {
+	Key  string `json:"key"`
+	Line int    `json:"line"`
+	Env  string `json:"env"`
+}
+
+// storedPasswords finds the DSN passwords written into the file's own
+// source: and target:, as the file holds them: one read from a
+// ${ROADIE_*} variable isn't in the file, so it doesn't count.
+func storedPasswords(b []byte) []storedPassword {
+	out := []storedPassword{}
+	var doc yaml.Node
+	if yaml.Unmarshal(b, &doc) != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return out
+	}
+	m := doc.Content[0].Content
+	for i := 0; i+1 < len(m); i += 2 {
+		k, v := m[i], m[i+1]
+		env := map[string]string{"source": "ROADIE_FROM_PASSWORD", "target": "ROADIE_TO_PASSWORD"}[k.Value]
+		if env == "" || v.Kind != yaml.ScalarNode {
+			continue
+		}
+		e, err := dep.parseEndpoint(v.Value)
+		if err != nil || e.Kind != core.DSN || e.Password == "" || strings.Contains(e.Password, "${") {
+			continue
+		}
+		out = append(out, storedPassword{Key: k.Value, Line: v.Line, Env: env})
+	}
+	return out
 }
 
 // yamlCode is a config line without its comment: a # at the start or

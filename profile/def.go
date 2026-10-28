@@ -55,6 +55,7 @@ type fileDef struct {
 
 type fileDet struct {
 	TablesAny  []string `yaml:"tables_any"`
+	ColumnsAny []string `yaml:"columns_any"`
 	OptionsAny []string `yaml:"options_any"`
 	Files      []string `yaml:"files"`
 }
@@ -79,7 +80,7 @@ func Parse(name string, b []byte) (Def, error) {
 		return Def{}, fmt.Errorf("profile %s: %w", name, err)
 	}
 	d := Def{ID: f.ID, Name: f.Name, CheckedAgainst: f.CheckedAgainst, Stack: core.Stack(f.Stack),
-		Detect:   DetectDef{TablesAny: f.Detect.TablesAny, OptionsAny: f.Detect.OptionsAny, Files: f.Detect.Files},
+		Detect:   DetectDef{TablesAny: f.Detect.TablesAny, ColumnsAny: f.Detect.ColumnsAny, OptionsAny: f.Detect.OptionsAny, Files: f.Detect.Files},
 		Truncate: f.Truncate, Drop: f.Drop, Keep: f.Keep, RowFixes: f.RowFixes, Parts: map[string]string{}}
 	if err := d.check(name); err != nil {
 		return Def{}, err
@@ -124,6 +125,15 @@ func (d *Def) check(name string) error {
 			if err := checkTable(t); err != nil {
 				return fmt.Errorf("profile %s: table %q: %w", name, t, err)
 			}
+		}
+	}
+	for _, tc := range d.Detect.ColumnsAny {
+		t, c, ok := strings.Cut(tc, ".")
+		if !ok || c == "" || strings.Contains(c, ".") || hasGlob(t) || hasGlob(c) {
+			return fmt.Errorf("profile %s: columns_any %q must be table.column, as users.stripe_id", name, tc)
+		}
+		if err := checkTable(t); err != nil {
+			return fmt.Errorf("profile %s: columns_any %q: %w", name, tc, err)
 		}
 	}
 	return nil

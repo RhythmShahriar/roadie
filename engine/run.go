@@ -299,6 +299,11 @@ func (r *runner) run(ctx context.Context) error {
 	p := &pipeline{mode: r.mode, cfg: cfg, opts: r.opts, defs: defs, site: r.from, key: key,
 		progress: r.j.Progress, result: r.res, indexOnly: r.mode == Plan && r.opts.SchemaOnly,
 		samePlace: r.samePlace}
+	if r.from == nil && r.to != nil && r.to.Endpoint().Kind != core.DSN {
+		// A dump says nothing of its app beyond its tables; the site it
+		// is copied into does (a DSN's would only say sql).
+		p.targetSite = r.to
+	}
 	if !r.opts.NoKillSwitch && r.part(partSideEffects) {
 		p.dataRules = func(st core.Stack) []core.Rule {
 			// The gateways the source holds are known once pass 1 has

@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -154,7 +155,23 @@ func (p *parsed) loadConfig() (*roadiecfg.Config, string, error) {
 }
 
 // endpoints are the raw --from and --to of a run, after the config.
-type endpoints struct{ from, to string }
+type endpoints struct {
+	from, to string
+	// fromName and toName say where each came from, for the inline
+	// password warning: "--from", "the <staging> argument" or
+	// "source: in .roadie/config.yaml".
+	fromName, toName string
+}
+
+// configKeyName names a key of the config file the run read, as in
+// "target: in .roadie/config.yaml".
+func (p *parsed) configKeyName(key string) string {
+	file := p.f.g.config
+	if file == "" {
+		file = configPath
+	}
+	return key + ": in " + filepath.ToSlash(file)
+}
 
 // runEndpoints picks the source and target strings: copy and a plan with
 // --from read --from and --to (or source: and target:); prepare and a
@@ -171,11 +188,11 @@ func (p *parsed) runEndpoints(mode engine.Mode, cfg *roadiecfg.Config, stderr io
 		if p.given("from", "to") && p.cmd == "plan" {
 			return endpoints{}, false, usageError(stderr, p.cmd, "give either <staging> or --from and --to, not both")
 		}
-		s := tgt
+		s, name := tgt, p.configKeyName("target")
 		switch len(p.args) {
 		case 0:
 		case 1:
-			s = p.args[0]
+			s, name = p.args[0], stagingArgName
 		default:
 			return endpoints{}, false, usageError(stderr, p.cmd, "one staging at a time; got %d", len(p.args))
 		}
@@ -183,16 +200,17 @@ func (p *parsed) runEndpoints(mode engine.Mode, cfg *roadiecfg.Config, stderr io
 			return endpoints{}, false, usageError(stderr, p.cmd,
 				"%s needs the staging copy: a site path, ssh://..., @alias or DSN (or target: in .roadie/config.yaml; rhythm-roadie config init writes one)", p.cmd)
 		}
-		return endpoints{from: s, to: s}, true, nil
+		return endpoints{from: s, to: s, fromName: name, toName: name}, true, nil
 	}
 	if len(p.args) > 0 {
 		return endpoints{}, false, usageError(stderr, p.cmd, "unexpected argument %q; name the source with --from and the target with --to", p.args[0])
 	}
+	srcName, tgtName := p.configKeyName("source"), p.configKeyName("target")
 	if p.f.from != "" {
-		src = p.f.from
+		src, srcName = p.f.from, "--from"
 	}
 	if p.f.to != "" {
-		tgt = p.f.to
+		tgt, tgtName = p.f.to, "--to"
 	}
 	switch {
 	case p.cmd == "plan" && src == "":
@@ -202,20 +220,24 @@ func (p *parsed) runEndpoints(mode engine.Mode, cfg *roadiecfg.Config, stderr io
 		return endpoints{}, false, usageError(stderr, p.cmd,
 			"%s needs --from and --to (or source: and target: in .roadie/config.yaml; rhythm-roadie config init writes one)", p.cmd)
 	}
-	return endpoints{from: src, to: tgt}, false, nil
+	return endpoints{from: src, to: tgt, fromName: srcName, toName: tgtName}, false, nil
 }
+
+// stagingArgName names the <staging> argument in the password warning.
+const stagingArgName = "the <staging> argument"
 
 // parseEndpoint parses one endpoint and fills its password from the
 // environment. An inline DSN password is accepted with the PRD 6.2
-// warning, printed once per run by warn.
-func parseEndpoint(raw, flagName, envName string, warn func(string)) (core.Endpoint, error) {
+// warning, printed once per run by warn; where names the place the
+// value came from.
+func parseEndpoint(raw, where, envName string, warn func(string)) (core.Endpoint, error) {
 	e, err := dep.parseEndpoint(raw)
 	if err != nil {
 		return e, scrubPassword(err, raw)
 	}
 	if e.Kind == core.DSN {
 		if e.Password != "" {
-			warn(fmt.Sprintf("the password in %s is visible to other users of this machine; use %s", flagName, envName))
+			warn(fmt.Sprintf("the password in %s is visible to other users of this machine; use %s", where, envName))
 		} else if v, ok := dep.env(envName); ok {
 			e.Password = v
 		}
@@ -274,19 +296,19 @@ func (p *parsed) buildJob(mode engine.Mode, cfg *roadiecfg.Config, stderr io.Wri
 		}
 	}
 	j := engine.Job{Mode: mode, Config: cfg, Opts: opts, Clock: dep.now}
-	fromFlag, fromEnv := "--from", "ROADIE_FROM_PASSWORD"
+	fromEnv := "ROADIE_FROM_PASSWORD"
 	if staging {
 		// The staging is the target that prepare writes to.
-		fromFlag, fromEnv = "the staging", "ROADIE_TO_PASSWORD"
+		fromEnv = "ROADIE_TO_PASSWORD"
 	}
-	if j.From, err = parseEndpoint(eps.from, fromFlag, fromEnv, warn); err != nil {
+	if j.From, err = parseEndpoint(eps.from, eps.fromName, fromEnv, warn); err != nil {
 		return j, endpointError(stderr, p.cmd, err)
 	}
 	switch {
 	case staging:
 		j.To = j.From
 	case eps.to != "":
-		if j.To, err = parseEndpoint(eps.to, "--to", "ROADIE_TO_PASSWORD", warn); err != nil {
+		if j.To, err = parseEndpoint(eps.to, eps.toName, "ROADIE_TO_PASSWORD", warn); err != nil {
 			return j, endpointError(stderr, p.cmd, err)
 		}
 		if err := writableDump(j.To); err != nil {
