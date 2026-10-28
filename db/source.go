@@ -202,6 +202,10 @@ func (s *source) header() {
 		return
 	}
 	s.pass(core.StmtSet, "/*!40101 SET NAMES utf8mb4 */;\n")
+	// As mysqldump does: SHOW CREATE TABLE keeps WordPress's DEFAULT
+	// '0000-00-00 00:00:00', which MySQL 8's default sql_mode
+	// (NO_ZERO_DATE under STRICT_TRANS_TABLES) refuses.
+	s.pass(core.StmtSet, "/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;\n")
 	s.pass(core.StmtSet, "/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;\n")
 }
 
@@ -209,6 +213,7 @@ func (s *source) header() {
 func (s *source) trailer() {
 	switch s.c.engine {
 	case core.MySQL, core.MariaDB:
+		s.pass(core.StmtSet, "/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;\n")
 		s.pass(core.StmtSet, "/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;\n")
 		s.pass(core.StmtComment, "-- Dump completed\n")
 	case core.Postgres:

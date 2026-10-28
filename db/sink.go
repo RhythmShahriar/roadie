@@ -79,6 +79,19 @@ func (c *Conn) newSink(ctx context.Context, o SinkOptions) (core.Sink, error) {
 		if _, err := c.conn.ExecContext(ctx, "SET foreign_key_checks = 0"); err != nil {
 			return nil, importError(err, s.st)
 		}
+		// WordPress tables keep DEFAULT '0000-00-00 00:00:00', which
+		// MySQL 8's default sql_mode refuses. mysqldump's own header
+		// relaxes the mode; a stream without that header is loaded the
+		// same way.
+		var cur string
+		if err := c.conn.QueryRowContext(ctx, "SELECT @@SESSION.sql_mode").Scan(&cur); err != nil {
+			return nil, importError(err, s.st)
+		}
+		if mode, ok := relaxedSQLMode(cur); ok {
+			if _, err := c.conn.ExecContext(ctx, "SET SESSION sql_mode = '"+mode+"'"); err != nil {
+				return nil, importError(err, s.st)
+			}
+		}
 	case core.SQLite:
 		if _, err := c.conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
 			return nil, importError(err, s.st)
@@ -86,6 +99,29 @@ func (c *Conn) newSink(ctx context.Context, o SinkOptions) (core.Sink, error) {
 	}
 	c.busy = true
 	return s, nil
+}
+
+// relaxedSQLMode is mode without NO_ZERO_DATE and NO_ZERO_IN_DATE; ok
+// says whether it differs. A mode holding anything but letters, digits,
+// underscores and commas is left alone.
+func relaxedSQLMode(mode string) (string, bool) {
+	for _, r := range mode {
+		if r != '_' && r != ',' && (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+			return mode, false
+		}
+	}
+	var keep []string
+	changed := false
+	for _, m := range strings.Split(mode, ",") {
+		switch strings.ToUpper(m) {
+		case "NO_ZERO_DATE", "NO_ZERO_IN_DATE":
+			changed = true
+		case "":
+		default:
+			keep = append(keep, m)
+		}
+	}
+	return strings.Join(keep, ","), changed
 }
 
 func (s *sink) State() core.TargetState { return s.state }
