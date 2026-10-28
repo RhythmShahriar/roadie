@@ -71,7 +71,9 @@ var templates = map[Template]template{
 	DBExport:       {format: "%w db export - --skip-plugins --skip-themes --single-transaction --skip-triggers"},
 	DBExportTables: {format: "%w db export - --tables=%q --skip-plugins --skip-themes --single-transaction --skip-triggers"},
 	Cat:            {format: "cat -- %q"},
-	TestFile:       {format: "test -f -- %q"},
+	// test takes no "--" (POSIX test reads it as an operand, so sh exits
+	// 2); the path is always absolute, so it never starts with a dash.
+	TestFile:       {format: "test -f %q"},
 	Find:           {format: `find %q -maxdepth %n -printf '%y %s %P\n'`},
 	MySQLDump:      {format: "mysqldump --defaults-extra-file=/dev/stdin --single-transaction --skip-triggers --no-tablespaces --hex-blob %q%v"},
 	PGDump:         {format: pgWrapper + "pg_dump --format=plain --no-owner --no-privileges --host=%q --port=%n --username=%q --dbname=%q%v"},
