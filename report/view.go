@@ -274,6 +274,37 @@ func (r *report) checkFindings(id string) []core.Finding {
 	return out
 }
 
+// checkTally sums a check's findings: "280 hits in 8 columns", or
+// "3 hits" when they name no column. "" for none.
+func checkTally(fs []core.Finding) string {
+	if len(fs) == 0 {
+		return ""
+	}
+	var hits int64
+	places := map[string]bool{}
+	columns := true
+	for _, f := range fs {
+		hits += max(f.Count, 1)
+		for _, l := range f.Locations {
+			switch {
+			case l.Column != "":
+				places[l.Table+"."+l.Column] = true
+			case l.File != "":
+				places[l.File], columns = true, false
+			case l.Table != "":
+				places[l.Table], columns = true, false
+			}
+		}
+	}
+	out := plural(hits, "hit", "hits")
+	if n := int64(len(places)); n > 0 && columns {
+		out += " in " + plural(n, "column", "columns")
+	} else if n > 0 {
+		out += " in " + plural(n, "place", "places")
+	}
+	return out
+}
+
 // keyID is the ID of the key that signed the report, "" when unsigned.
 func (r *report) keyID() string {
 	if r.data.Signature == nil {

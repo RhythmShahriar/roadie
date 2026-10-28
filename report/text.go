@@ -79,44 +79,66 @@ func ShortKeyID(id string) string {
 // checkLabels name verify's checks as the screen and the reports say
 // them (product.md 5.3). A check without a label shows its ID.
 var checkLabels = map[string]string{
-	core.FindingExactSurvivors:       "No pseudonymised value survives",
-	core.FindingPIIEmail:             "No real-looking emails",
-	core.FindingPIIPhone:             "No real-looking phones",
-	core.FindingPIIName:              "No real-looking names",
-	core.FindingPIIAddress:           "No real-looking addresses",
-	core.FindingPIIIP:                "No public IP addresses",
-	core.FindingPIICard:              "No card numbers",
-	core.FindingPIIIBAN:              "No IBANs",
-	"keys":                           "No live keys",
-	core.FindingURLProduction:        "No production URLs",
-	core.FindingURLProductionSiteURL: "Site URL is the copy's",
-	"side-effects":                   "Side effects off",
-	core.FindingConfigEnvironment:    "WP_ENVIRONMENT_TYPE is staging",
-	core.FindingSearchIndexable:      "Kept out of search engines",
-	core.FindingUploadsPersonal:      "No personal files in uploads",
-	core.FindingUncoveredColumn:      "Every personal-looking column covered",
+	core.FindingExactSurvivors:           "No pseudonymised value survives",
+	core.FindingPIIEmail:                 "No real-looking emails",
+	core.FindingPIIPhone:                 "No real-looking phones",
+	core.FindingPIIName:                  "No real-looking names",
+	core.FindingPIIAddress:               "No real-looking addresses",
+	core.FindingPIIIP:                    "No public IP addresses",
+	core.FindingPIICard:                  "No card numbers",
+	core.FindingPIIIBAN:                  "No IBANs",
+	"keys":                               "No live keys",
+	core.FindingURLProduction:            "No production URLs",
+	core.FindingURLProductionSiteURL:     "Site URL is the copy's",
+	"side-effects":                       "Side effects off",
+	core.FindingConfigEnvironment:        "WP_ENVIRONMENT_TYPE is staging",
+	core.FindingSearchIndexable:          "Kept out of search engines",
+	core.FindingUploadsPersonal:          "No personal files in uploads",
+	core.FindingUncoveredColumn:          "Every personal-looking column covered",
+	core.FindingDataEncrypted:            "Encrypted values listed",
+	core.FindingDataUnparseable:          "Every serialized value parsed",
+	"key.live":                           "No live keys",
+	core.FindingKeyGeneric:               "No secret-looking settings",
+	core.FindingKeyLiveMode:              "No gateway in live mode",
+	core.FindingKeyUnknownEnv:            "No provider key of unknown mode",
+	core.FindingConfigPointsAtProduction: "Nothing points at production",
+	core.FindingConfigSalts:              "Salts and APP_KEY are the copy's own",
+	core.FindingAuthNone:                 "Asks for a password",
+	core.FindingSoundcheckFailed:         "Soundcheck passed",
+	core.FindingSideEffectNotApplicable:  "Database only: no files to check",
 }
 
 // checkNames name verify's checks without a verdict, for a check that
 // has findings: "No real-looking emails" above its own findings would
 // read as reassurance.
 var checkNames = map[string]string{
-	core.FindingExactSurvivors:       "Pseudonymised values",
-	core.FindingPIIEmail:             "Real-looking emails",
-	core.FindingPIIPhone:             "Real-looking phones",
-	core.FindingPIIName:              "Real-looking names",
-	core.FindingPIIAddress:           "Real-looking addresses",
-	core.FindingPIIIP:                "Public IP addresses",
-	core.FindingPIICard:              "Card numbers",
-	core.FindingPIIIBAN:              "IBANs",
-	"keys":                           "Live keys",
-	core.FindingURLProduction:        "Production URLs",
-	core.FindingURLProductionSiteURL: "Site URL",
-	"side-effects":                   "Side effects",
-	core.FindingConfigEnvironment:    "WP_ENVIRONMENT_TYPE",
-	core.FindingSearchIndexable:      "Search engines",
-	core.FindingUploadsPersonal:      "Files in uploads",
-	core.FindingUncoveredColumn:      "Personal-looking columns",
+	core.FindingExactSurvivors:           "Pseudonymised values",
+	core.FindingPIIEmail:                 "Real-looking emails",
+	core.FindingPIIPhone:                 "Real-looking phones",
+	core.FindingPIIName:                  "Real-looking names",
+	core.FindingPIIAddress:               "Real-looking addresses",
+	core.FindingPIIIP:                    "Public IP addresses",
+	core.FindingPIICard:                  "Card numbers",
+	core.FindingPIIIBAN:                  "IBANs",
+	"keys":                               "Live keys",
+	core.FindingURLProduction:            "Production URLs",
+	core.FindingURLProductionSiteURL:     "Site URL",
+	"side-effects":                       "Side effects",
+	core.FindingConfigEnvironment:        "WP_ENVIRONMENT_TYPE",
+	core.FindingSearchIndexable:          "Search engines",
+	core.FindingUploadsPersonal:          "Files in uploads",
+	core.FindingUncoveredColumn:          "Personal-looking columns",
+	core.FindingDataEncrypted:            "Encrypted values",
+	core.FindingDataUnparseable:          "Unparsed serialized values",
+	"key.live":                           "Live keys",
+	core.FindingKeyGeneric:               "Secret-looking settings",
+	core.FindingKeyLiveMode:              "Gateways in live mode",
+	core.FindingKeyUnknownEnv:            "Provider keys of unknown mode",
+	core.FindingConfigPointsAtProduction: "Points at production",
+	core.FindingConfigSalts:              "Salts and APP_KEY",
+	core.FindingAuthNone:                 "No password",
+	core.FindingSoundcheckFailed:         "Soundcheck",
+	core.FindingSideEffectNotApplicable:  "Database only",
 }
 
 // CheckTitle names a check as a list shows it with its status: the
@@ -129,6 +151,9 @@ func CheckTitle(id, status string) string {
 		if n, ok := checkNames[id]; ok {
 			return n
 		}
+		if _, ok := effectLabels[id]; ok && strings.HasPrefix(id, "side-effect.") {
+			return EffectLabel(id, false)
+		}
 		if _, ok := checkLabels[id]; ok {
 			return id
 		}
@@ -136,11 +161,15 @@ func CheckTitle(id, status string) string {
 	return CheckLabel(id)
 }
 
-// CheckLabel names a check: "No real-looking emails" for pii.email. A
-// check without a label is named by its ID.
+// CheckLabel names a check: "No real-looking emails" for pii.email, "Off:
+// WP-Cron" for side-effect.cron. A check without a label is named by its
+// ID.
 func CheckLabel(id string) string {
 	if l, ok := checkLabels[id]; ok {
 		return l
+	}
+	if _, ok := effectLabels[id]; ok && strings.HasPrefix(id, "side-effect.") {
+		return "Off: " + EffectLabel(id, false)
 	}
 	return id
 }

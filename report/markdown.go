@@ -109,12 +109,10 @@ func (r *report) markdown(b *bytes.Buffer) {
 			}
 			result := checkResult(c)
 			if c.Status == "fail" || c.Status == "warn" {
-				var titles []string
-				for _, f := range r.checkFindings(c.ID) {
-					titles = append(titles, findingTitle(f))
-				}
-				if len(titles) > 0 {
-					result = strings.Join(titles, "; ")
+				// One total per check: the findings list below has each
+				// one's title.
+				if t := checkTally(r.checkFindings(c.ID)); t != "" {
+					result = t
 				}
 			}
 			fmt.Fprintf(b, "| %s | %s %s |\n", md(CheckTitle(c.ID, c.Status)), mark, md(result))

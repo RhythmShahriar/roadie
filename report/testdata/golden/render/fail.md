@@ -12,10 +12,10 @@
 
 | Check | Result |
 |---|---|
-| Real-looking emails | ❌ 3 real-looking emails |
+| Real-looking emails | ❌ 3 hits in 2 columns |
 | No real-looking phones | ✅ 41,077 checked |
-| WP\_ENVIRONMENT\_TYPE | ⚠️ WP\_ENVIRONMENT\_TYPE is unset |
-| Live keys | ❌ Stripe live key |
+| WP\_ENVIRONMENT\_TYPE | ⚠️ 1 hit in 1 place |
+| Live keys | ❌ 1 hit in 1 column |
 | No personal files in uploads | ➖ a dump has no uploads |
 
 ### Findings
