@@ -553,8 +553,11 @@ func TestSecretFile(t *testing.T) {
 
 func TestIsolatedEnv(t *testing.T) {
 	env := isolatedEnv("/w/home", "/bin", []string{"X=1"})
-	for _, want := range []string{"HOME=/w/home", "XDG_CONFIG_HOME=/w/home/.config", "XDG_CACHE_HOME=/w/home/.cache",
-		"RHYTHM_CONFIG_DIR=/w/home/.config/rhythm", "RHYTHM_NO_UPDATE_CHECK=1", "RHYTHM_OFFLINE=1", "PATH=/bin", "X=1"} {
+	// The folders are joined with the OS's separator: \w\home\.config on
+	// Windows.
+	j := filepath.FromSlash
+	for _, want := range []string{"HOME=/w/home", "XDG_CONFIG_HOME=" + j("/w/home/.config"), "XDG_CACHE_HOME=" + j("/w/home/.cache"),
+		"RHYTHM_CONFIG_DIR=" + j("/w/home/.config/rhythm"), "RHYTHM_NO_UPDATE_CHECK=1", "RHYTHM_OFFLINE=1", "PATH=/bin", "X=1"} {
 		if !slices.Contains(env, want) {
 			t.Errorf("env lacks %s", want)
 		}
