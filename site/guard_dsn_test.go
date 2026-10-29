@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"io/fs"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -41,7 +42,9 @@ func sqliteWP(t *testing.T, urls map[string]string) core.Endpoint {
 			t.Fatal(err)
 		}
 	}
-	e, err := ParseEndpoint("sqlite://" + p)
+	// sqlite:///abs/path, which on Windows is sqlite:///C:/x.
+	u := url.URL{Scheme: "sqlite", Path: "/" + strings.TrimPrefix(filepath.ToSlash(p), "/")}
+	e, err := ParseEndpoint(u.String())
 	if err != nil {
 		t.Fatal(err)
 	}

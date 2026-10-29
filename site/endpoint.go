@@ -365,7 +365,7 @@ func parseLocal(s string) (core.Endpoint, error) {
 		return core.Endpoint{Kind: core.DumpFile, Raw: s, Display: s, Path: s}, nil
 	case err == nil && fi.IsDir():
 		return core.Endpoint{Kind: core.LocalSite, Raw: s, Display: s, Path: s}, nil
-	case err != nil && !errors.Is(err, os.ErrNotExist):
+	case err != nil && !errors.Is(err, os.ErrNotExist) && !unnamable(err):
 		return core.Endpoint{}, cli.Usagef("endpoint: %s can't be read: %v", s, pathErr(err))
 	}
 	return core.Endpoint{}, notAnEndpoint(s)

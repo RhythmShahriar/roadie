@@ -30,3 +30,7 @@ func keepOwner(root *os.Root, tmp string, orig fs.FileInfo) error {
 func renameReplace(root *os.Root, tmp, name, _ string) error {
 	return root.Rename(tmp, name)
 }
+
+// unnamable is Windows' "no file can have this name"; on Unix every name
+// but an empty one is legal, so a missing file says fs.ErrNotExist.
+func unnamable(error) bool { return false }
