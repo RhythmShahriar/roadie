@@ -99,8 +99,13 @@ func configInit(ctx context.Context, p *parsed, stdout, stderr io.Writer) error 
 	}
 	fmt.Fprintf(stdout, "Wrote .roadie/config.yaml for %s.\n", stackWords[stack])
 	if len(suggestions) > 0 {
-		fmt.Fprintf(stdout, "Listed %s that look personal under columns: as suggestions; check each one.\n",
-			plural(int64(len(suggestions)), "column", "columns"))
+		n := int64(len(suggestions))
+		looks := "look"
+		if n == 1 {
+			looks = "looks"
+		}
+		fmt.Fprintf(stdout, "Listed %s that %s personal under columns: as suggestions; check each one.\n",
+			plural(n, "column", "columns"), looks)
 	}
 	fmt.Fprintln(stdout, "Set source:, target: and url: in it, then run rhythm-roadie plan.")
 	excludeReports(stdout, stderr)

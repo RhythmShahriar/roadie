@@ -240,7 +240,7 @@ func TestConfigInitFrom(t *testing.T) {
 	want := "columns: []\n# Suggested by config init --from: these columns look personal and no profile covers them.\n" +
 		"# Check each rule, then uncomment it (and set columns: to the list).\n#  - table: wp_loyalty_members\n#    column: email\n#    rule: email\n"
 	if !strings.Contains(string(file), want) || !strings.Contains(string(file), "stack: woocommerce") ||
-		!strings.Contains(out, "for a WooCommerce site") || !strings.Contains(out, "Listed 1 column that look personal") {
+		!strings.Contains(out, "for a WooCommerce site") || !strings.Contains(out, "Listed 1 column that looks personal") {
 		t.Errorf("out %q\nfile:\n%s", out, file)
 	}
 	if len(fx.jobs) != 1 || fx.jobs[0].Mode != engine.Plan || !fx.jobs[0].Opts.SchemaOnly || fx.jobs[0].From.Raw != "prod.sql.gz" {
