@@ -67,7 +67,9 @@ func targetOf(cr *caseRun, args []string) string {
 			if err != nil || !strings.Contains(filepath.Base(p), ".sql") {
 				return ""
 			}
-			return p
+			// Clean gives Walk's separators: ${work}/out.sql is
+			// C:\w\out.sql on Windows.
+			return filepath.Clean(p)
 		}
 	}
 	return ""

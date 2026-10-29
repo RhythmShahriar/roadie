@@ -33,7 +33,9 @@ printf '%s\n' "${TESTBED_TOOLS:-}" | while read -r name version url sum; do
 		echo "tools: $name $version not fetched (download failed)"
 		continue
 	fi
-	got=$(sha256sum "$out/release.part" | cut -d' ' -f1)
+	# Read from stdin: sha256sum escapes a name holding a backslash (a
+	# Windows path) with a leading \ on its line.
+	got=$(sha256sum <"$out/release.part" | cut -d' ' -f1)
 	if [ "$got" != "$sum" ]; then
 		printf 'the sha256 of %s is %s, not the pinned %s\n' "$url" "$got" "$sum" >"$out/not-run"
 		rm -f "$out/release.part"

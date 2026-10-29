@@ -480,7 +480,8 @@ func TestUnpackRelease(t *testing.T) {
 	if err != nil || filepath.Base(bin) != "replibyte" {
 		t.Fatalf("%q %v", bin, err)
 	}
-	if fi, _ := os.Stat(bin); fi.Mode()&0o100 == 0 {
+	// Windows has no executable bit to check (unixModes).
+	if fi, _ := os.Stat(bin); unixModes && fi.Mode()&0o100 == 0 {
 		t.Error("the binary must be executable")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "escape")); err == nil {
