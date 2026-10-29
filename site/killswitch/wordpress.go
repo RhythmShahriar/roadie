@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"net/url"
 	"path"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -631,6 +632,10 @@ func mailStep(o Options) core.Step {
 				out = append(out, finding(core.FindingSideEffectConnectorChange, core.SeverityHigh,
 					"the installed Echo connector differs from the one Roadie ships", prepareFix(s), core.Location{File: EchoPluginPath}))
 			}
+			if how, at, sealed := echoMode(ctx, s); !sealed {
+				se.Status, se.How = "on", how
+				out = append(out, finding(id, core.SeverityCritical, how, prepareFix(s), at))
+			}
 		case hasHooks(ctx, s, hookPreMail):
 			se.How, se.Undo = "no Echo connector; roadie-staging.php blocks wp_mail", "delete "+MuPluginPath
 		default:
@@ -673,6 +678,78 @@ func mailStep(o Options) core.Step {
 		return se, out, nil
 	}
 	return st
+}
+
+// EchoSettingsPath is the Echo connector's settings file, relative to
+// the site root.
+const EchoSettingsPath = "wp-content/" + wordpress.SettingsPath
+
+var (
+	// reSettingsMode finds 'mode' => '...' in the connector's settings
+	// file, which returns a PHP array of plain strings.
+	reSettingsMode = regexp.MustCompile(`['"]mode['"]\s*=>\s*(?:'([^']*)'|"([^"]*)")`)
+	// rePutenvMode finds putenv( 'RHYTHM_ECHO_MODE=...' ) in wp-config.php.
+	rePutenvMode = regexp.MustCompile(`putenv\s*\(\s*['"]RHYTHM_ECHO_MODE=([^'"]*)['"]`)
+)
+
+// echoMode reads the mode the Echo connector runs in, as it does: the
+// RHYTHM_ECHO_MODE constant, then the environment variable (as wp-config.php
+// sets it with putenv), then 'mode' in its settings file. In observe mode
+// the connector lets mail out, so anything but seal fails the check. So
+// does a site where nothing says seal: Roadie always writes the
+// settings file with seal mode, so its absence means the install changed.
+// It returns why the check fails, where it looked and whether mail is sealed.
+func echoMode(ctx context.Context, s core.Site) (string, core.Location, bool) {
+	judge := func(v, where string, at core.Location) (string, core.Location, bool) {
+		v = strings.ToLower(strings.TrimSpace(v))
+		if v == "seal" {
+			return "", at, true
+		}
+		return where + " sets the Echo connector to " + printableMode(v) + " mode, so mail from this copy reaches real people", at, false
+	}
+	if cfg, err := s.ReadFile(ctx, "wp-config.php"); err == nil {
+		if f, err := wpconfig.Parse(cfg); err == nil {
+			if d, ok := f.Lookup("RHYTHM_ECHO_MODE"); ok {
+				if !d.Literal {
+					return "RHYTHM_ECHO_MODE in wp-config.php is an expression Roadie can't read, so the Echo connector may let mail out", fileAt(d.Line), false
+				}
+				return judge(d.Value, "RHYTHM_ECHO_MODE in wp-config.php", fileAt(d.Line))
+			}
+		}
+		if m := rePutenvMode.FindSubmatchIndex(cfg); m != nil {
+			return judge(string(cfg[m[2]:m[3]]), "putenv( 'RHYTHM_ECHO_MODE' ) in wp-config.php", fileAt(bytes.Count(cfg[:m[0]], []byte("\n"))+1))
+		}
+	}
+	at := core.Location{File: EchoSettingsPath}
+	b, err := s.ReadFile(ctx, EchoSettingsPath)
+	if err != nil {
+		return "the Echo connector's settings file is missing, so nothing sets it to seal mode", at, false
+	}
+	m := reSettingsMode.FindSubmatch(b)
+	if m == nil {
+		return "the Echo connector's settings file sets no mode, so nothing sets it to seal mode", at, false
+	}
+	if i := bytes.Index(b, m[0]); i >= 0 {
+		at.Line = bytes.Count(b[:i], []byte("\n")) + 1
+	}
+	return judge(string(m[1])+string(m[2]), "the Echo connector's settings file", at)
+}
+
+// printableMode keeps a mode read from a file short and plain for a title.
+func printableMode(v string) string {
+	if v == "" {
+		return "an empty"
+	}
+	ok := len(v) <= 20
+	for _, c := range v {
+		if c < 'a' || c > 'z' {
+			ok = false
+		}
+	}
+	if !ok {
+		return "an unknown"
+	}
+	return v
 }
 
 func fallback(v, d string) string {

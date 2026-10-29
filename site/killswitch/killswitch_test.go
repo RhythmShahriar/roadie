@@ -659,3 +659,51 @@ func TestGatewaysWooPaymentsDevMode(t *testing.T) {
 		}
 	}
 }
+
+// The Echo connector in observe mode lets mail out: the mail check fails
+// whether the settings file, a RHYTHM_ECHO_MODE constant or a putenv in
+// wp-config.php says so, or when the settings file is gone. A constant
+// set to seal wins over the settings file, as in the connector.
+func TestMailEchoMode(t *testing.T) {
+	o := fixtureOptions()
+	const define = "define( 'RHYTHM_ECHO_MODE', 'observe' );\n"
+	settings := "wp-content/" + wordpress.SettingsPath
+	for _, c := range []struct {
+		name string
+		edit func(ctx context.Context, s core.Site, cfg []byte)
+		fail bool
+	}{
+		{"as prepared", func(context.Context, core.Site, []byte) {}, false},
+		{"settings observe", func(ctx context.Context, s core.Site, _ []byte) {
+			b, _ := s.ReadFile(ctx, settings)
+			_ = s.WriteFile(ctx, settings, bytes.Replace(b, []byte("'seal'"), []byte("'observe'"), 1), 0o644)
+		}, true},
+		{"settings missing", func(ctx context.Context, s core.Site, _ []byte) { _ = s.Remove(ctx, settings) }, true},
+		{"define observe", func(ctx context.Context, s core.Site, cfg []byte) {
+			_ = s.WriteFile(ctx, "wp-config.php", bytes.Replace(cfg, []byte("<?php\r\n"), []byte("<?php\r\n"+define), 1), 0o644)
+		}, true},
+		{"putenv observe", func(ctx context.Context, s core.Site, cfg []byte) {
+			_ = s.WriteFile(ctx, "wp-config.php", bytes.Replace(cfg, []byte("<?php\r\n"), []byte("<?php\r\nputenv( 'RHYTHM_ECHO_MODE=observe' );\n"), 1), 0o644)
+		}, true},
+		{"define seal over settings observe", func(ctx context.Context, s core.Site, cfg []byte) {
+			_ = s.WriteFile(ctx, "wp-config.php", bytes.Replace(cfg, []byte("<?php\r\n"), []byte("<?php\r\ndefine( 'RHYTHM_ECHO_MODE', 'seal' );\n"), 1), 0o644)
+			b, _ := s.ReadFile(ctx, settings)
+			_ = s.WriteFile(ctx, settings, bytes.Replace(b, []byte("'seal'"), []byte("'observe'"), 1), 0o644)
+		}, false},
+	} {
+		ctx := context.Background()
+		d := prodDB()
+		s := fixtureSite(prodFiles(), d)
+		applyAll(t, s, d, o)
+		cfg, err := s.ReadFile(ctx, "wp-config.php")
+		if err != nil || !bytes.HasPrefix(cfg, []byte("<?php\r\n")) {
+			t.Fatalf("wp-config.php: %v", err)
+		}
+		c.edit(ctx, s, cfg)
+		status, ids := check(t, s, o)
+		failed := status[core.FindingSideEffectMail] == "on" && slices.Contains(ids[core.FindingSideEffectMail], core.FindingSideEffectMail)
+		if failed != c.fail {
+			t.Errorf("%s: mail %q %v, want fail=%v", c.name, status[core.FindingSideEffectMail], ids[core.FindingSideEffectMail], c.fail)
+		}
+	}
+}

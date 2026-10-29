@@ -130,6 +130,9 @@ func printable(s string, n int) string {
 func (r *run) extraChecks(ctx context.Context) {
 	if r.j.Opts.SiteURL != "" {
 		r.siteHTTP(ctx)
+		if r.wordpressSite() && !r.skip.skips(core.FindingSideEffectMail) {
+			r.sitePing(ctx)
+		}
 	}
 	if r.j.Opts.Echo && !r.skip.skips(core.FindingSideEffectMail) {
 		r.echo(ctx)

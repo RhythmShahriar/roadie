@@ -1,7 +1,10 @@
 # side-effect.mail: mail from the copy goes out for real (critical)
 
-What: No Echo connector and no pre_wp_mail block, an SMTP or API mailer with
-live credentials, or Echo's seal off or letting mail through.
+What: No Echo connector and no pre_wp_mail block, a connector in observe mode
+(its settings file, or RHYTHM_ECHO_MODE in wp-config.php), an SMTP or API
+mailer with live credentials, or Echo's seal off or letting mail through.
+With --site, verify also asks the connector's ping route
+(rhythm-echo/v1/ping) whether it is active and sealed.
 
 Why it matters: A copy that sends mail emails real customers: order notes,
 renewals, password resets.

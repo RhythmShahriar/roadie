@@ -94,7 +94,8 @@ func TestRunUnknownCheckNotCounted(t *testing.T) {
 // the row never says "sealed" above the finding that it isn't Roadie's.
 func TestConnectorChangedFailsEchoRow(t *testing.T) {
 	steps := killswitch.Steps(core.StackWordPress, killswitch.Options{})
-	st := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\n"), killswitch.EchoPluginPath: []byte("<?php")})
+	st := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\n"), killswitch.EchoPluginPath: []byte("<?php"),
+		killswitch.EchoSettingsPath: []byte("<?php\nreturn array(\n\t'mode' => 'seal',\n);\n")})
 	st.StackName = core.StackWordPress
 	res := runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"})), Steps: steps})
 	if !slices.ContainsFunc(res.Findings, func(f core.Finding) bool { return f.ID == core.FindingSideEffectConnectorChange }) {

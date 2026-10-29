@@ -230,7 +230,9 @@ What to check:
       --allow-emails <globs> addresses that may stay real, e.g. *@agency.example
       --allow-phones <globs> numbers that may stay real
       --site <url>           also fetch the staging site's /robots.txt and home page headers
-                             (never a production host) to check noindex and basic auth
+                             (never a production host) to check noindex and basic auth; on
+                             WordPress, also ask the Echo connector's ping route whether it
+                             seals mail
       --insecure-tls <host>  accept a self-signed certificate on this one staging host
       --echo[=<url>]         also ask Echo whether its seal is on and how many messages it
                              let through since the copy (default http://127.0.0.1:8025;

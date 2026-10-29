@@ -112,7 +112,7 @@ func (r *run) checks() []core.Check {
 	for _, st := range r.j.Steps {
 		listed[st.ID()] = true
 	}
-	if r.j.Opts.Echo {
+	if r.j.Opts.Echo || r.j.Opts.SiteURL != "" && r.wordpressSite() {
 		listed[core.FindingSideEffectMail] = true
 	}
 	ids := make([]string, 0, len(listed))
