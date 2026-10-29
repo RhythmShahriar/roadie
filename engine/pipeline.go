@@ -455,35 +455,43 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 	known = starts
 	idx := newIndexer(ctx, p.cfg, p.defs, p.appSite(), known)
 	idx.siteBlogs = p.opts.Sites
-	if p.opts.OnePass {
-		idx.entries = nil // Known is sealed before the field-type rules exist
-	}
+	// --one-pass over an input that can be read again (a dump file, a
+	// database) still reads it once without Known first: the source's own
+	// site URLs, its blogs and its form fields must be known before a
+	// row is written (PRD 10.4). Only the name index is skipped.
+	pre := p.opts.OnePass && rereadable(p.in)
 	var (
 		final  *profile.Compiled
 		schema *core.Schema
 		plan   urlPlan
 		uncov  uncoveredResult
 	)
-	if !p.opts.OnePass {
+	if !p.opts.OnePass || pre {
+		ix := idx
+		if pre {
+			ix = newIndexer(ctx, p.cfg, p.defs, p.appSite(), nil)
+		}
 		p.phase("index")
-		fp, s, err := p.index(ctx, idx)
+		fp, s, err := p.index(ctx, ix)
 		if err != nil {
 			return out, err
 		}
 		out.Result.Input = &fp
 		schema = s
-		p.gatewayIDs = killswitch.SourceGatewayIDs(idx.gatewayOpts)
+		p.gatewayIDs = killswitch.SourceGatewayIDs(ix.gatewayOpts)
 		if s != nil {
 			p.dialect = s.Dialect
 		}
-		if final, err = p.finalCompile(idx, schema); err != nil {
+		if final, err = p.finalCompile(ix, schema); err != nil {
 			return out, err
 		}
-		known.Seal()
-		idx.addr.seal()
-		idx.siteUsers.seal(idx.kept)
-		uncov = p.uncovered(schema, final, idx)
-		if plan, err = p.urlPlan(ctx, idx, final); err != nil {
+		if !pre {
+			known.Seal()
+			idx.addr.seal()
+			idx.siteUsers.seal(idx.kept)
+		}
+		uncov = p.uncovered(schema, final, ix)
+		if plan, err = p.urlPlan(ctx, ix, final); err != nil {
 			return out, err
 		}
 		// A pair the rewrite would refuse stops here, before a file of
@@ -498,7 +506,7 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 				return out, err
 			}
 		}
-		p.fill(out, idx, final, schema, plan, uncov, nil)
+		p.fill(out, ix, final, schema, plan, uncov, nil)
 		if len(uncov.Uncovered) > 0 && p.mode != Plan && !p.opts.AllowUncovered {
 			return out, uncoveredError(uncov.Uncovered)
 		}
@@ -506,7 +514,7 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 			out.Known = known
 			return out, nil
 		}
-		p.presence = &killswitch.Presence{Options: idx.options, Rows: idx.rows, Prefix: idx.prefix}
+		p.presence = &killswitch.Presence{Options: ix.options, Rows: ix.rows, Prefix: ix.prefix}
 	} else if !p.parts.noURLs {
 		if plan, err = buildURLPlan(urlSources{Production: p.cfg.Production}, p.opts.URL, p.cfg.URLMap); err != nil {
 			return out, err
@@ -545,22 +553,36 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 		return out, err
 	}
 	if p.opts.OnePass {
+		// The field-type rules join before Known is sealed: the form
+		// entry values they cover are then Known, so verify finds one
+		// the transform left (exact mode).
+		c, err := p.finalCompile(idx, schema)
 		known.Seal()
-		if final, err = p.finalCompile(idx, schema); err != nil {
+		if err != nil {
 			p.abort(ctx, out)
 			return out, err
 		}
-		uncov = p.uncovered(schema, final, idx)
-		if len(uncov.Uncovered) > 0 && p.mode != Plan && !p.opts.AllowUncovered {
-			p.abort(ctx, out)
-			st := core.Untouched
-			if p.sink != nil {
-				st = p.sink.State()
+		if !pre {
+			final = c
+			if plan, err = p.streamURLs(idx, plan); err != nil {
+				p.abort(ctx, out)
+				return out, err
 			}
-			return out, uncoveredErrorIn(uncov.Uncovered, st)
+			uncov = p.uncovered(schema, final, idx)
+			if len(uncov.Uncovered) > 0 && p.mode != Plan && !p.opts.AllowUncovered {
+				p.abort(ctx, out)
+				st := core.Untouched
+				if p.sink != nil {
+					st = p.sink.State()
+				}
+				return out, uncoveredErrorIn(uncov.Uncovered, st)
+			}
 		}
 	}
 	p.fill(out, idx, final, schema, plan, uncov, t)
+	if p.opts.OnePass && !p.parts.noData {
+		out.Result.Findings = append(out.Result.Findings, onePassFinding())
+	}
 	out.Known = &keptKnown{Known: known, excl: t.keptValues}
 	if p.sink != nil {
 		if err := p.sink.Commit(ctx); err != nil {
@@ -825,6 +847,8 @@ func (p *pipeline) transform(ctx context.Context, idx *indexer, final *profile.C
 			comp := final
 			if p.opts.OnePass {
 				idx.observe(b, src.Schema())
+			}
+			if p.opts.OnePass && final == nil {
 				if idx.wide != wide {
 					wide, joined = idx.wide, p.join(idx.wide)
 				}

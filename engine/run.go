@@ -367,6 +367,10 @@ func (r *runner) run(ctx context.Context) error {
 		if r.mode != Plan {
 			p.beforeWrite = writeStart
 		}
+		if err := r.oneReadGuard(p.in); err != nil {
+			_ = p.in.close()
+			return err
+		}
 		p.afterIndex = r.guardSource
 		// 4, 7 and 8: both passes and the commit.
 		out, err = p.run(ctx)
@@ -748,6 +752,27 @@ func (r *runner) guardSource(ctx context.Context, urls []string) error {
 	return guardTarget(ctx, site.GuardInput{From: r.j.From, To: r.j.To, FromSite: r.from, ToSite: r.to,
 		Production: r.cfg.Production, ProductionURL: r.opts.ProductionURL,
 		TargetIsStaging: r.opts.TargetIsStaging, Mode: string(r.mode), URL: r.opts.URL, SourceURLs: urls})
+}
+
+// oneReadGuard refuses --one-pass from a stream into a database or site
+// when production: names no host: a stream is read once, so the source's
+// own site URL is known only once the target has been written, too late
+// for the guard that refuses a target answering to it (an ssh tunnel to
+// production's database looks like 127.0.0.1).
+func (r *runner) oneReadGuard(in input) error {
+	if !r.opts.OnePass || rereadable(in) || r.mode == Prepare || r.samePlace {
+		return nil
+	}
+	k := r.j.To.Kind
+	if k == "" || k == core.Stdio || k == core.DumpFile {
+		return nil
+	}
+	if len(r.cfg.Production) > 0 || r.opts.ProductionURL != "" {
+		return nil
+	}
+	return core.Errorf(core.ErrConfig, 2,
+		"--one-pass reads %s once, so Roadie can't check %s against the source's own site URL before it writes. Name production's hosts in production: in .roadie/config.yaml (or pass --production <host>), or drop --one-pass.",
+		r.j.From.Display, r.j.To.Display)
 }
 
 // guardHosts are the hosts of production entries, for the plan's target
@@ -1549,6 +1574,9 @@ func (r *runner) verify(ctx context.Context, out *output, checks []core.Step) er
 		return err
 	}
 	r.res.Verify = v
+	if v != nil && r.mode == Prepare {
+		prepareFixes(v.Findings)
+	}
 	if v != nil && len(v.SideEffects) > 0 {
 		// What the target holds now, read back: the side effects only,
 		// not the config and noindex steps verify checks with them.
@@ -1574,6 +1602,22 @@ func (r *runner) verify(ctx context.Context, out *output, checks []core.Step) er
 		}
 	}
 	return nil
+}
+
+// prepareURLFixes are the fix lines of the URL findings after a prepare:
+// verify's say "Copy again", which a prepare didn't do.
+var prepareURLFixes = map[string]string{
+	core.FindingURLProduction:        "Run prepare again with --url <staging URL> so production URLs are rewritten.",
+	core.FindingURLProductionSiteURL: "Run prepare again with --url <staging URL>, or set siteurl and home to the staging URL.",
+}
+
+// prepareFixes gives a prepare's URL findings the prepare's own fix.
+func prepareFixes(fs []core.Finding) {
+	for i := range fs {
+		if fix, ok := prepareURLFixes[fs[i].ID]; ok {
+			fs[i].Fix = fix
+		}
+	}
 }
 
 // compiledRules is every rule of a set, nil for none.

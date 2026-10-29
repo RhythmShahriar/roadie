@@ -370,7 +370,12 @@ type funcInput struct {
 	fn     func(pass int) (core.Source, error)
 	opened []int
 	closed bool
+	// again makes it a dump file or a database, which --one-pass reads
+	// first for the source's site URLs; false is a stream, read once.
+	again bool
 }
+
+func (f *funcInput) readsAgain() bool { return f.again }
 
 func (f *funcInput) open(_ context.Context, pass int) (core.Source, error) {
 	f.opened = append(f.opened, pass)

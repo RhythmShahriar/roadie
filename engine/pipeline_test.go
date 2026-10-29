@@ -368,6 +368,57 @@ func TestPipelineOnePass(t *testing.T) {
 	}
 }
 
+// --one-pass over a dump file or a database reads the source's site URLs
+// first: with production: empty the siteurl is still rewritten and the
+// guard sees it. The report says the name index was skipped. Over a
+// stream a site production: doesn't name takes the copy back.
+func TestPipelineOnePassSiteURL(t *testing.T) {
+	useFakes(t)
+	p, sink, in := fixture(t, Copy, "wp_", wpUsers, nil, Options{OnePass: true, URL: "https://staging.shop.test"})
+	in.again = true
+	var guarded []string
+	p.afterIndex = func(_ context.Context, urls []string) error { guarded = urls; return nil }
+	out, err := p.run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(in.opened, []int{1, 2}) {
+		t.Errorf("passes %v", in.opened)
+	}
+	if v, _ := valueOf(t, sink, "wp_options", 0, "option_value"); v != "https://staging.shop.test" {
+		t.Errorf("siteurl %q", v)
+	}
+	if !slices.Contains(guarded, "https://shop.com") || !slices.Contains(out.Result.Production, "shop.com") {
+		t.Errorf("guarded %v, production %v", guarded, out.Result.Production)
+	}
+	if !slices.ContainsFunc(out.Result.Findings, func(f core.Finding) bool { return f.ID == core.FindingInfoOnePass }) {
+		t.Errorf("no one-pass note: %+v", out.Result.Findings)
+	}
+
+	// A target answering to the source's siteurl is refused before a
+	// row is written.
+	p, sink, in = fixture(t, Copy, "wp_", wpUsers, nil, Options{OnePass: true, URL: "https://staging.shop.test"})
+	in.again = true
+	p.afterIndex = func(context.Context, []string) error {
+		return core.Errorf(core.ErrTargetIsProduction, 3, "target-is-production: x")
+	}
+	if _, err := p.run(context.Background()); !isCode(err, core.ErrTargetIsProduction) {
+		t.Errorf("guard: %v", err)
+	}
+	if len(sink.Batches()) != 0 {
+		t.Error("refused copy wrote")
+	}
+
+	// A stream: the siteurl turns up only as it is written.
+	p, sink, _ = fixture(t, Copy, "wp_", wpUsers, nil, Options{OnePass: true, URL: "https://staging.shop.test"})
+	if _, err := p.run(context.Background()); !isCode(err, core.ErrConfig) || !strings.Contains(err.Error(), "shop.com") {
+		t.Errorf("stream: %v", err)
+	}
+	if !sink.Aborted() || sink.Committed() {
+		t.Error("stream copy kept")
+	}
+}
+
 // Two passes: pass 1 indexes, pass 2 writes; Known is sealed before pass
 // 2 and holds the structured values.
 func TestPipelineTwoPass(t *testing.T) {

@@ -49,8 +49,11 @@ func TestFormEntriesReachKnown(t *testing.T) {
 	}
 }
 
-// --one-pass seals Known before the field-type rules exist: it keeps no
-// entry values at all.
+// --one-pass keeps the field-type rules. Over a dump file it reads the
+// form definitions first, so a Gravity Forms name field whose entries
+// come before the form is faked as in two passes. Over a stream the
+// entries reach Known before it is sealed, so verify finds a name the
+// transform left.
 func TestFormEntriesOnePass(t *testing.T) {
 	useFakes(t)
 	p, _, _ := fixture(t, Copy, "wp_", formTables, nil, Options{OnePass: true})
@@ -58,7 +61,27 @@ func TestFormEntriesOnePass(t *testing.T) {
 	if idx.entries != nil {
 		t.Error("an indexer without Known keeps entries")
 	}
+
+	p, sink, in := fixture(t, Copy, "wp_", formTables, nil, Options{OnePass: true})
+	in.again = true
 	run(t, p)
+	for row, raw := range []string{"Cleo", "Marsh"} {
+		if v, _ := valueOf(t, sink, "wp_gf_entry_meta", row, "meta_value"); v == raw {
+			t.Errorf("one-pass left the Gravity Forms name %q", v)
+		}
+	}
+	if v, _ := valueOf(t, sink, "wp_gf_entry_meta", 2, "meta_value"); v != "hello there" {
+		t.Errorf("text field %q", v)
+	}
+
+	f := useFakes(t)
+	p, _, _ = fixture(t, Copy, "wp_", formTables, nil, Options{OnePass: true})
+	run(t, p)
+	for _, v := range []string{"Cleo", "Marsh"} {
+		if _, _, ok := f.known.Contains([]byte(v)); !ok {
+			t.Errorf("one-pass over a stream: %s isn't in Known", v)
+		}
+	}
 }
 
 // The kept values stop at the budget; the rest are counted.

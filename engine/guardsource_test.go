@@ -6,9 +6,11 @@ package engine
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/roadiecfg"
 	"github.com/RhythmShahriar/roadie/site"
 )
 
@@ -92,5 +94,62 @@ func TestRunGuardsSourceSiteURL(t *testing.T) {
 	}
 	if res.TargetChecked != nil {
 		t.Errorf("dump target check %v", res.TargetChecked)
+	}
+}
+
+// --one-pass from a database or a dump file reads the source's siteurl
+// before it writes, so the guard against a target answering to it still
+// runs (an ssh tunnel to production's database looks like 127.0.0.1).
+// From a stream into a database it can't, so production: must name the
+// hosts.
+func TestRunGuardsSourceSiteURLOnePass(t *testing.T) {
+	f := useRunFakes(t)
+	f.guardErr = func(in site.GuardInput) error {
+		if len(in.SourceURLs) > 0 {
+			return core.Errorf(core.ErrTargetIsProduction, 3, "target-is-production: x")
+		}
+		return nil
+	}
+	for _, mode := range []Mode{Copy, Plan} {
+		j := f.job(mode)
+		j.Config.Production = nil
+		j.Opts.OnePass = true
+		if _, err := Run(context.Background(), j); !isCode(err, core.ErrTargetIsProduction) {
+			t.Errorf("%s --one-pass: %v", mode, err)
+		}
+	}
+	if f.rec.index("sink") >= 0 || len(f.staging.Writes()) != 0 {
+		t.Errorf("refused copy wrote: %v", f.rec.all())
+	}
+
+	r := &runner{j: Job{From: core.Endpoint{Kind: core.Stdio, Display: "stdin"}, To: stagingEP},
+		opts: Options{OnePass: true}, cfg: roadiecfg.Default(), mode: Copy}
+	if err := r.oneReadGuard(&streamInput{onePass: true}); !isCode(err, core.ErrConfig) {
+		t.Errorf("stream into a database: %v", err)
+	}
+	r.cfg.Production = []string{"shop.com"}
+	if err := r.oneReadGuard(&streamInput{onePass: true}); err != nil {
+		t.Errorf("stream with production: %v", err)
+	}
+	r.cfg.Production = nil
+	r.j.To = core.Endpoint{Kind: core.DumpFile, Path: "out.sql", Display: "out.sql"}
+	if err := r.oneReadGuard(&streamInput{onePass: true}); err != nil {
+		t.Errorf("stream into a file: %v", err)
+	}
+}
+
+// After a prepare the URL findings say to run prepare again with --url,
+// not to copy again.
+func TestPrepareURLFixes(t *testing.T) {
+	fs := []core.Finding{{ID: core.FindingURLProductionSiteURL, Fix: "Copy again with --url"},
+		{ID: core.FindingURLProduction, Fix: "Copy again with --url"}, {ID: core.FindingPIIEmail, Fix: "Cover the column"}}
+	prepareFixes(fs)
+	for _, f := range fs[:2] {
+		if !strings.HasPrefix(f.Fix, "Run prepare again with --url <staging URL>") {
+			t.Errorf("%s: %q", f.ID, f.Fix)
+		}
+	}
+	if fs[2].Fix != "Cover the column" {
+		t.Errorf("other fix %q", fs[2].Fix)
 	}
 }

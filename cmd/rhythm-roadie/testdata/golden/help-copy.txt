@@ -31,7 +31,9 @@ Pseudonymise:
                              (they are listed as findings; default: stop before writing)
       --drop <tables>        leave these tables out of the copy, globs allowed
       --truncate <tables>    copy the table's structure but not its rows
-      --one-pass             skip the name index pass (faster; names in free text stay)
+      --one-pass             skip the name index (faster). Site URLs, form fields and
+                             every rule still apply. Names in free text may stay; the
+                             report says so (info.one-pass)
       --keep-routines        keep triggers, procedures and views (DEFINER removed)
       --keep-app-key         Laravel: keep APP_KEY (encrypted columns stay readable)
 

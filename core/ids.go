@@ -47,6 +47,7 @@ const (
 	FindingSoundcheckFailed          = "soundcheck.failed"
 	FindingInfoKeptUsers             = "info.kept-users"
 	FindingInfoIgnoreExpired         = "info.ignore-expired"
+	FindingInfoOnePass               = "info.one-pass"
 )
 
 // Error codes (PRD 17), as they appear in data.error.code and explain.
@@ -137,7 +138,7 @@ var findingIDs = []string{
 	FindingSideEffectGateways, FindingSideEffectSubscriptions, FindingSideEffectAutomateWoo,
 	FindingSideEffectQueue, FindingSideEffectJetpack, FindingSideEffectNotApplicable,
 	FindingSearchIndexable, FindingAuthNone, FindingUploadsPersonal, FindingSoundcheckFailed,
-	FindingInfoKeptUsers, FindingInfoIgnoreExpired,
+	FindingInfoKeptUsers, FindingInfoIgnoreExpired, FindingInfoOnePass,
 }
 
 // keyProviders are the providers of PRD 12.2 that have a key.<provider>-live
