@@ -217,7 +217,7 @@ func TestSSHFiles(t *testing.T) {
 	}
 	w := remoteCmd(calls[2])
 	if !strings.HasPrefix(w, "umask 077 && cat > '/srv/shop/wp-content/mu-plugins/.roadie-staging.php.roadie-") ||
-		!strings.Contains(w, "&& chmod 0644 -- ") || !strings.HasSuffix(w, " '/srv/shop/wp-content/mu-plugins/roadie-staging.php'") {
+		!strings.Contains(w, "&& chmod -- 0644 ") || !strings.HasSuffix(w, " '/srv/shop/wp-content/mu-plugins/roadie-staging.php'") {
 		t.Fatalf("write command %s", w)
 	}
 	if string(sh.Stdin(n+2)) != "<?php // body" {
@@ -237,8 +237,8 @@ func TestSSHFiles(t *testing.T) {
 		t.Fatalf("write calls %v", calls)
 	}
 	w = remoteCmd(calls[2])
-	if !strings.Contains(w, "&& { chown 1001:33 -- ") || !strings.Contains(w, "|| chgrp 33 -- ") ||
-		!strings.Contains(w, "&& chmod 0644 -- ") || strings.Contains(w, "0640") {
+	if !strings.Contains(w, "&& { chown -- 1001:33 ") || !strings.Contains(w, "|| chgrp -- 33 ") ||
+		!strings.Contains(w, "&& chmod -- 0644 ") || strings.Contains(w, "0640") {
 		t.Fatalf("write command %s", w)
 	}
 	if tm, ok := remote.Allowed(w); !ok || tm != remote.WriteKeep {

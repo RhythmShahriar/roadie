@@ -110,7 +110,7 @@ func TestExactCommands(t *testing.T) {
 		{EvalFile, nil, "~/bin/wp --path='/var/www/shop' eval-file - --skip-plugins --skip-themes"},
 		{Stat, []string{"/srv/shop/wp-config.php"}, "ls -lnLd -- '/srv/shop/wp-config.php'"},
 		{WriteKeep, []string{"/s/.x.t", "1001", "33", "/s/.x.t", "33", "/s/.x.t", "0644", "/s/.x.t", "/s/.x.t", "/s/x"},
-			"umask 077 && cat > '/s/.x.t' && { chown 1001:33 -- '/s/.x.t' 2>/dev/null || chgrp 33 -- '/s/.x.t' 2>/dev/null || :; } && chmod 0644 -- '/s/.x.t' && mv -f -- '/s/.x.t' '/s/x'"},
+			"umask 077 && cat > '/s/.x.t' && { chown -- 1001:33 '/s/.x.t' 2>/dev/null || chgrp -- 33 '/s/.x.t' 2>/dev/null || :; } && chmod -- 0644 '/s/.x.t' && mv -f -- '/s/.x.t' '/s/x'"},
 	}
 	for _, tt := range tests {
 		got, err := r.Command(tt.t, tt.args...)

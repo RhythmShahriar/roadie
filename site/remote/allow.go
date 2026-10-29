@@ -83,13 +83,16 @@ var templates = map[Template]template{
 	PSQL:     {format: pgWrapper + "psql --no-psqlrc --quiet --set=ON_ERROR_STOP=1 --host=%q --port=%n --username=%q --dbname=%q", target: true},
 	// Backup sets noclobber (set -C), so a backup that another run made
 	// in the same second is never overwritten: the redirect fails instead.
-	Backup:    {format: "set -C && umask 077 && mkdir -p ~/.roadie-backups && { %w db export - --skip-plugins --skip-themes --single-transaction || echo '" + backupFailed + "' >&2; } | gzip > ~/.roadie-backups/%t.sql.gz", target: true},
-	Write:     {format: "umask 077 && cat > %q && mv -f -- %q %q", target: true},
-	WriteMode: {format: "umask 077 && cat > %q && chmod %m -- %q && mv -f -- %q %q", target: true},
+	Backup: {format: "set -C && umask 077 && mkdir -p ~/.roadie-backups && { %w db export - --skip-plugins --skip-themes --single-transaction || echo '" + backupFailed + "' >&2; } | gzip > ~/.roadie-backups/%t.sql.gz", target: true},
+	Write:  {format: "umask 077 && cat > %q && mv -f -- %q %q", target: true},
+	// "--" comes before the mode and the owner: BSD chmod, chown and
+	// chgrp stop reading options at the first operand, so a later "--"
+	// is taken as a file name.
+	WriteMode: {format: "umask 077 && cat > %q && chmod -- %m %q && mv -f -- %q %q", target: true},
 	// WriteKeep replaces an existing file: it gives the temp file the old
 	// owner and group where the ssh user may (a non-root user can often
 	// keep only the group, or neither), then the old mode.
-	WriteKeep: {format: "umask 077 && cat > %q && { chown %i:%i -- %q 2>/dev/null || chgrp %i -- %q 2>/dev/null || :; } && chmod %m -- %q && mv -f -- %q %q", target: true},
+	WriteKeep: {format: "umask 077 && cat > %q && { chown -- %i:%i %q 2>/dev/null || chgrp -- %i %q 2>/dev/null || :; } && chmod -- %m %q && mv -f -- %q %q", target: true},
 	Stat:      {format: "ls -lnLd -- %q", target: true},
 	Mkdir:     {format: "mkdir -p -- %q", target: true},
 	Remove:    {format: "rm -f -- %q", target: true},
