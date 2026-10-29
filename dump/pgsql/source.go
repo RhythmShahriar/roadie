@@ -124,6 +124,7 @@ func (s *Source) Next(ctx context.Context) (*core.Batch, error) {
 				if err := s.check(r, st.Line); err != nil {
 					return nil, s.fail(err)
 				}
+				s.binary(r)
 			}
 			s.ins, s.next = ins, 0
 			return s.insertRows(true), nil
@@ -285,6 +286,7 @@ func (s *Source) copyRows(first bool) (*core.Batch, error) {
 		if err := s.check(r, s.lex.Line()-1); err != nil {
 			return nil, s.fail(err)
 		}
+		s.binary(r)
 		if full {
 			s.pend, s.pends, s.arena = r, true, a
 			break
@@ -332,6 +334,27 @@ func (s *Source) check(r core.Row, line int64) error {
 		s.o.Name, size.Count(line), s.tb.Name, len(r.Values), len(s.cols))
 	e.Line = line
 	return e
+}
+
+// binary reads the values of r's bytea columns as their bytes. pg_dump
+// writes bytea as text (\x4a61, or the escape format), which neither the
+// rules nor verify could see into: an email or a live key there would
+// pass. A BinaryString is written back as bytea hex once changed; an
+// unchanged row keeps its source bytes. A value that isn't valid bytea
+// text is left as it is.
+func (s *Source) binary(r core.Row) {
+	for pos := range r.Values {
+		v := &r.Values[pos]
+		if v.Kind != core.String || pos >= len(s.cols) {
+			continue
+		}
+		if i := s.cols[pos]; i < 0 || i >= len(s.tb.Columns) || !s.tb.Columns[i].Binary {
+			continue
+		}
+		if b, ok := core.DecodeBytea(v.Raw); ok {
+			*v = core.Value{Kind: core.BinaryString, Raw: b, Dirty: v.Dirty}
+		}
+	}
 }
 
 // fail turns a lexer error into the *core.Error of PRD 17 and keeps it.

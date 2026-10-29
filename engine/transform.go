@@ -6,7 +6,6 @@ package engine
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"hash/maphash"
 	"slices"
 	"strconv"
@@ -574,7 +573,7 @@ func isMultisiteTable(table, prefix string) bool {
 // quoted string. A changed value is written back as a binary string; an
 // unchanged one keeps its hex text.
 func (t *transformer) hexValue(out *batchOut, rc rowCtx, col core.Column, v *core.Value, rules *ruleSet) (bool, error) {
-	b, ok := decodeHexLiteral(v.Raw)
+	b, ok := core.DecodeHexLiteral(v.Raw)
 	if !ok {
 		return false, nil
 	}
@@ -584,21 +583,6 @@ func (t *transformer) hexValue(out *batchOut, rc rowCtx, col core.Column, v *cor
 		*v = hv
 	}
 	return del, err
-}
-
-// decodeHexLiteral reads 0x4A61 or X'4A61' (either case) into bytes.
-func decodeHexLiteral(raw []byte) ([]byte, bool) {
-	var digits []byte
-	switch {
-	case len(raw) >= 2 && raw[0] == '0' && (raw[1] == 'x' || raw[1] == 'X'):
-		digits = raw[2:]
-	case len(raw) >= 3 && (raw[0] == 'x' || raw[0] == 'X') && raw[1] == '\'' && raw[len(raw)-1] == '\'':
-		digits = raw[2 : len(raw)-1]
-	default:
-		return nil, false
-	}
-	b, err := hex.DecodeString(string(digits))
-	return b, err == nil
 }
 
 // exprValue handles a value the dump wrote as an SQL expression Roadie

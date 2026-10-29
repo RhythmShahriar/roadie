@@ -560,14 +560,15 @@ func (r *run) sample(samples map[string]map[string][][]byte, b *core.Batch, rows
 	}
 	for _, ri := range rows {
 		for pos, v := range b.Rows[ri].Values {
-			if v.Kind != core.String || len(v.Raw) == 0 {
+			raw, ok := v.ScanBytes()
+			if !ok {
 				continue
 			}
 			c := columnAt(b, pos)
 			if c == nil || covered[c.Name] || len(m[c.Name]) >= samplePerColumn {
 				continue
 			}
-			m[c.Name] = append(m[c.Name], append([]byte(nil), v.Raw[:min(len(v.Raw), sampleBytes)]...))
+			m[c.Name] = append(m[c.Name], append([]byte(nil), raw[:min(len(raw), sampleBytes)]...))
 		}
 	}
 }

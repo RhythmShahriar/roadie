@@ -123,7 +123,8 @@ func TestValuesAgree(t *testing.T) {
 			}
 		}
 		sess := rowsOf(bs, "Session")
-		if len(sess) != 2 || val(sess[0], 2) != `\x00010203ff5c09` || val(sess[1], 3) != "<NULL>" {
+		if len(sess) != 2 || val(sess[0], 2) != "\x00\x01\x02\x03\xff\\\t" || sess[0].Values[2].Kind != core.BinaryString ||
+			sess[1].Values[2].Kind != core.BinaryString || val(sess[1], 2) != "" || val(sess[1], 3) != "<NULL>" {
 			t.Errorf("%s: sessions %v", name, sess)
 		}
 		posts := rowsOf(bs, "Post")
@@ -556,5 +557,36 @@ func TestCancel(t *testing.T) {
 	cancel()
 	if _, err := s.Next(ctx); !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v", err)
+	}
+}
+
+// A bytea column comes out as its bytes from either output format, so
+// the rules and verify see what it holds; a changed row writes it back
+// as bytea hex and an unchanged one keeps its source bytes.
+func TestByteaDecoded(t *testing.T) {
+	in := "--\n-- PostgreSQL database dump\n--\n\nSET standard_conforming_strings = on;\n\n" +
+		"CREATE TABLE public.s (\n    id integer NOT NULL,\n    val bytea,\n    note text\n);\n\n" +
+		"COPY public.s (id, val, note) FROM stdin;\n1\t\\\\x612e62\t\\\\x612e62\n2\ta\\\\\\\\b\\\\101\tz\n\\.\n\n" +
+		"INSERT INTO public.s VALUES (3, '\\x6162', 'n');\n\n" +
+		"--\n-- PostgreSQL database dump complete\n--\n\n"
+	bs, _, err := drain(t, []byte(in), SourceOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := rowsOf(bs, "s")
+	if len(rows) != 3 {
+		t.Fatalf("%d rows", len(rows))
+	}
+	for i, want := range []string{"a.b", `a\bA`, "ab"} {
+		if v := rows[i].Values[1]; v.Kind != core.BinaryString || string(v.Raw) != want {
+			t.Errorf("row %d val = %d %q, want %q", i, v.Kind, v.Raw, want)
+		}
+	}
+	if v := rows[0].Values[2]; v.Kind != core.String || string(v.Raw) != `\x612e62` {
+		t.Errorf("a text column was decoded: %d %q", v.Kind, v.Raw)
+	}
+	out, err := AppendCopyField(nil, core.Value{Kind: core.BinaryString, Raw: []byte(`a\bA`), Dirty: true})
+	if err != nil || string(out) != `\\x615c6241` {
+		t.Errorf("COPY field %q %v", out, err)
 	}
 }

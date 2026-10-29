@@ -70,18 +70,21 @@ func (s *scanner) batch(w work) result {
 		get := idx.getter(row)
 		base := core.Location{Table: t.Name, Row: rowKey(b, get)}
 		for pos, v := range row.Values {
-			if v.Kind != core.String && v.Kind != core.BinaryString || len(v.Raw) == 0 {
+			// A hex literal (mysqldump --hex-blob) or bytea hex is read
+			// as its bytes: left as text it would hide what it holds.
+			raw, ok := v.ScanBytes()
+			if !ok {
 				continue
 			}
 			c := columnAt(b, pos)
 			if c == nil {
 				continue
 			}
-			res.bytes += int64(len(v.Raw))
+			res.bytes += int64(len(raw))
 			at := base
 			at.Column = c.Name
 			sc := core.ScanContext{Table: t.Name, Column: c.Name, ColumnKind: w.kinds[c.Name], Row: get}
-			f.value(v.Raw, sc, at)
+			f.value(raw, sc, at)
 		}
 	}
 	res.findings = acc.Findings()
