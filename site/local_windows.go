@@ -6,9 +6,11 @@
 package site
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
+	"syscall"
 	"time"
 )
 
@@ -34,4 +36,17 @@ func renameReplace(root *os.Root, tmp, name, rel string) error {
 		time.Sleep(renameWait)
 	}
 	return fmt.Errorf("site: couldn't replace %s: another program holds it open (%w). Close it and run again", rel, err)
+}
+
+// errorInvalidName and errorBadPathname are ERROR_INVALID_NAME and
+// ERROR_BAD_PATHNAME, which syscall doesn't name.
+const (
+	errorInvalidName syscall.Errno = 123
+	errorBadPathname syscall.Errno = 161
+)
+
+// unnamable reports a stat error for a name Windows can't hold at all,
+// such as one with ':' past the drive: no such file can exist.
+func unnamable(err error) bool {
+	return errors.Is(err, errorInvalidName) || errors.Is(err, errorBadPathname)
 }
