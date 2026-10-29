@@ -107,6 +107,7 @@ type incl struct {
 	start       int
 	line        int
 	path        string // relative to the file's folder; "" when it is an expression
+	root        bool   // path is relative to the site (ABSPATH . '...')
 	expr        string // the statement's source, for messages
 	conditional bool
 }
@@ -515,8 +516,10 @@ func readInclude(src []byte, toks []token, sig []int, si int, text func(int) str
 		if strings.HasPrefix(rel, "/") {
 			return in
 		}
-	case "__dir__ .", "dirname ( __file__ ) .", "abspath .":
+	case "__dir__ .", "dirname ( __file__ ) .":
 		rel = strings.TrimPrefix(rel, "/")
+	case "abspath .":
+		rel, in.root = strings.TrimPrefix(rel, "/"), true
 	default:
 		return in
 	}

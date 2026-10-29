@@ -96,7 +96,7 @@ func resolveIn(p *parsed, file, name string, read Reader, depth int) (Resolved, 
 		if in.path == "" {
 			return unknown(in, at+" runs "+in.expr+" first, a file Roadie can't follow, which may define "+name)
 		}
-		rel := path.Join(path.Dir(file), in.path)
+		rel := in.rel(file)
 		if rel == ".." || strings.HasPrefix(rel, "../") {
 			return unknown(in, at+" includes "+in.path+" first, outside the site, which may define "+name)
 		}
@@ -137,6 +137,15 @@ func resolveIn(p *parsed, file, name string, read Reader, depth int) (Resolved, 
 	return Resolved{}, false
 }
 
+// rel is the file an include in file names, relative to the site: ABSPATH
+// is the site's folder, __DIR__ the folder of file.
+func (in incl) rel(file string) string {
+	if in.root {
+		return in.path
+	}
+	return path.Join(path.Dir(file), in.path)
+}
+
 // earlierDefine reports a define of name before offset at.
 func earlierDefine(p *parsed, name string, at int) bool {
 	for _, d := range p.defs {
@@ -172,7 +181,7 @@ func (f *File) IncludedFiles(read Reader) (files []Included, unknown []string) {
 				unknown = append(unknown, at+" runs "+in.expr+", a file Roadie can't follow")
 				continue
 			}
-			rel := path.Join(path.Dir(file), in.path)
+			rel := in.rel(file)
 			switch {
 			case rel == ".." || strings.HasPrefix(rel, "../") || path.IsAbs(rel):
 				unknown = append(unknown, at+" includes "+in.path+", outside the site")

@@ -115,3 +115,31 @@ func TestStrings(t *testing.T) {
 		t.Errorf("got %v\nwant %v", got, want)
 	}
 }
+
+// TestIncludedFiles: every file wp-config.php includes is read once, in
+// the order PHP reaches it, nested ones too; ABSPATH names the site's
+// folder wherever the include is, __DIR__ the including file's. A
+// missing file is left out; an include Roadie can't follow is listed.
+func TestIncludedFiles(t *testing.T) {
+	f := mustParse(t, []byte("<?php\nrequire __DIR__ . '/conf/a.php';\ninclude 'missing.php';\nrequire getenv( 'KEYS' );\n"+stagingTail))
+	read := files(map[string]string{
+		"conf/a.php": "<?php\nrequire ABSPATH . 'conf/b.php';\nrequire __DIR__ . '/c.php';\nrequire __DIR__ . '/a.php';\n",
+		"conf/b.php": "<?php\ndefine( 'B', 1 );\n",
+		"conf/c.php": "<?php\ndefine( 'C', 1 /* unterminated\n",
+	})
+	got, unknown := f.IncludedFiles(read)
+	var rels []string
+	for _, in := range got {
+		rels = append(rels, in.Rel+" via "+in.Via)
+	}
+	if want := "conf/a.php via wp-config.php line 2,conf/b.php via conf/a.php line 2"; strings.Join(rels, ",") != want {
+		t.Errorf("files %q, want %q", rels, want)
+	}
+	want := []string{"conf/a.php line 3 includes conf/c.php, which Roadie can't parse", "wp-config.php line 4 runs require getenv( 'KEYS' ), a file Roadie can't follow"}
+	if strings.Join(unknown, "|") != strings.Join(want, "|") {
+		t.Errorf("unknown %q, want %q", unknown, want)
+	}
+	if got, unknown := mustParse(t, []byte("<?php\n"+stagingTail)).IncludedFiles(read); len(got) != 0 || len(unknown) != 0 {
+		t.Errorf("no include: %v %v", got, unknown)
+	}
+}
