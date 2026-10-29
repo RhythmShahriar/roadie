@@ -204,3 +204,39 @@ func plural(n int64, one, many string) string {
 	}
 	return many
 }
+
+// FoldFindings gives the checks the status of findings the run reported
+// itself, outside verify: a copy's uncovered-column findings come from
+// its pass 1 sample; with --allow-uncovered the copy goes on with
+// them. A check with such a finding fails (or warns below failOn) as in
+// a standalone verify, so the check list never says pass for a finding
+// in the same report.
+func FoldFindings(checks []core.Check, findings []core.Finding, failOn core.Severity) {
+	for i := range checks {
+		c := &checks[i]
+		if c.Status == "fail" {
+			continue
+		}
+		var failing, all int64
+		for _, f := range findings {
+			if checkOf(f.ID) != c.ID {
+				continue
+			}
+			n := max(f.Count, 1)
+			if failOn.Fails(f.Severity) || failOn == core.SeverityNone && f.Severity >= core.SeverityLow {
+				failing += n
+			}
+			if f.Severity >= core.SeverityLow {
+				all += n
+			}
+		}
+		switch {
+		case failing > 0:
+			c.Status = "fail"
+			c.Detail = fmt.Sprintf("%d %s (%s)", failing, plural(failing, "finding", "findings"), c.ID)
+		case all > 0 && c.Status != "warn":
+			c.Status = "warn"
+			c.Detail = fmt.Sprintf("%d %s below --fail-on %s (%s)", all, plural(all, "finding", "findings"), failOn, c.ID)
+		}
+	}
+}

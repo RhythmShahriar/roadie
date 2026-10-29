@@ -4,6 +4,7 @@
 package wpconfig
 
 import (
+	"path"
 	"sort"
 	"strings"
 )
@@ -24,7 +25,10 @@ type Define struct {
 	// require_once of wp-settings.php (or the file has none), which is
 	// when WordPress still reads it.
 	BeforeSettings bool
-	Line           int
+	// Const is true for a top-level const NAME = value; statement, which
+	// defines the constant like define() does.
+	Const bool
+	Line  int
 }
 
 // def is a Define plus the offsets an edit needs.
@@ -94,6 +98,17 @@ type parsed struct {
 	prefix      string
 	prefixOK    bool
 	lines       []int // offset of each line start
+	includes    []incl
+	namespaced  bool // a namespace statement came first: a const is not global
+}
+
+// incl is one require or include of a file other than wp-settings.php.
+type incl struct {
+	start       int
+	line        int
+	path        string // relative to the file's folder; "" when it is an expression
+	expr        string // the statement's source, for messages
+	conditional bool
 }
 
 // controlWords open a statement whose body may be a block, a ':' block
@@ -214,8 +229,28 @@ func parse(src []byte) (*parsed, error) {
 		case w == "require_once" || w == "require" || w == "include" || w == "include_once":
 			// The first wp-settings.php line counts even inside an if:
 			// nothing may go after it. It is only an anchor when safe.
-			if p.settingsAt < 0 && statementHasSettings(toks, sig, si, text) {
-				p.settings, p.settingsAt = g, t.start
+			switch {
+			case statementHasSettings(toks, sig, si, text):
+				if p.settingsAt < 0 {
+					p.settings, p.settingsAt = g, t.start
+				}
+			default:
+				// Any other file may define a constant first, which PHP
+				// then keeps (Resolve follows it).
+				in := readInclude(src, toks, sig, si, text)
+				in.start, in.line, in.conditional = t.start, p.lineOf(t.start), g == nil
+				p.includes = append(p.includes, in)
+			}
+		case w == "namespace" && g != nil:
+			p.namespaced = true
+		case w == "const" && g != nil && !p.namespaced:
+			for _, d := range readConst(src, toks, sig, si, text) {
+				d.stmt = g
+				d.Line = p.lineOf(d.callStart)
+				for k := range d.members {
+					d.members[k].line = p.lineOf(d.members[k].start)
+				}
+				p.defs = append(p.defs, d)
 			}
 		case g != nil && t.kind == tVar && text(ti) == "$table_prefix" && !p.prefixOK:
 			if v, ok := prefixAssign(toks, sig, si, text); ok {
@@ -353,7 +388,16 @@ done:
 	}
 	d := def{callStart: toks[sig[si]].start, valStart: -1}
 	d.Name = toks[args[0][0]].value
-	val := args[1]
+	classify(&d, src, toks, args[1], text)
+	// define(...) must end its statement; "define(...) or die()" is conditional.
+	if k+1 >= len(sig) || (text(sig[k+1]) != ";" && toks[sig[k+1]].kind != tClose) {
+		d.Conditional = true
+	}
+	return d, true
+}
+
+// classify reads a define's value tokens val into d.
+func classify(d *def, src []byte, toks []token, val []int, text func(int) string) {
 	if len(val) > 0 {
 		d.valStart, d.valEnd = toks[val[0]].start, toks[val[len(val)-1]].end
 		d.Value = string(src[d.valStart:d.valEnd])
@@ -375,11 +419,113 @@ done:
 	if !d.Literal && len(val) > 1 {
 		d.members = readMembers(toks, val, text)
 	}
-	// define(...) must end its statement; "define(...) or die()" is conditional.
-	if k+1 >= len(sig) || (text(sig[k+1]) != ";" && toks[sig[k+1]].kind != tClose) {
-		d.Conditional = true
+}
+
+// readConst reads const A = value[, B = value]; starting at sig[si]. A
+// constant it can't read is left out.
+func readConst(src []byte, toks []token, sig []int, si int, text func(int) string) []def {
+	var out []def
+	k := si + 1
+	for k < len(sig) {
+		if k+1 >= len(sig) || toks[sig[k]].kind != tIdent || text(sig[k+1]) != "=" {
+			return out
+		}
+		d := def{callStart: toks[sig[si]].start, valStart: -1, Define: Define{Name: text(sig[k]), Const: true}}
+		if k != si+1 {
+			d.callStart = toks[sig[k]].start
+		}
+		k += 2
+		depth := 0
+		var val []int
+		for ; k < len(sig); k++ {
+			ti := sig[k]
+			s := text(ti)
+			if toks[ti].kind == tClose || toks[ti].kind == tHTML || toks[ti].kind == tOpen {
+				return out
+			}
+			if toks[ti].kind == tPunct {
+				switch s {
+				case "(", "[", "{":
+					depth++
+				case ")", "]", "}":
+					depth--
+				}
+				if depth == 0 && (s == "," || s == ";") {
+					break
+				}
+			}
+			val = append(val, ti)
+		}
+		if k >= len(sig) || len(val) == 0 {
+			return out
+		}
+		classify(&d, src, toks, val, text)
+		out = append(out, d)
+		if text(sig[k]) == ";" {
+			return out
+		}
+		k++
 	}
-	return d, true
+	return out
+}
+
+// readInclude reads the file a require or include at sig[si] names, when
+// it is a plain string or one joined to __DIR__, dirname( __FILE__ ) or
+// ABSPATH (wp-config.php's own folder).
+func readInclude(src []byte, toks []token, sig []int, si int, text func(int) string) incl {
+	var parts []int
+	depth := 0
+	end := toks[sig[si]].end
+	for k := si + 1; k < len(sig); k++ {
+		ti := sig[k]
+		t := toks[ti]
+		if t.kind == tClose || t.kind == tOpen || t.kind == tHTML || t.kind == tPunct && text(ti) == ";" && depth == 0 {
+			break
+		}
+		end = t.end
+		if t.kind == tPunct {
+			switch text(ti) {
+			case "(":
+				depth++
+			case ")":
+				depth--
+			}
+		}
+		parts = append(parts, ti)
+	}
+	in := incl{expr: strings.Join(strings.Fields(string(src[toks[sig[si]].start:end])), " ")}
+	// Drop parentheses around the whole path.
+	for len(parts) >= 2 && text(parts[0]) == "(" && text(parts[len(parts)-1]) == ")" {
+		parts = parts[1 : len(parts)-1]
+	}
+	if len(parts) == 0 {
+		return in
+	}
+	last := toks[parts[len(parts)-1]]
+	if last.kind != tString || !last.literal {
+		return in
+	}
+	var words []string
+	for _, ti := range parts[:len(parts)-1] {
+		words = append(words, strings.ToLower(text(ti)))
+	}
+	rel := last.value
+	switch strings.Join(words, " ") {
+	case "":
+		if strings.HasPrefix(rel, "/") {
+			return in
+		}
+	case "__dir__ .", "dirname ( __file__ ) .", "abspath .":
+		rel = strings.TrimPrefix(rel, "/")
+	default:
+		return in
+	}
+	rel = path.Clean(rel)
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, "../") || strings.Contains(rel, "\\") {
+		return in
+	}
+	in.path = rel
+	return in
 }
 
 // statementHasSettings reports a require/include statement naming

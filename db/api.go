@@ -38,20 +38,24 @@ const (
 // or a Sink uses it until it ends, so call Identity and Schema before
 // starting one (both are cached after the first call).
 type Conn struct {
-	ep      core.Endpoint
-	mode    Mode
-	engine  core.Dialect // MariaDB when a mysql:// server says so
-	server  string       // "8.4.3", "11.4.8", "16.4", "3.50.4"
-	dbName  string
-	user    string
-	db      *sql.DB
-	conn    *sql.Conn
-	inTx    bool // the read-only transaction is open
-	schema  *core.Schema
-	busy    bool      // a Source or Sink holds the session
-	active  io.Closer // that Source or Sink, closed by Close
-	closed  bool
-	collate map[string]bool // collations asked about, for a sink: known or not
+	ep     core.Endpoint
+	mode   Mode
+	engine core.Dialect // MariaDB when a mysql:// server says so
+	server string       // "8.4.3", "11.4.8", "16.4", "3.50.4"
+	// instance names the server process whatever address reached it:
+	// MySQL's @@server_uuid, PostgreSQL's system identifier; "" when
+	// the server didn't say.
+	instance string
+	dbName   string
+	user     string
+	db       *sql.DB
+	conn     *sql.Conn
+	inTx     bool // the read-only transaction is open
+	schema   *core.Schema
+	busy     bool      // a Source or Sink holds the session
+	active   io.Closer // that Source or Sink, closed by Close
+	closed   bool
+	collate  map[string]bool // collations asked about, for a sink: known or not
 }
 
 // SinkOptions configures Conn.Sink.
@@ -72,6 +76,18 @@ func Open(ctx context.Context, e core.Endpoint, m Mode) (*Conn, error) {
 // Identity names the server and database, for the target guards.
 func (c *Conn) Identity(ctx context.Context) (core.DBIdentity, error) {
 	return c.identity(ctx)
+}
+
+// Instance names the database on its server whatever host, port or
+// address reached it (MySQL @@server_uuid, PostgreSQL's system
+// identifier, then the database name), for target-is-source: two
+// addresses of one server are one database. "" when the server didn't
+// say.
+func (c *Conn) Instance() string {
+	if c.instance == "" {
+		return ""
+	}
+	return c.instance + "/" + c.dbName
 }
 
 // Schema reads every table's columns and keys.

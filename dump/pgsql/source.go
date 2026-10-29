@@ -395,6 +395,11 @@ func (s *Source) fail(err error) error {
 		e := core.Errorf(core.ErrDumpFormat, 2, "dump-format: %s line %s: %s.", s.o.Name, size.Count(se.Line), se.Msg)
 		e.Line = se.Line
 		err = e
+	case errors.As(err, &fe) && fe.Built:
+		e := core.Errorf(core.ErrDumpRefused, 3, "dump-refused: %s line %s holds a value built from literals ('a' || 'b', $$...$$, U&'...' or strings joined across a line) in a row of %s, which Roadie can't read as one value to scan. Export the table with pg_dump -Fp, which writes plain values.",
+			s.o.Name, size.Count(fe.Line), fe.Table)
+		e.Line = fe.Line
+		err = e
 	case errors.As(err, &fe):
 		e := core.Errorf(core.ErrDumpRefused, 3, "dump-refused: %s line %s holds a function call in a row of %s, which could run code on the staging database. Export the table with pg_dump -Fp, which writes plain values.",
 			s.o.Name, size.Count(fe.Line), fe.Table)

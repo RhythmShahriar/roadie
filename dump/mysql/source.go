@@ -337,13 +337,35 @@ func (s *Source) close(b *core.Batch) error {
 // would refuse it too and a misread row would put values in the wrong
 // columns.
 func (s *Source) check(r core.Row) error {
-	for _, v := range r.Values {
-		if v.Kind == core.Expr && !SafeExpr(v.Raw, s.lex.Mode()) {
+	for i, v := range r.Values {
+		switch {
+		case v.Kind == core.Expr && !SafeExpr(v.Raw, s.lex.Mode()):
 			line := s.stmt.Line
 			e := core.Errorf(core.ErrDumpRefused, 3, "dump-refused: %s line %s holds a function call or a name in a row of %s, which could run code on the staging database. Export the table with mysqldump, which writes plain values.",
 				s.o.Name, size.Count(line), s.ins.Name)
 			e.Line = line
 			return e
+		case v.Kind == core.Expr && !PlainExpr(v.Raw):
+			// 'sk_live_' '51Hx...' is one string to MySQL: a value built
+			// from literals is data Roadie can't scan as written.
+			line := s.stmt.Line
+			e := core.Errorf(core.ErrDumpRefused, 3, "dump-refused: %s line %s holds a value built from literals ('a' 'b' or an operator) in a row of %s, which Roadie can't read as one value to scan. Export the table with mysqldump, which writes plain values.",
+				s.o.Name, size.Count(line), s.ins.Name)
+			e.Line = line
+			return e
+		case v.Kind == core.Bit:
+			// b'0111...' is a binary string like 0x73...: read it as the
+			// hex literal of the same bytes, so the scan and the rules see
+			// what the server stores.
+			h, ok := BitHex(v.Raw)
+			if !ok {
+				line := s.stmt.Line
+				e := core.Errorf(core.ErrDumpFormat, 2, "dump-format: %s line %s: a bit value in a row of %s isn't b'0101' or 0b0101.",
+					s.o.Name, size.Count(line), s.ins.Name)
+				e.Line = line
+				return e
+			}
+			r.Values[i] = core.Value{Kind: core.Hex, Raw: h}
 		}
 	}
 	if len(r.Values) == len(s.cols) {

@@ -5,7 +5,9 @@ package site
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/url"
 	"path/filepath"
@@ -60,6 +62,20 @@ func siteConfigError(file, name, from string, readOnly bool) error {
 		file, name, from, side, flagEnv, alias)
 }
 
+// unreadableConfig is site-config for a config file Roadie can't read,
+// so a stop names its code. A canceled run stays canceled.
+func unreadableConfig(ctx context.Context, file string, err error) error {
+	if ctx.Err() != nil {
+		return fmt.Errorf("%s: %w", file, err)
+	}
+	why := readReason(err)
+	if errors.Is(err, fs.ErrNotExist) {
+		why = "it isn't there"
+	}
+	return core.Errorf(core.ErrSiteConfig, 3,
+		"site-config: %s can't be read (%s). Make it readable by the user Roadie runs as, or pass the database as a DSN.", file, why)
+}
+
 // missingSetting is site-config for a setting the file doesn't hold.
 func missingSetting(file, name string, readOnly bool) error {
 	side, flagEnv := "target", "ROADIE_TO_PASSWORD"
@@ -112,7 +128,7 @@ func readWPConfig(ctx context.Context, s fileReader, display string, readOnly bo
 	file := joinDisplay(display, "wp-config.php")
 	b, err := s.ReadFile(ctx, "wp-config.php")
 	if err != nil {
-		return dbConfig{}, fmt.Errorf("%s: %w", file, err)
+		return dbConfig{}, unreadableConfig(ctx, file, err)
 	}
 	f, err := wpconfig.Parse(b)
 	if err != nil {
@@ -177,7 +193,7 @@ func readEnvConfig(ctx context.Context, s fileReader, display string, readOnly b
 	file := joinDisplay(display, ".env")
 	b, err := s.ReadFile(ctx, ".env")
 	if err != nil {
-		return dbConfig{}, fmt.Errorf("%s: %w", file, err)
+		return dbConfig{}, unreadableConfig(ctx, file, err)
 	}
 	f, err := dotenv.Parse(b)
 	if err != nil {

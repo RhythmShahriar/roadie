@@ -1574,6 +1574,17 @@ func (r *runner) verify(ctx context.Context, out *output, checks []core.Step) er
 		return err
 	}
 	r.res.Verify = v
+	if v != nil {
+		// The copy's own uncovered-column findings (pass 1) count in
+		// verify's check list too.
+		var own []core.Finding
+		for _, f := range r.res.Findings {
+			if f.ID == core.FindingUncoveredColumn {
+				own = append(own, f)
+			}
+		}
+		verify.FoldFindings(v.Checks, own, r.opts.FailOn)
+	}
 	if v != nil && r.mode == Prepare {
 		prepareFixes(v.Findings)
 	}

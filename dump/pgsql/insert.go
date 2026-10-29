@@ -30,9 +30,17 @@ type Insert struct {
 type CallError struct {
 	Line  int64
 	Table string
+	// Built is true for a value built from literals ('a' || 'b', $$..$$,
+	// U&'..', strings joined across a newline) with no call in it.
+	Built bool
 }
 
-func (e *CallError) Error() string { return "a row value calls a function" }
+func (e *CallError) Error() string {
+	if e.Built {
+		return "a row value is built from literals"
+	}
+	return "a row value calls a function"
+}
 
 // ParseInsert splits the INSERT statement text (as the Lexer returned
 // it) into rows. ok is false for an INSERT that isn't a plain VALUES
@@ -467,7 +475,87 @@ func (p *insParser) exprValue(start int) (core.Value, error) {
 	if !SafeExpr(text, p.m) {
 		return core.Value{}, &CallError{Line: p.line, Table: p.table}
 	}
+	k, ok := plainAtom(text, p.m)
+	if !ok {
+		return core.Value{}, &CallError{Line: p.line, Table: p.table, Built: true}
+	}
+	if k.kind == tokStr {
+		// 'sk_live_...'::text stores the string: read it as one, so the
+		// scan and the rules see it. A changed value is written without
+		// the cast, which the column's type applies anyway.
+		body := k.text[1 : len(k.text)-1]
+		if k.text[0] != '\'' {
+			body = k.text[2 : len(k.text)-1]
+		}
+		var out []byte
+		if k.text[0] != '\'' || p.m.NoStdStrings {
+			out = appendEUnescape(nil, body)
+		} else {
+			out = appendUndouble(nil, body)
+		}
+		if int64(len(out)) > p.limit {
+			return core.Value{}, &TooLargeError{Line: p.line, Limit: p.limit}
+		}
+		return core.Value{Kind: core.String, Raw: out}, nil
+	}
 	return core.Value{Kind: core.Expr, Raw: text}, nil
+}
+
+// plainWords are the keywords a row value may be on its own.
+var plainWords = map[string]bool{"true": true, "false": true, "null": true, "default": true}
+
+// PlainExpr reports whether an expression value is one literal or
+// keyword, maybe signed, in parentheses or cast ('x'::text, -1::int,
+// DEFAULT). A value built from literals ('a' || 'b', $$..$$, U&'..',
+// two strings joined across a newline) is not: PostgreSQL stores the
+// joined or decoded value, which the scan would never see. pg_dump
+// writes none of them.
+func PlainExpr(text []byte, m Mode) bool {
+	_, ok := plainAtom(text, m)
+	return ok
+}
+
+// plainAtom is PlainExpr that also returns the literal or keyword.
+func plainAtom(text []byte, m Mode) (tok, bool) {
+	t := tokens(text, m, 0)
+	i := 0
+	for t.punct(i, '(') {
+		i++
+	}
+	if t.punct(i, '-') || t.punct(i, '+') {
+		i++
+	}
+	switch k := t.at(i); {
+	case k.kind == tokNum:
+	case k.kind == tokStr && (k.text[0] == '\'' || k.text[0]|0x20 == 'e'):
+	case k.kind == tokWord && plainWords[k.name()]:
+	default:
+		return tok{}, false
+	}
+	atom := t.at(i)
+	if atom.kind == tokStr && (len(atom.text) < 2 || atom.text[len(atom.text)-1] != '\'') {
+		return tok{}, false
+	}
+	signed := i > 0 && (t.punct(i-1, '-') || t.punct(i-1, '+'))
+	if signed && atom.kind != tokNum {
+		return tok{}, false
+	}
+	i++
+	for i < len(t) {
+		switch {
+		case t.punct(i, ')'):
+			i++
+		case t.punct(i, ':') && t.punct(i+1, ':'):
+			j, ok := castEnd(t, i+2)
+			if !ok {
+				return tok{}, false
+			}
+			i = j
+		default:
+			return tok{}, false
+		}
+	}
+	return atom, true
 }
 
 // typeWords may follow a type name after ::, as in character varying,

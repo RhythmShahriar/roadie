@@ -148,6 +148,7 @@ var (
 	whyUnknown    = why{"isn't on the list of statements Roadie copies from a dump", adviceLeaveOut}
 	whyHiddenSQL  = why{"could run a query hidden in a string on the staging database", adviceNever}
 	whyServer     = why{"could stop or reconfigure the staging server", adviceNever}
+	whyStalls     = why{"could stall the import or hold locks on the staging server", adviceNever}
 	whyDropOther  = why{"removes something the dump doesn't create", adviceLeaveOut}
 	whyDropBare   = why{"isn't the DROP TABLE IF EXISTS dump tools write before a CREATE TABLE", "Export the dump again with mysqldump --add-drop-table or mariadb-dump, which write DROP TABLE IF EXISTS."}
 	whyDropFilled = why{"removes a table the dump has already created and filled", adviceLeaveOut}
@@ -291,6 +292,17 @@ func globalChecks(t toks) (Decision, bool) {
 		"pg_log_backend_memory_contexts"} {
 		if t.call(fn) {
 			return refuse("a call to "+fn+"()", whyServer), true
+		}
+	}
+	// A CHECK constraint, index expression or column default runs these
+	// for every row: they hold the import, or locks, for as long as they
+	// say.
+	for _, fn := range []string{"pg_sleep", "pg_sleep_for", "pg_sleep_until", "pg_advisory_lock",
+		"pg_advisory_lock_shared", "pg_advisory_xact_lock", "pg_advisory_xact_lock_shared",
+		"pg_try_advisory_lock", "pg_try_advisory_lock_shared", "pg_try_advisory_xact_lock",
+		"pg_try_advisory_xact_lock_shared", "pg_notify"} {
+		if t.call(fn) {
+			return refuse("a call to "+fn+"()", whyStalls), true
 		}
 	}
 	return Decision{}, false

@@ -23,3 +23,12 @@ func TestEnvironmentLabelsFitEveryStack(t *testing.T) {
 		t.Errorf("check label %q", got)
 	}
 }
+
+// The mail check passes when Echo seals mail or when roadie-staging.php
+// blocks it with no connector there, so its label names neither; the
+// line's detail says which.
+func TestMailCheckLabel(t *testing.T) {
+	if got := CheckTitle(core.FindingSideEffectMail, "pass"); got != "Off: Mail" {
+		t.Errorf("check label %q", got)
+	}
+}

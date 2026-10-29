@@ -53,6 +53,32 @@ var whyUnicode = why{"could spell a name Roadie can't read", "Export the dump ag
 var whySchemaElems = why{"could create views, triggers or grants Roadie doesn't judge one by one",
 	"Export the dump again with pg_dump -Fp, which writes each object as its own statement."}
 
+// whySchema is the refusal of a CREATE SCHEMA other than public.
+var whySchema = why{"isn't on the list of statements Roadie copies from a dump",
+	"Create the schema on the staging database first and leave its CREATE SCHEMA out of the export."}
+
+// whySearchPath is the refusal of a search_path pg_dump doesn't write:
+// names in the statements after it would resolve to another schema's
+// tables and functions than the ones Roadie read.
+var whySearchPath = why{"could make the names after it reach another schema's tables and functions",
+	"Export the dump again with pg_dump -Fp, which sets search_path to '' and writes every name with its schema."}
+
+// pgSearchPath reports whether the tokens from k are a search_path pg_dump
+// writes: ” (pg_dump 10.3 and later), DEFAULT, or public, pg_catalog
+// (older versions).
+func pgSearchPath(t toks, k int) bool {
+	rest := t[k:]
+	switch {
+	case len(rest) == 1 && rest[0].kind == str:
+		return rest[0].w == "''"
+	case len(rest) == 1:
+		return t.w(k) == "default"
+	case len(rest) == 3:
+		return t.w(k) == "public" && t.p(k+1, ',') && t.w(k+2) == "pg_catalog"
+	}
+	return false
+}
+
 // whyPGRoutine is the refusal of a PostgreSQL routine without --keep-routines.
 var whyPGRoutine = why{whyRunsCode.danger, "Pass --keep-routines to keep it, or leave it out of the export."}
 
@@ -310,6 +336,9 @@ func pgSet(t toks, o Options) Decision {
 				return refuse("a SET statement that reads a query", whyQuery)
 			}
 		}
+		if t.w(i) == "search_path" && (!t.p(i+1, '=') && t.w(i+1) != "to" || !pgSearchPath(t, i+2)) {
+			return refuse("a SET search_path other than pg_dump's", whySearchPath)
+		}
 		return keep()
 	}
 	what := "a SET of an unknown setting"
@@ -340,6 +369,10 @@ func pgSelect(t toks, o Options) Decision {
 		if ok && fn == "set_config" && strings.EqualFold(t[i+2].w, "'client_encoding'") &&
 			(!t.p(i+3, ',') || t.kind(i+4) == noKind || !pgEncoding(t[i+4]) || !t.p(i+5, ',')) {
 			return refuse(labelEncoding, whyEncoding)
+		}
+		if ok && fn == "set_config" && strings.EqualFold(t[i+2].w, "'search_path'") &&
+			(len(t) != i+8 || !t.p(i+3, ',') || t.kind(i+4) != str || t[i+4].w != "''" || !t.p(i+5, ',') || t.w(i+6) != "false") {
+			return refuse("a set_config() of search_path other than pg_dump's", whySearchPath)
 		}
 		if ok && fn == "set_config" && strings.EqualFold(t[i+2].w, "'standard_conforming_strings'") {
 			// set_config(name, value, is_local): only a lasting change
@@ -397,6 +430,11 @@ modifiers:
 			if t.w(k) == "create" || t.w(k) == "grant" {
 				return refuse("a CREATE SCHEMA statement that creates objects inside it", whySchemaElems)
 			}
+		}
+		// pg_dump --clean writes CREATE SCHEMA public; any other schema
+		// isn't on the PRD 10.5 list: create it on the staging database.
+		if name, next := t.objName(afterIfExists(t, i+1), true); name != "public" || next != len(t) {
+			return refuse("a CREATE SCHEMA statement for a schema other than public", whySchema)
 		}
 		return pgCreates(t, i+1, obj)
 	case "sequence", "type", "domain", "statistics":

@@ -249,7 +249,32 @@ func (c *Conn) hello(ctx context.Context) error {
 		}
 	}
 	c.server = serverVersion(v)
+	c.instance = c.readInstance(ctx)
 	return nil
+}
+
+// readInstance reads what names the server process, before any
+// transaction: a query the server refuses here aborts nothing. MariaDB
+// has no @@server_uuid and a PostgreSQL user may not read
+// pg_control_system(), so each falls back to the host name, port and
+// data directory or the start time and port; "" when none answers.
+func (c *Conn) readInstance(ctx context.Context) string {
+	var qs []string
+	switch c.engine {
+	case core.MySQL, core.MariaDB:
+		qs = []string{"SELECT @@server_uuid", "SELECT CONCAT(@@hostname, ':', @@port, ':', @@datadir)"}
+	case core.Postgres:
+		qs = []string{"SELECT system_identifier::text FROM pg_control_system()", "SELECT pg_postmaster_start_time()::text || ':' || current_setting('port')"}
+	default:
+		return ""
+	}
+	for _, q := range qs {
+		var id sql.NullString
+		if err := c.conn.QueryRowContext(ctx, q).Scan(&id); err == nil && id.String != "" {
+			return string(c.engine) + ":" + id.String
+		}
+	}
+	return ""
 }
 
 // serverVersion is the plain version number of a server's version text:

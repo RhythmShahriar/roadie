@@ -27,6 +27,8 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	// No test reaches a real database server to ask who it is.
+	instanceOf = func(context.Context, core.Endpoint, core.Site) string { return "" }
 	_, cleanup, err := remotetest.Install()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

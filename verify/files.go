@@ -27,6 +27,11 @@ import (
 // parsePairs reads wp-config.php or .env into pairs; a hook for tests
 // while the site lane's parsers return core.ErrNotBuilt.
 var parsePairs = func(name string, b []byte) ([]core.Pair, error) {
+	if name == killswitch.ConfigCache {
+		// Laravel's cached config: PHP arrays, the values Laravel runs
+		// on while the file is there.
+		return wpconfig.Strings(b)
+	}
 	if name == ".env" {
 		f, err := dotenv.Parse(b)
 		if err != nil {
@@ -43,8 +48,9 @@ var parsePairs = func(name string, b []byte) ([]core.Pair, error) {
 	return append(f.Pairs(), f.MemberPairs()...), nil
 }
 
-// configFiles are the config files verify reads on a site.
-var configFiles = []string{"wp-config.php", ".env"}
+// configFiles are the config files verify reads on a site. Laravel's
+// config cache holds the keys .env had when it was cached.
+var configFiles = []string{"wp-config.php", ".env", killswitch.ConfigCache}
 
 // saltNames are the eight WordPress salts and Laravel's APP_KEY.
 var saltNames = []string{
@@ -649,6 +655,9 @@ func (r *run) runChecks(n int, at func(i int) (string, func() (core.SideEffect, 
 			}
 		default:
 			r.count(id, 1)
+			if id == core.FindingSideEffectMail && se.Status == "off" && r.note[id] == "" {
+				r.note[id] = mailNote(se.How)
+			}
 		}
 		r.res.SideEffects = append(r.res.SideEffects, se)
 		for _, f := range found {
@@ -658,6 +667,19 @@ func (r *run) runChecks(n int, at func(i int) (string, func() (core.SideEffect, 
 			r.add(f)
 		}
 	}
+}
+
+// mailNote says how mail is off, for the mail check's line: sealed by
+// Echo's connector, or blocked by Roadie's guard plugin with no
+// connector there, which the check's name alone wouldn't tell apart.
+func mailNote(how string) string {
+	switch {
+	case strings.Contains(how, "roadie-staging.php blocks wp_mail"):
+		return "blocked by roadie-staging.php; no Echo connector"
+	case how == "Echo's connector seals wp_mail":
+		return "sealed by Echo's connector"
+	}
+	return how
 }
 
 // fileKeySeen reports a step's key finding for a line of a config file

@@ -793,3 +793,46 @@ func TestConditionalDefines(t *testing.T) {
 		})
 	}
 }
+
+// TestIncludedDefinesWin: a file wp-config.php includes before its own
+// defines sets them first; PHP keeps the first define, so the
+// checks read that value; an include Roadie can't follow is never a
+// pass.
+func TestIncludedDefinesWin(t *testing.T) {
+	ctx := context.Background()
+	cfg := "<?php\nrequire __DIR__ . '/wp-config-local.php';\ndefine( 'WP_ENVIRONMENT_TYPE', 'staging' );\ndefine( 'DISABLE_WP_CRON', true );\n/* That's all, stop editing! */\nrequire_once ABSPATH . 'wp-settings.php';\n"
+	local := "<?php\ndefine('WP_ENVIRONMENT_TYPE','production');\ndefine('DISABLE_WP_CRON', false);\n"
+	env, cron := environmentStep(), cronStep(fixtureOptions())
+	s := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte(cfg), "wp-config-local.php": []byte(local)})
+	for _, st := range []core.Step{env, cron} {
+		se, fs, _ := st.Check(ctx, s)
+		if se.Status != "on" || len(fs) != 1 || fs[0].Locations[0].File != "wp-config-local.php" {
+			t.Errorf("%s: %q %+v, want on at wp-config-local.php", st.ID(), se.Status, fs)
+		}
+		plan, _ := st.Plan(ctx, s)
+		if !slices.ContainsFunc(plan, func(p core.PlannedEdit) bool {
+			return strings.Contains(p.What, "overridden by wp-config-local.php line")
+		}) {
+			t.Errorf("%s: plan %+v doesn't say the define is overridden", st.ID(), plan)
+		}
+	}
+	// A const before the define wins the same way.
+	s = testutil.FakeSite(map[string][]byte{"wp-config.php": []byte(strings.Replace(cfg, "require __DIR__ . '/wp-config-local.php';", "const WP_ENVIRONMENT_TYPE = \"production\";", 1))})
+	if se, fs, _ := env.Check(ctx, s); se.Status != "on" || len(fs) != 1 {
+		t.Errorf("const first: %q %v, want on", se.Status, fs)
+	}
+	// An include Roadie can't follow: unknown with a finding.
+	s = testutil.FakeSite(map[string][]byte{"wp-config.php": []byte(strings.Replace(cfg, "__DIR__ . '/wp-config-local.php'", "getenv( 'WP_LOCAL' )", 1))})
+	for _, st := range []core.Step{env, cron} {
+		if se, fs, _ := st.Check(ctx, s); se.Status != "unknown" || len(fs) != 1 || fs[0].Locations[0].Line != 2 {
+			t.Errorf("%s unfollowable include: %q %+v, want unknown with a finding at line 2", st.ID(), se.Status, fs)
+		}
+	}
+	// The included file isn't there: wp-config.php's defines hold.
+	s = testutil.FakeSite(map[string][]byte{"wp-config.php": []byte(cfg)})
+	for _, st := range []core.Step{env, cron} {
+		if se, fs, _ := st.Check(ctx, s); se.Status != "off" || len(fs) != 0 {
+			t.Errorf("%s missing include: %q %v, want off", st.ID(), se.Status, fs)
+		}
+	}
+}

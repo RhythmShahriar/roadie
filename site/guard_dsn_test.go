@@ -6,7 +6,10 @@ package site
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"io/fs"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/RhythmShahriar/roadie/core"
@@ -131,5 +134,24 @@ func TestGuardSourceSiteURL(t *testing.T) {
 	}
 	if got := SourceHosts([]string{"https://A.example.com/", "http://127.0.0.1", "https://a.example.com", "https://staging.shop.test"}, "https://staging.shop.test"); len(got) != 1 || got[0] != "a.example.com" {
 		t.Errorf("SourceHosts = %v", got)
+	}
+}
+
+// errReader is a site whose files can't be read.
+type errReader struct{ err error }
+
+func (r errReader) ReadFile(context.Context, string) ([]byte, error) { return nil, r.err }
+
+// TestUnreadableConfigHasCode: a wp-config.php or .env Roadie can't read
+// stops with site-config and says why, so the stop box names a code.
+func TestUnreadableConfigHasCode(t *testing.T) {
+	ctx := context.Background()
+	perm := &fs.PathError{Op: "openat", Path: "wp-config.php", Err: fs.ErrPermission}
+	for _, stack := range []core.Stack{core.StackWordPress, core.StackLaravel} {
+		_, err := readDBConfig(ctx, errReader{perm}, stack, "/srv/site", false)
+		var ce *core.Error
+		if !errors.As(err, &ce) || ce.Code != core.ErrSiteConfig || ce.Exit != 3 || !strings.Contains(ce.Msg, "can't be read (permission denied)") {
+			t.Errorf("%s: %v", stack, err)
+		}
 	}
 }

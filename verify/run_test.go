@@ -1076,3 +1076,64 @@ func TestRunFileKeyOnce(t *testing.T) {
 		t.Errorf("two lines: %+v", f)
 	}
 }
+
+// TestRunConfigCacheKeys: Laravel's config cache holds the keys .env had
+// when it was cached; Laravel runs on them while it is there, so a
+// live key in it is found like one in .env.
+func TestRunConfigCacheKeys(t *testing.T) {
+	cache := "<?php return array (\n  'app' => array ( 'env' => 'production' ),\n  'services' => array (\n    'stripe' => array ( 'secret' => '" + testutil.J("sk_", "live_", "51Hq", "Zx0aTq2wN8eLm3VbYp") + "' ),\n  ),\n);\n"
+	st := testutil.FakeSite(map[string][]byte{".env": []byte("APP_ENV=staging\n"), "bootstrap/cache/config.php": []byte(cache)})
+	st.StackName = core.StackLaravel
+	res := runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"}))})
+	f := find(res, "key.stripe-live")
+	if f == nil || f.Locations[0].File != "bootstrap/cache/config.php" || f.Locations[0].Line != 4 {
+		t.Fatalf("config cache key: %+v", f)
+	}
+}
+
+// TestFoldFindings: a copy's own uncovered-column finding (pass 1, kept
+// with --allow-uncovered) fails or warns the check like verify's own.
+func TestFoldFindings(t *testing.T) {
+	checks := func() []core.Check {
+		return []core.Check{{ID: core.FindingUncoveredColumn, Status: "pass", Checked: 3}, {ID: core.FindingConfigSalts, Status: "pass", Checked: 1}}
+	}
+	own := []core.Finding{{ID: core.FindingUncoveredColumn, Severity: core.SeverityMedium, Count: 1}}
+	c := checks()
+	FoldFindings(c, own, core.SeverityMedium)
+	if c[0].Status != "fail" || c[0].Detail != "1 finding (uncovered-column)" || c[1].Status != "pass" {
+		t.Errorf("at --fail-on medium: %+v", c)
+	}
+	c = checks()
+	FoldFindings(c, own, core.SeverityHigh)
+	if c[0].Status != "warn" || c[1].Status != "pass" {
+		t.Errorf("at --fail-on high: %+v", c)
+	}
+}
+
+// mailStep reports mail off the way the WordPress mail check does.
+type mailStep struct{ how string }
+
+func (s mailStep) ID() string    { return core.FindingSideEffectMail }
+func (s mailStep) Phase() string { return "files" }
+func (s mailStep) Plan(context.Context, core.Site) ([]core.PlannedEdit, error) {
+	return nil, nil
+}
+func (s mailStep) Apply(context.Context, core.Site) error { return nil }
+func (s mailStep) Check(context.Context, core.Site) (core.SideEffect, []core.Finding, error) {
+	return core.SideEffect{ID: core.FindingSideEffectMail, Status: "off", How: s.how}, nil, nil
+}
+
+// TestRunMailCheckSaysHow: with only roadie-staging.php blocking mail
+// the line says so, never that an Echo connector seals it.
+func TestRunMailCheckSaysHow(t *testing.T) {
+	st := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\n")})
+	for how, want := range map[string]string{
+		"no Echo connector; roadie-staging.php blocks wp_mail": "blocked by roadie-staging.php; no Echo connector",
+		"Echo's connector seals wp_mail":                       "sealed by Echo's connector",
+	} {
+		res := runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"})), Steps: []core.Step{mailStep{how}}})
+		if c := checkByID(res, core.FindingSideEffectMail); c.Status != "pass" || c.Detail != want {
+			t.Errorf("%s: %+v, want detail %q", how, c, want)
+		}
+	}
+}

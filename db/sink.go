@@ -55,6 +55,10 @@ type sink struct {
 	done     bool
 }
 
+// lockWaitSeconds is how long an import waits for a lock on a table it
+// replaces before it stops with a lock error.
+const lockWaitSeconds = "60"
+
 func (c *Conn) newSink(ctx context.Context, o SinkOptions) (core.Sink, error) {
 	if c.closed {
 		return nil, errClosed
@@ -79,6 +83,12 @@ func (c *Conn) newSink(ctx context.Context, o SinkOptions) (core.Sink, error) {
 		if _, err := c.conn.ExecContext(ctx, "SET foreign_key_checks = 0"); err != nil {
 			return nil, importError(err, s.st)
 		}
+		// A table another session holds (an open transaction, or the
+		// source itself reached by another address) would make DROP
+		// TABLE wait for its metadata lock for a year: stop instead.
+		if _, err := c.conn.ExecContext(ctx, "SET SESSION lock_wait_timeout = "+lockWaitSeconds); err != nil {
+			return nil, importError(err, s.st)
+		}
 		// WordPress tables keep DEFAULT '0000-00-00 00:00:00', which
 		// MySQL 8's default sql_mode refuses. mysqldump's own header
 		// relaxes the mode; a stream without that header is loaded the
@@ -91,6 +101,10 @@ func (c *Conn) newSink(ctx context.Context, o SinkOptions) (core.Sink, error) {
 			if _, err := c.conn.ExecContext(ctx, "SET SESSION sql_mode = '"+mode+"'"); err != nil {
 				return nil, importError(err, s.st)
 			}
+		}
+	case core.Postgres:
+		if _, err := c.conn.ExecContext(ctx, "SET lock_timeout = '"+lockWaitSeconds+"s'"); err != nil {
+			return nil, importError(err, s.st)
 		}
 	case core.SQLite:
 		if _, err := c.conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {

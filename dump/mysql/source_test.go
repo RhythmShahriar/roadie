@@ -361,6 +361,37 @@ func TestDataOnlyDump(t *testing.T) {
 	}
 }
 
+// A value built from literals is one string to MySQL ('sk_live_'
+// '51Hx' is the whole key) but pieces to a scan, so it is refused; a bit
+// literal is read as the bytes it stores.
+func TestRowBuiltValues(t *testing.T) {
+	head := "CREATE TABLE t (a int, b longtext);\nINSERT INTO t VALUES (1,"
+	for _, v := range []string{"'sk_live_' '51Hx'", "'sk_live_'\n'51Hx'", "1 + 2", "('x')", "N'a' 'b'"} {
+		_, err := drain(t, sourceOf([]byte(head+v+");\n"), SourceOptions{}))
+		var ce *core.Error
+		if !errors.As(err, &ce) || ce.Code != core.ErrDumpRefused || !strings.Contains(ce.Msg, "holds a value built from literals") {
+			t.Errorf("%q: %v, want dump-refused", v, err)
+		}
+	}
+	for _, v := range []string{"TRUE", "DEFAULT", "(CURRENT_TIMESTAMP)"} {
+		if _, err := drain(t, sourceOf([]byte(head+v+");\n"), SourceOptions{})); err != nil {
+			t.Errorf("%q: %v", v, err)
+		}
+	}
+	// "sk" in bits, both spellings, plus a count of bits that isn't whole
+	// bytes, which MySQL pads on the left.
+	for v, want := range map[string]string{"b'0111001101101011'": "sk", "0b0111001101101011": "sk", "B'1'": "\x01", "b''": ""} {
+		bs, err := drain(t, sourceOf([]byte(head+v+");\n"), SourceOptions{}))
+		if err != nil {
+			t.Fatalf("%s: %v", v, err)
+		}
+		got := bs[len(bs)-1].Rows[0].Values[1]
+		if b, _ := core.DecodeHexLiteral(got.Raw); got.Kind != core.Hex || string(b) != want {
+			t.Errorf("%s: %+v, want hex of %q", v, got, want)
+		}
+	}
+}
+
 func TestRowErrors(t *testing.T) {
 	for in, want := range map[string]string{
 		"CREATE TABLE t (a int, b int);\nINSERT INTO t VALUES (1,2),\n(3);\n": "dump-format: prod.sql line 3: a row of t has 1 values for 2 columns.",

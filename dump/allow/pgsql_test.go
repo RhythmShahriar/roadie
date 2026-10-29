@@ -42,7 +42,8 @@ func TestPGKept(t *testing.T) {
 		"ALTER TABLE ONLY public.\"Post\"\n    ADD CONSTRAINT \"Post_authorId_fkey\" FOREIGN KEY (\"authorId\") REFERENCES public.\"User\"(id) ON UPDATE CASCADE ON DELETE RESTRICT;",
 		"CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\" WITH SCHEMA public;",
 		"CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;",
-		"CREATE SCHEMA app;", "CREATE SCHEMA IF NOT EXISTS app AUTHORIZATION app_owner;",
+		"CREATE SCHEMA IF NOT EXISTS public;", "SET search_path = '';", "SET search_path TO DEFAULT;",
+		"SET search_path = public, pg_catalog;", "RESET search_path;",
 		"CREATE TABLE public.t (\"u&x\" text DEFAULT 'u&''x''', u int DEFAULT 1);",
 		"CREATE TABLE public.t (a text DEFAULT current_setting('application_name'), \"query_to_xml\" text);",
 		"COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';",
@@ -145,6 +146,16 @@ func TestPGRefused(t *testing.T) {
 		{"ABORT;", "holds an ABORT statement"},
 		{"ROLLBACK TO SAVEPOINT s;", "holds a ROLLBACK statement"},
 		{"COMMIT PREPARED 'x';", "holds a COMMIT PREPARED statement"},
+		{"CREATE SCHEMA evil;", "holds a CREATE SCHEMA statement for a schema other than public, which isn't on the list of statements Roadie copies from a dump. Create the schema on the staging database first and leave its CREATE SCHEMA out of the export."},
+		{"CREATE SCHEMA IF NOT EXISTS app AUTHORIZATION app_owner;", "holds a CREATE SCHEMA statement for a schema other than public"},
+		{"CREATE SCHEMA public AUTHORIZATION evil;", "holds a CREATE SCHEMA statement for a schema other than public"},
+		{"SELECT pg_catalog.set_config('search_path', 'evil, public', false);", "holds a set_config() of search_path other than pg_dump's, which could make the names after it reach another schema's tables and functions."},
+		{"SELECT pg_catalog.set_config('search_path', '', true);", "holds a set_config() of search_path other than pg_dump's"},
+		{"SET search_path = evil, public;", "holds a SET search_path other than pg_dump's"},
+		{"SET search_path TO 'evil';", "holds a SET search_path other than pg_dump's"},
+		{"CREATE INDEX i ON public.\"User\" (pg_sleep(1));", "holds a call to pg_sleep(), which could stall the import or hold locks on the staging server."},
+		{"ALTER TABLE public.\"User\" ADD CONSTRAINT c CHECK (pg_catalog.pg_sleep(1) IS NOT NULL);", "holds a call to pg_sleep()"},
+		{"CREATE TABLE public.t (a int DEFAULT pg_advisory_lock(1));", "holds a call to pg_advisory_lock()"},
 	} {
 		d, err := checkPGText(c.text, Options{Name: "prod.sql"})
 		var ce *core.Error

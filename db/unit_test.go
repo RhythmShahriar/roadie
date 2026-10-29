@@ -335,6 +335,12 @@ func TestImportError(t *testing.T) {
 			"import: MySQL error 1064 (42000): You have an error in your SQL syntax. The target is in a mixed state after 1 table: some tables are pseudonymised, the rest still hold the earlier copy. Fix the cause and run the same command again."},
 		{"one of one", driver.ErrBadConn, importState{target: "app@db", committed: 1, total: 1, changed: true}, core.ErrImportMixed, core.Mixed,
 			"import: the connection to app@db was lost after 1 of 1 table. The target is in a mixed state: some tables are pseudonymised, the rest still hold the earlier copy. Run the same command again."},
+		{"mysql lock wait", &mysql.MySQLError{Number: 1205, Message: "Lock wait timeout exceeded; try restarting transaction"}, importState{engine: core.MySQL, current: "deals"},
+			core.ErrImport, core.Untouched,
+			"import: table deals: another session held a lock on it for 60s (an open transaction, or --to reaches the --from database by another address). Close that session or check --to, then run the same command again. The target is untouched."},
+		{"pg lock timeout", &pgconn.PgError{Code: "55P03", Message: `canceling statement due to lock timeout`}, importState{engine: core.Postgres, current: "Address"},
+			core.ErrImport, core.Untouched,
+			"import: table Address: another session held a lock on it for 60s (an open transaction, or --to reaches the --from database by another address). Close that session or check --to, then run the same command again. The target is untouched."},
 		{"first table broke", driver.ErrBadConn, importState{target: "app@db", current: "wp_posts", changed: true}, core.ErrImportMixed, core.Mixed,
 			"import: the connection to app@db was lost during table wp_posts. The target is in a mixed state: some tables are pseudonymised, the rest still hold the earlier copy. Run the same command again."},
 	}

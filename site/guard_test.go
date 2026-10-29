@@ -105,6 +105,16 @@ func TestGuardRefusals(t *testing.T) {
 			s := stagingSite("production", "https://staging.shop.test")
 			return GuardInput{From: dumpEP(), To: s.EP, ToSite: s, TargetIsStaging: "staging.shop", Mode: "copy"}, s
 		}, core.ErrTargetSaysProduction, 3, ""},
+		{"target-says-production in an included file", func() (GuardInput, *testutil.Site) {
+			st := stagingSite("staging", "https://staging.shop.test")
+			s := testutil.FakeSite(map[string][]byte{
+				"wp-config.php":       []byte("<?php\nrequire __DIR__ . '/wp-config-local.php';\ndefine( 'WP_ENVIRONMENT_TYPE', 'staging' );\n"),
+				"wp-config-local.php": []byte("<?php define( 'WP_ENVIRONMENT_TYPE', 'production' );"),
+			})
+			s.EP, s.WPFunc = st.EP, st.WPFunc
+			return GuardInput{From: dumpEP(), To: s.EP, ToSite: s, URL: "https://staging.shop.test", Mode: "copy"}, s
+		}, core.ErrTargetSaysProduction, 3,
+			"target-says-production: /var/www/staging has WP_ENVIRONMENT_TYPE set to production in wp-config-local.php, which wp-config.php includes first. If it's staging, set WP_ENVIRONMENT_TYPE to staging there, or pass --target-is-staging staging.shop.test."},
 		{"target-says-production laravel", func() (GuardInput, *testutil.Site) {
 			s := testutil.FakeSite(map[string][]byte{".env": []byte("APP_ENV=production\nAPP_URL=https://staging.app.test\n")})
 			s.StackName = core.StackLaravel
@@ -240,6 +250,36 @@ func TestGuardOverride(t *testing.T) {
 	s.Identity = core.DBIdentity{Engine: core.MySQL, Host: "127.0.0.1", Port: 3306, Name: "staging"}
 	from := core.Endpoint{Kind: core.DSN, Driver: core.MySQL, Host: "localhost", Path: "staging", Display: "mysql://localhost/staging"}
 	wantCode(t, Guard(ctx, GuardInput{From: from, To: s.EP, ToSite: s, TargetIsStaging: "staging.shop.test", Mode: "copy"}), core.ErrTargetIsSource, 3, "")
+}
+
+// TestGuardSameServerOtherAddress: a source at a published port and a
+// target at the container's own address are one database; the servers
+// say so (@@server_uuid, system_identifier) though the hosts differ.
+func TestGuardSameServerOtherAddress(t *testing.T) {
+	ctx := context.Background()
+	old := instanceOf
+	t.Cleanup(func() { instanceOf = old })
+	ids := map[string]string{"127.0.0.1": "mysql:uuid-1/prod16", "172.17.0.2": "mysql:uuid-1/prod16", "10.0.0.9": "mysql:uuid-2/prod16"}
+	var asked []string
+	instanceOf = func(_ context.Context, e core.Endpoint, _ core.Site) string {
+		asked = append(asked, e.Host)
+		return ids[e.Host]
+	}
+	from := core.Endpoint{Kind: core.DSN, Driver: core.MySQL, Host: "127.0.0.1", Port: 40316, Path: "prod16", Display: "mysql://u@127.0.0.1:40316/prod16"}
+	to := core.Endpoint{Kind: core.DSN, Driver: core.MySQL, Host: "172.17.0.2", Port: 3306, Path: "prod16", Display: "mysql://u@172.17.0.2:3306/prod16"}
+	wantCode(t, Guard(ctx, GuardInput{From: from, To: to, Mode: "copy"}), core.ErrTargetIsSource, 3,
+		"target-is-source: --from and --to both reach database prod16 on the same MySQL server (127.0.0.1:40316 and 172.17.0.2:3306 are two addresses of it). A copy can't replace its own source.")
+	// Another server with a database of the same name is not the source.
+	to.Host = "10.0.0.9"
+	if err := targetIsSource(ctx, GuardInput{From: from, To: to, Mode: "copy"}); err != nil {
+		t.Fatal(err)
+	}
+	// Databases with other names are never asked about.
+	asked = nil
+	to.Path = "staging16"
+	if err := targetIsSource(ctx, GuardInput{From: from, To: to, Mode: "copy"}); err != nil || len(asked) != 0 {
+		t.Fatalf("%v, asked %v", err, asked)
+	}
 }
 
 func TestGuardSameFolderAndHost(t *testing.T) {

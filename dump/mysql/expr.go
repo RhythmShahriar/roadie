@@ -82,6 +82,84 @@ func SafeExpr(text []byte, m Mode) bool {
 	return true
 }
 
+// plainWords are the keywords a value may be on its own: they carry no
+// data.
+var plainWords = map[string]bool{
+	"true": true, "false": true, "null": true, "default": true, "unknown": true,
+	"current_timestamp": true, "current_date": true, "current_time": true, "localtime": true, "localtimestamp": true,
+}
+
+// PlainExpr reports whether an expression value (Kind Expr) is one
+// keyword such as TRUE, DEFAULT or CURRENT_TIMESTAMP, maybe in
+// parentheses. Anything with a literal in it, such as adjacent strings
+// ('sk_live_' '51Hx'), which MySQL joins into one, or 1 + 2, is not:
+// Roadie would scan its pieces, not the value the server stores. No dump
+// tool writes those.
+func PlainExpr(text []byte) bool {
+	words := 0
+	for i := 0; i < len(text); {
+		c := text[i]
+		switch {
+		case c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '(' || c == ')':
+			i++
+		case isWord(c) && (c < '0' || c > '9'):
+			j := i
+			for j < len(text) && isWord(text[j]) {
+				j++
+			}
+			if !plainWords[lowerWord(text[i:j])] {
+				return false
+			}
+			words++
+			i = j
+		default:
+			return false
+		}
+	}
+	return words == 1
+}
+
+// BitHex turns a bit literal, b'0111' or 0b0111, into the hex literal of
+// the same bytes (0x07): MySQL pads the bits on the left to whole bytes.
+func BitHex(raw []byte) ([]byte, bool) {
+	var bits []byte
+	switch {
+	case len(raw) >= 3 && raw[0]|0x20 == 'b' && raw[1] == '\'' && raw[len(raw)-1] == '\'':
+		bits = raw[2 : len(raw)-1]
+	case len(raw) >= 3 && raw[0] == '0' && raw[1] == 'b':
+		bits = raw[2:]
+	default:
+		return nil, false
+	}
+	if len(bits) == 0 {
+		return []byte("X''"), true
+	}
+	const digits = "0123456789ABCDEF"
+	n := (len(bits) + 7) / 8
+	out := make([]byte, 2, 2+2*n)
+	out[0], out[1] = '0', 'x'
+	pad := n*8 - len(bits)
+	var b byte
+	for k := 0; k < n*8; k++ {
+		bit := byte(0)
+		if k >= pad {
+			switch bits[k-pad] {
+			case '0':
+			case '1':
+				bit = 1
+			default:
+				return nil, false
+			}
+		}
+		b = b<<1 | bit
+		if k%8 == 7 {
+			out = append(out, digits[b>>4], digits[b&15])
+			b = 0
+		}
+	}
+	return out, true
+}
+
 // skipString returns the index after the quoted string at text[i], or
 // -1 when it doesn't close.
 func skipString(text []byte, i int, m Mode) int {

@@ -228,17 +228,23 @@ func environmentStep() core.Step {
 		},
 		func(f *wpconfig.File) error { return f.Set("WP_ENVIRONMENT_TYPE", "staging") },
 		"WordPress may still call this copy production")
-	return &step{id: id, plan: plan, apply: apply, check: func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
+	return &step{id: id, plan: overrideNote(plan, "WP_ENVIRONMENT_TYPE"), apply: apply, check: func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
 		se := core.SideEffect{ID: id, Status: "off", How: "WP_ENVIRONMENT_TYPE is 'staging' in wp-config.php", Undo: "set WP_ENVIRONMENT_TYPE in wp-config.php"}
 		f, err := readConfig(ctx, s)
 		if err != nil {
 			se.Status, se.How = "unknown", "wp-config.php can't be read"
 			return se, nil, nil
 		}
-		d, ok := f.Lookup("WP_ENVIRONMENT_TYPE")
+		r := resolveDefine(ctx, s, f, "WP_ENVIRONMENT_TYPE")
+		d, ok := r.Define, r.Found
+		at := core.Location{File: r.File, Line: d.Line}
 		switch {
+		case r.Unknown != "":
+			// A file included first may set it: never a pass.
+			se.Status, se.How = "unknown", "WP_ENVIRONMENT_TYPE may be set before wp-config.php's define: "+r.Unknown
+			return se, []core.Finding{finding(id, core.SeverityCritical, se.How, "check that file, or define WP_ENVIRONMENT_TYPE as 'staging' before the include", fileAt(r.UnknownLine))}, nil
 		case ok && d.Literal && d.BeforeSettings && !d.Conditional && slices.Contains([]string{"staging", "local", "development"}, d.Value):
-			se.How = "WP_ENVIRONMENT_TYPE is '" + d.Value + "' in wp-config.php"
+			se.How = "WP_ENVIRONMENT_TYPE is '" + d.Value + "' in " + r.File
 			return se, nil, nil
 		case !ok:
 			se.Status, se.How = "on", "WP_ENVIRONMENT_TYPE isn't set, which WordPress reads as production"
@@ -246,11 +252,43 @@ func environmentStep() core.Step {
 			se.Status, se.How = "on", "WP_ENVIRONMENT_TYPE is set only inside a condition PHP may skip"
 		case !d.BeforeSettings:
 			se.Status, se.How = "on", "WP_ENVIRONMENT_TYPE is defined after wp-settings.php, too late for WordPress to read it"
+		case r.File != "wp-config.php":
+			se.Status, se.How = "on", "WP_ENVIRONMENT_TYPE is set in "+r.File+", which wp-config.php includes first, so PHP keeps that value and not 'staging'"
 		default:
 			se.Status, se.How = "on", "WP_ENVIRONMENT_TYPE isn't 'staging'"
 		}
-		return se, []core.Finding{finding(id, core.SeverityCritical, se.How, prepareFix(s), fileAt(d.Line))}, nil
+		return se, []core.Finding{finding(id, core.SeverityCritical, se.How, prepareFix(s), at)}, nil
 	}}
+}
+
+// resolveDefine is the define PHP keeps for name, wp-config.php's
+// includes followed.
+func resolveDefine(ctx context.Context, s core.Site, f *wpconfig.File, name string) wpconfig.Resolved {
+	return f.Resolve(name, func(rel string) ([]byte, error) { return s.ReadFile(ctx, rel) })
+}
+
+// overrideNote adds to a plan that a file wp-config.php includes first
+// may hold its own define of name, which PHP keeps over the one Roadie
+// writes.
+func overrideNote(plan func(context.Context, core.Site) ([]core.PlannedEdit, error), name string) func(context.Context, core.Site) ([]core.PlannedEdit, error) {
+	return func(ctx context.Context, s core.Site) ([]core.PlannedEdit, error) {
+		out, err := plan(ctx, s)
+		if err != nil || len(out) == 0 {
+			return out, err
+		}
+		f, err := readConfig(ctx, s)
+		if err != nil {
+			return out, nil
+		}
+		r := resolveDefine(ctx, s, f, name)
+		switch {
+		case r.Unknown != "":
+			out = append(out, core.PlannedEdit{Step: out[0].Step, File: "wp-config.php", What: "note: this define may be overridden; " + r.Unknown})
+		case r.Found && r.File != "wp-config.php":
+			out = append(out, core.PlannedEdit{Step: out[0].Step, File: r.File, What: fmt.Sprintf("note: this define is overridden by %s line %d, which wp-config.php includes first; PHP keeps that one, so change it there", r.File, r.Line)})
+		}
+		return out, nil
+	}
 }
 
 // cronStep sets DISABLE_WP_CRON to true.
@@ -263,15 +301,23 @@ func cronStep(o Options) core.Step {
 			se.Status, se.How = "unknown", "wp-config.php can't be read"
 			return se, nil, nil
 		}
-		if d, ok := inForce(f, "DISABLE_WP_CRON"); ok && (d.Value == "true" || d.Value == "1") {
+		r := resolveDefine(ctx, s, f, "DISABLE_WP_CRON")
+		d := r.Define
+		if r.Unknown != "" {
+			se.Status, se.How = "unknown", "DISABLE_WP_CRON may be set before wp-config.php's define: "+r.Unknown
+			return se, []core.Finding{finding(id, core.SeverityHigh, se.How, "check that file, or define( 'DISABLE_WP_CRON', true ); before the include", fileAt(r.UnknownLine))}, nil
+		}
+		if r.Found && d.Literal && d.BeforeSettings && !d.Conditional && (d.Value == "true" || d.Value == "1") {
 			return se, nil, nil
 		}
-		d, _ := f.Lookup("DISABLE_WP_CRON")
 		se.Status, se.How = "on", "DISABLE_WP_CRON isn't true, so WP-Cron runs production's scheduled events"
-		if d.Conditional && d.Value == "true" {
+		switch {
+		case d.Conditional && d.Value == "true":
 			se.How = "DISABLE_WP_CRON is set only inside a condition PHP may skip, so WP-Cron may run production's scheduled events"
+		case r.Found && r.File != "wp-config.php":
+			se.How = "DISABLE_WP_CRON isn't true in " + r.File + ", which wp-config.php includes first, so WP-Cron runs production's scheduled events"
 		}
-		return se, []core.Finding{finding(id, core.SeverityHigh, se.How, "define( 'DISABLE_WP_CRON', true ); in wp-config.php", fileAt(d.Line))}, nil
+		return se, []core.Finding{finding(id, core.SeverityHigh, se.How, "define( 'DISABLE_WP_CRON', true ); in wp-config.php", core.Location{File: r.File, Line: d.Line})}, nil
 	}}
 	if o.kept("cron") {
 		st.plan = keptPlan(id, "cron")
@@ -281,6 +327,7 @@ func cronStep(o Options) core.Step {
 		func(*wpconfig.File) []string { return []string{"define( 'DISABLE_WP_CRON', true );"} },
 		func(f *wpconfig.File) error { return f.SetBool("DISABLE_WP_CRON", true) },
 		"WP-Cron may run production's scheduled events")
+	st.plan = overrideNote(st.plan, "DISABLE_WP_CRON")
 	return st
 }
 

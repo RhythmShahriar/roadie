@@ -15,12 +15,14 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/RhythmShahriar/roadie/codec/urlrw"
 	"github.com/RhythmShahriar/roadie/core"
+	"github.com/RhythmShahriar/roadie/db"
 	"github.com/RhythmShahriar/roadie/site/dotenv"
 	"github.com/RhythmShahriar/roadie/site/internal/wpdb"
 	"github.com/RhythmShahriar/roadie/site/remote"
@@ -195,14 +197,21 @@ func readTarget(ctx context.Context, in GuardInput) (*targetFacts, error) {
 				t.add(urlHost(p.Value), "is", true, false)
 			}
 		}
-		d, ok := f.Lookup("WP_ENVIRONMENT_TYPE")
+		// A file wp-config.php includes first wins: PHP keeps the
+		// first define.
+		r := f.Resolve("WP_ENVIRONMENT_TYPE", func(rel string) ([]byte, error) { return s.ReadFile(ctx, rel) })
+		d, ok := r.Define, r.Found
+		in := ""
+		if r.File != "wp-config.php" {
+			in = " in " + r.File + ", which wp-config.php includes first"
+		}
 		switch {
 		case !ok:
 			t.env = "has WP_ENVIRONMENT_TYPE unset, which WordPress reads as production"
 		case !d.Literal:
-			t.env = "sets WP_ENVIRONMENT_TYPE from " + exprSource(d.Value) + ", which Roadie can't run, so it counts as production"
+			t.env = "sets WP_ENVIRONMENT_TYPE from " + exprSource(d.Value) + in + ", which Roadie can't run, so it counts as production"
 		case d.Value == "production":
-			t.env = "has WP_ENVIRONMENT_TYPE set to production"
+			t.env = "has WP_ENVIRONMENT_TYPE set to production" + in
 		}
 		t.envFix = "set WP_ENVIRONMENT_TYPE to staging there"
 	case !errors.Is(err, fs.ErrNotExist):
@@ -653,6 +662,61 @@ func sameDB(a, b core.DBIdentity) bool {
 	return normHost(a.Host) == normHost(b.Host)
 }
 
+// instanceOf names the database endpoint e (or site s) reaches on its
+// server, whatever address reached it (db.Conn.Instance); "" when it
+// can't tell. A variable so tests never connect.
+var instanceOf = func(ctx context.Context, e core.Endpoint, s core.Site) string {
+	ep := e
+	if e.Kind != core.DSN {
+		d, ok := s.(interface {
+			dbEndpoint(context.Context) (core.Endpoint, error)
+		})
+		if !ok {
+			return ""
+		}
+		var err error
+		if ep, err = d.dbEndpoint(ctx); err != nil {
+			return ""
+		}
+	}
+	c, err := openDB(ctx, ep, db.ReadOnly)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = c.Close() }()
+	if i, ok := c.(interface{ Instance() string }); ok {
+		return i.Instance()
+	}
+	return ""
+}
+
+// sameServerDB asks both servers who they are when the text of the two
+// endpoints names the same database on different addresses: a source
+// reached at 127.0.0.1:40316 and a target at the container's bridge
+// address are one database.
+func sameServerDB(ctx context.Context, in GuardInput, a, b core.DBIdentity) bool {
+	if family(a.Engine) != family(b.Engine) || a.Engine == core.SQLite || !strings.EqualFold(a.Name, b.Name) {
+		return false
+	}
+	x := instanceOf(ctx, in.From, in.FromSite)
+	if x == "" {
+		return false
+	}
+	return x == instanceOf(ctx, in.To, in.ToSite)
+}
+
+func serverName(d core.Dialect) string {
+	switch family(d) {
+	case core.Postgres:
+		return "PostgreSQL"
+	}
+	return "MySQL"
+}
+
+func hostPort(id core.DBIdentity) string {
+	return net.JoinHostPort(id.Host, strconv.Itoa(id.Port))
+}
+
 // targetIsSource refuses a target that is the source: the same folder or
 // file, the same ssh host and path, or the same database.
 func targetIsSource(ctx context.Context, in GuardInput) error {
@@ -674,6 +738,13 @@ func targetIsSource(ctx context.Context, in GuardInput) error {
 	}
 	a, okA := identityOf(ctx, in.From, in.FromSite)
 	b, okB := identityOf(ctx, in.To, in.ToSite)
+	if okA && okB && !sameDB(a, b) && sameServerDB(ctx, in, a, b) {
+		// Two addresses (a published port and the container's own
+		// address, a host name and its IP) of one server.
+		return core.Errorf(core.ErrTargetIsSource, 3,
+			"target-is-source: --from and --to both reach database %s on the same %s server (%s and %s are two addresses of it). A copy can't replace its own source.",
+			b.Name, serverName(b.Engine), hostPort(a), hostPort(b))
+	}
 	if okA && okB && sameDB(a, b) {
 		where := b.Host
 		if b.Engine == core.SQLite {

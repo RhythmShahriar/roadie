@@ -523,3 +523,47 @@ func TestLaravelKeyStepAppliedKeys(t *testing.T) {
 		}
 	}
 }
+
+// TestLaravelConfigCache: while bootstrap/cache/config.php is there
+// Laravel never reads .env, so the environment, mail and queue checks
+// fail whatever .env says; prepare deletes the caches.
+func TestLaravelConfigCache(t *testing.T) {
+	ctx := context.Background()
+	env := "APP_ENV=staging\nQUEUE_CONNECTION=sync\nMAIL_MAILER=log\n"
+	cache := []byte("<?php return ['app' => ['env' => 'production'], 'queue' => ['default' => 'database']];")
+	s := testutil.FakeSite(map[string][]byte{".env": []byte(env), ConfigCache: cache, "bootstrap/cache/events.php": []byte("<?php return [];")})
+	s.StackName = core.StackLaravel
+	steps := laravelSteps(Options{URL: "https://staging.app.test", AppKey: func() string { return "base64:x" }})
+	for _, st := range steps {
+		switch st.ID() {
+		case core.FindingConfigEnvironment, core.FindingSideEffectMail, core.FindingSideEffectQueue:
+		default:
+			continue
+		}
+		se, fs, _ := st.Check(ctx, s)
+		if se.Status != "on" || len(fs) != 1 || fs[0].Locations[0].File != ConfigCache {
+			t.Errorf("%s with a config cache: %q %+v, want on at %s", st.ID(), se.Status, fs, ConfigCache)
+		}
+	}
+	env0 := steps[0]
+	plan, _ := env0.Plan(ctx, s)
+	if !slices.ContainsFunc(plan, func(p core.PlannedEdit) bool { return p.File == ConfigCache }) {
+		t.Errorf("plan doesn't name the config cache: %+v", plan)
+	}
+	if err := env0.Apply(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range laravelCaches {
+		if ok, _ := s.Exists(ctx, rel); ok {
+			t.Errorf("%s is still there after prepare", rel)
+		}
+	}
+	for _, st := range steps {
+		if st.ID() != core.FindingConfigEnvironment && st.ID() != core.FindingSideEffectMail && st.ID() != core.FindingSideEffectQueue {
+			continue
+		}
+		if se, fs, _ := st.Check(ctx, s); se.Status != "off" || len(fs) != 0 {
+			t.Errorf("%s after prepare: %q %+v, want off", st.ID(), se.Status, fs)
+		}
+	}
+}

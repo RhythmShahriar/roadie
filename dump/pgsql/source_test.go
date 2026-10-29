@@ -477,8 +477,8 @@ func TestRowCalls(t *testing.T) {
 	}
 	for _, v := range []string{
 		"DEFAULT", "true", "'x'::character varying(10)", "'1.5'::numeric(10,2)", "'2024-01-01'::timestamp(3) without time zone",
-		"'{1,2}'::integer[]", "ARRAY['a', 'b']", "'USER'::public.\"Role\"", "-1", "B'0101'", "X'1F'", "E'a\\nb'", "'NaN'::double precision",
-		"NULL::pg_catalog.text", "'1.5'", "1.5", ".5", "'x'::text COLLATE \"C\"",
+		"'{1,2}'::integer[]", "'USER'::public.\"Role\"", "-1", "B'0101'", "X'1F'", "E'a\\nb'", "'NaN'::double precision",
+		"NULL::pg_catalog.text", "'1.5'", "1.5", ".5",
 	} {
 		bs, _, err := drain(t, []byte(head+"'a', "+v+");\n"), SourceOptions{})
 		if err != nil {
@@ -487,6 +487,33 @@ func TestRowCalls(t *testing.T) {
 		}
 		if r := rowsOf(bs, "t"); len(r) != 1 || len(r[0].Values) != 2 {
 			t.Errorf("%s: rows %v", v, r)
+		}
+	}
+}
+
+// A value built from literals is one value to PostgreSQL ('sk_live_' ||
+// '51Hx' is the whole key) but pieces to a scan, so it is refused; a
+// cast string is read as the string it stores.
+func TestRowBuiltValues(t *testing.T) {
+	head := "CREATE TABLE t (a text, b text);\nINSERT INTO t VALUES ("
+	for _, v := range []string{
+		"'sk_live_' || '51Hx'", "$$sk_live_51Hx$$", "$k$sk_live_51Hx$k$", "'sk_live_'\n'51Hx'", `U&'\0073k_live_51Hx'`,
+		"ARRAY['a', 'b']", `'x'::text COLLATE "C"`, "('a') || ('b')", "-'1'", "E'x'\n'y'",
+	} {
+		_, _, err := drain(t, []byte(head+"'a', "+v+");\n"), SourceOptions{})
+		ce := wantCode(t, err, core.ErrDumpRefused, 3)
+		if want := "dump-refused: app.sql line 2 holds a value built from literals"; !bytes.HasPrefix([]byte(ce.Msg), []byte(want)) {
+			t.Errorf("%s: %s", v, ce.Msg)
+		}
+	}
+	for v, want := range map[string]string{"'it''s'::text": "it's", `E'a\nb'::varchar(5)`: "a\nb", "('x')::text": "x"} {
+		bs, _, err := drain(t, []byte(head+"'a', "+v+");\n"), SourceOptions{})
+		if err != nil {
+			t.Fatalf("%s: %v", v, err)
+		}
+		r := rowsOf(bs, "t")
+		if len(r) != 1 || r[0].Values[1].Kind != core.String || string(r[0].Values[1].Raw) != want {
+			t.Errorf("%s: %+v, want the string %q", v, r, want)
 		}
 	}
 }

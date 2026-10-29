@@ -124,6 +124,12 @@ func importError(err error, st importState) error {
 	if st.current != "" {
 		where = "import: table " + st.current
 	}
+	if lockTimeout(err) {
+		e := core.Errorf(code, 3, "%s: another session held a lock on it for %ss (an open transaction, or --to reaches the --from database by another address). Close that session or check --to, then run the same command again. %s",
+			where, lockWaitSeconds, stateSentence(st, false))
+		e.State = state
+		return e
+	}
 	if msg, ok := duplicateObject(err); ok {
 		// The target already holds the schema the dump creates: pg_dump
 		// without --clean writes CREATE only, so a second refresh clashes.
@@ -135,6 +141,18 @@ func importError(err error, st importState) error {
 	e := core.Errorf(code, 3, "%s: %s. %s", where, describe(err), stateSentence(st, true))
 	e.State = state
 	return e
+}
+
+// lockTimeout reports MySQL's lock wait timeout (1205, which a metadata
+// lock wait gives too) and PostgreSQL's lock_not_available (55P03), which
+// lock_timeout raises.
+func lockTimeout(err error) bool {
+	var me *mysql.MySQLError
+	if errors.As(err, &me) {
+		return me.Number == 1205
+	}
+	var pe *pgconn.PgError
+	return errors.As(err, &pe) && pe.Code == "55P03"
 }
 
 // reDuplicate is PostgreSQL's message for an object a CREATE makes that

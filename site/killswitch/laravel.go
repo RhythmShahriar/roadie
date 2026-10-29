@@ -38,6 +38,88 @@ const WorkersLine = "Stop queue workers and the scheduler on this host: jobs fro
 // files (PRD 13.4).
 const DatabaseOnlyLine = "This target is a database only: Roadie can't install the Echo seal or edit config files. Turn mail and jobs off where the app runs."
 
+// ConfigCache is Laravel's cached config (php artisan config:cache).
+// While it is there Laravel never reads .env, so every .env edit is
+// ignored and the cache's own env, queue, mail and keys are what run.
+const ConfigCache = "bootstrap/cache/config.php"
+
+// laravelCaches are the caches prepare deletes: the config cache plus the
+// route and event caches artisan optimize writes with it. Laravel reads
+// the source files again without them.
+var laravelCaches = []string{ConfigCache, "bootstrap/cache/routes-v7.php", "bootstrap/cache/events.php"}
+
+// configCacheHow says why a check fails while the config cache is there.
+const configCacheHow = ConfigCache + " exists, so Laravel ignores .env and runs on the cached config"
+
+// configCacheFix is the fix of a check that fails on the config cache.
+func configCacheFix(s core.Site) string {
+	return "run php artisan config:clear on this copy, or " + prepareFix(s)
+}
+
+// hasConfigCache reports Laravel's cached config on s.
+func hasConfigCache(ctx context.Context, s core.Site) (bool, error) {
+	return s.Exists(ctx, ConfigCache)
+}
+
+// cachedOn is the side effect and finding of a check while the config
+// cache is there: never off, since .env doesn't count.
+func cachedOn(s core.Site, se core.SideEffect, sev core.Severity, what string) (core.SideEffect, []core.Finding, error) {
+	se.Status, se.How = "on", configCacheHow+" ("+what+" from when it was cached)"
+	return se, []core.Finding{finding(se.ID, sev, se.How, configCacheFix(s), core.Location{File: ConfigCache})}, nil
+}
+
+// cacheCheck wraps check: while the config cache is there the step is on
+// whatever .env says.
+func cacheCheck(sev core.Severity, what string, check func(context.Context, core.Site) (core.SideEffect, []core.Finding, error)) func(context.Context, core.Site) (core.SideEffect, []core.Finding, error) {
+	return func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
+		se, found, err := check(ctx, s)
+		if err != nil {
+			return se, found, err
+		}
+		cached, cerr := hasConfigCache(ctx, s)
+		switch {
+		case cerr != nil:
+			se.Status, se.How = "unknown", ConfigCache+" can't be checked ("+cerr.Error()+"); while it is there Laravel ignores .env"
+			return se, append(found, finding(se.ID, sev, se.How, configCacheFix(s), core.Location{File: ConfigCache})), nil
+		case cached:
+			return cachedOn(s, se, sev, what)
+		}
+		return se, found, nil
+	}
+}
+
+// clearCaches deletes the Laravel caches that are there.
+func clearCaches(ctx context.Context, s core.Site, id string) error {
+	for _, rel := range laravelCaches {
+		ok, err := s.Exists(ctx, rel)
+		if err != nil {
+			return killErr(id, rel, err, "Laravel ignores .env while "+ConfigCache+" is there", s)
+		}
+		if !ok {
+			continue
+		}
+		if err := s.Remove(ctx, rel); err != nil {
+			return killErr(id, rel, err, "Laravel ignores .env while "+ConfigCache+" is there; run php artisan config:clear on this copy", s)
+		}
+	}
+	return nil
+}
+
+// cachePlan lists the caches prepare deletes.
+func cachePlan(ctx context.Context, s core.Site, id string) []core.PlannedEdit {
+	var out []core.PlannedEdit
+	for _, rel := range laravelCaches {
+		if ok, _ := s.Exists(ctx, rel); ok {
+			what := "deleted, so Laravel reads the source files again"
+			if rel == ConfigCache {
+				what = "deleted: while it is there Laravel ignores .env and runs production's cached env, queue, mail and keys (run php artisan config:cache again only after checking .env)"
+			}
+			out = append(out, core.PlannedEdit{Step: id, File: rel, What: what})
+		}
+	}
+	return out
+}
+
 // envFile is the Laravel .env file, relative to the site root.
 func (o Options) envFile() string {
 	if o.Cfg != nil {
@@ -179,7 +261,15 @@ func laravelEnvironmentStep(o Options) core.Step {
 			return nil
 		},
 		"Laravel may still call this copy production")
-	return &step{id: id, plan: plan, apply: apply, check: func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
+	return &step{id: id, plan: func(ctx context.Context, s core.Site) ([]core.PlannedEdit, error) {
+		edits, err := plan(ctx, s)
+		return append(edits, cachePlan(ctx, s, id)...), err
+	}, apply: func(ctx context.Context, s core.Site) error {
+		if err := apply(ctx, s); err != nil {
+			return err
+		}
+		return clearCaches(ctx, s, id)
+	}, check: cacheCheck(core.SeverityCritical, "its APP_ENV", func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
 		se := core.SideEffect{ID: id, Status: "off", Undo: "set APP_ENV in " + rel}
 		f, err := readEnv(ctx, s, rel)
 		if err != nil {
@@ -197,7 +287,7 @@ func laravelEnvironmentStep(o Options) core.Step {
 			se.Status, se.How = "on", "APP_ENV isn't staging"
 		}
 		return se, []core.Finding{finding(id, core.SeverityCritical, se.How, prepareFix(s), core.Location{File: rel, Line: p.Line})}, nil
-	}}
+	})}
 }
 
 // laravelSaltsStep rotates APP_KEY unless --keep-app-key. Its Check gives
@@ -304,7 +394,7 @@ func laravelMailStep(o Options) core.Step {
 				What: ManualPrefix + ComposerLine + " (Roadie never runs Composer), so Echo seals mail, SMS and webhooks in the app too"}), err
 		}
 	}
-	st.check = func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
+	st.check = cacheCheck(core.SeverityCritical, "its mailer", func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
 		se := core.SideEffect{ID: id, Status: "off", Undo: "set MAIL_* in " + rel + " back to your mail server"}
 		f, err := readEnv(ctx, s, rel)
 		if err != nil {
@@ -356,7 +446,7 @@ func laravelMailStep(o Options) core.Step {
 			se.Status, se.How = "unknown", "MAIL_MAILER is "+m+", which Roadie can't check"
 		}
 		return se, nil, nil
-	}
+	})
 	return st
 }
 
@@ -390,7 +480,7 @@ func laravelQueueStep(o Options) core.Step {
 			return append(edits, core.PlannedEdit{Step: id, File: "queue workers", What: ManualPrefix + WorkersLine}), err
 		},
 		apply: apply,
-		check: func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
+		check: cacheCheck(core.SeverityHigh, "its queue connection", func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
 			se := core.SideEffect{ID: id, Status: "off", Undo: "set QUEUE_CONNECTION in " + rel + " and start a worker"}
 			f, err := readEnv(ctx, s, rel)
 			if err != nil {
@@ -426,7 +516,7 @@ func laravelQueueStep(o Options) core.Step {
 			fd.Count, fd.Locations[0].Count = n, n
 			fd.Detail = se.How
 			return se, []core.Finding{fd}, nil
-		}}
+		})}
 }
 
 // laravelKeyStep swaps or blanks every live key in .env. Its Check lists

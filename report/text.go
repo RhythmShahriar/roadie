@@ -106,6 +106,9 @@ var checkLabels = map[string]string{
 	core.FindingAuthNone:                 "Asks for a password",
 	core.FindingSoundcheckFailed:         "Soundcheck passed",
 	core.FindingSideEffectNotApplicable:  "Database only: no files to check",
+	// The line's detail says how: sealed by Echo, or blocked by
+	// roadie-staging.php with no connector.
+	core.FindingSideEffectMail: "Off: Mail",
 }
 
 // checkNames name verify's checks without a verdict, for a check that
