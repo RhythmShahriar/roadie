@@ -419,6 +419,34 @@ func TestPipelineOnePassSiteURL(t *testing.T) {
 	}
 }
 
+// A --one-pass stream into a database target: the rows pass 2 wrote
+// stay, so the stop says mixed and never "taken back". A dump file is
+// removed, so there the copy was taken back.
+func TestPipelineOnePassStreamURLState(t *testing.T) {
+	useFakes(t)
+	p, sink, _ := fixture(t, Copy, "wp_", wpUsers, nil, Options{OnePass: true, URL: "https://staging.shop.test"})
+	out, err := p.run(context.Background())
+	var ce *core.Error
+	if !errors.As(err, &ce) || ce.Code != core.ErrConfig || ce.Exit != 2 {
+		t.Fatalf("err %v", err)
+	}
+	if len(sink.Batches()) == 0 || !sink.Aborted() {
+		t.Fatalf("wrote %d batches, aborted %v", len(sink.Batches()), sink.Aborted())
+	}
+	if ce.State != core.Mixed || out.Result.TargetState != core.Mixed || strings.Contains(ce.Msg, "taken back") ||
+		!strings.HasSuffix(ce.Msg, "The target is in a mixed state and holds production's site URL: run the same command again with --production shop.com, or without --one-pass.") {
+		t.Errorf("state %s, result %s, msg %q", ce.State, out.Result.TargetState, ce.Msg)
+	}
+
+	p, sink, _ = fixture(t, Copy, "wp_", wpUsers, nil, Options{OnePass: true, URL: "https://staging.shop.test"})
+	p.sink = fileLikeSink{sink}
+	out, err = p.run(context.Background())
+	if !errors.As(err, &ce) || ce.State != core.Untouched || out.Result.TargetState != core.Untouched ||
+		!strings.Contains(ce.Msg, "the copy was taken back") {
+		t.Errorf("file target: err %v, result %s", err, out.Result.TargetState)
+	}
+}
+
 // Two passes: pass 1 indexes, pass 2 writes; Known is sealed before pass
 // 2 and holds the structured values.
 func TestPipelineTwoPass(t *testing.T) {

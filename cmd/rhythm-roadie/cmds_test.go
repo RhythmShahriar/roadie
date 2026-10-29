@@ -834,3 +834,26 @@ func TestWriteColumns(t *testing.T) {
 		t.Errorf("got\n%s\nwant\n%s", b.String(), want)
 	}
 }
+
+// The explain pages follow the writing rules the release gate checks:
+// no em dash and no comma before "and" or "but", across a line break too.
+func TestExplainWritingRules(t *testing.T) {
+	commaAnd := regexp.MustCompile(`,[ \t]*\n?[ \t]*(?:and|but)\b`)
+	entries, err := explainFS.ReadDir("explain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		b, err := explainFS.ReadFile("explain/" + e.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(b)
+		if strings.ContainsRune(text, rune(0x2014)) {
+			t.Errorf("%s: em dash", e.Name())
+		}
+		if loc := commaAnd.FindStringIndex(text); loc != nil {
+			t.Errorf("%s:%d: comma before and/but: %q", e.Name(), strings.Count(text[:loc[0]], "\n")+1, text[loc[0]:loc[1]])
+		}
+	}
+}

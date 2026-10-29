@@ -564,9 +564,18 @@ func (p *pipeline) run(ctx context.Context) (out *output, err error) {
 		}
 		if !pre {
 			final = c
-			if plan, err = p.streamURLs(idx, plan); err != nil {
+			var missed []string
+			if plan, missed, err = p.streamURLs(idx, plan); err != nil {
 				p.abort(ctx, out)
 				return out, err
+			}
+			if len(missed) > 0 {
+				p.abort(ctx, out)
+				st := core.Untouched
+				if p.sink != nil {
+					st = p.sink.State()
+				}
+				return out, streamURLError(missed, st)
 			}
 			uncov = p.uncovered(schema, final, idx)
 			if len(uncov.Uncovered) > 0 && p.mode != Plan && !p.opts.AllowUncovered {
