@@ -232,6 +232,16 @@ if [ "$code" = 0 ] && out exit-code=0 && out verdict=pass && out findings=0 && c
 	ok "a copy that passes"
 else bad "a copy that passes"; fi
 
+# --no-verify: written, nothing checked. Never PASS, also in a report
+# that says pass with verify_mode none.
+for r in report-copy-unchecked.json report-copy-nocheck-old.json; do
+	act action-run.sh run MODE=copy SOURCE=prod.sql TARGET=out.sql FAKE_REPORT="$fixtures/$r"
+	if [ "$code" = 0 ] && out verdict=unchecked && contains "$work/runner/summary" "## Roadie: DONE, not checked (copy)" &&
+		lacks "$work/runner/summary" "PASS"; then
+		ok "an unchecked copy is DONE, not PASS ($r)"
+	else bad "an unchecked copy is DONE, not PASS ($r)"; fi
+done
+
 act action-run.sh run MODE=prepare TARGET=/var/www/staging FAKE_REPORT="$fixtures/report-copy-pass.json"
 check "prepare takes the target as its argument" bash -c '[ "$(sed -n 2p "$1")" = /var/www/staging ]' _ "$work/args"
 act action-run.sh run MODE=plan TARGET=/var/www/staging FAKE_REPORT="$fixtures/report-copy-pass.json"

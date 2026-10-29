@@ -38,7 +38,7 @@ func (r *run) wordpressSite() bool {
 // side-effect.mail). A site with no route has no connector running; that
 // fails unless the site's files show roadie-staging.php blocking wp_mail
 // instead. A route that wants Echo's token, or a site behind basic auth,
-// can't be asked, and the coverage says so.
+// can't be asked and the coverage says so.
 func (r *run) sitePing(ctx context.Context) {
 	target, err := siteURL(r.j.Opts.SiteURL)
 	if err != nil {

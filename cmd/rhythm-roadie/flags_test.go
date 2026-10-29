@@ -741,25 +741,51 @@ func TestVerdictIncomplete(t *testing.T) {
 }
 
 // A plan line Roadie can't carry out itself reads as a step by hand; a
-// line without a file has no leading colon.
+// line without a file has no leading colon. The dump reader's lines go
+// under DUMP STATEMENTS without the dump's path: the dump isn't edited.
 func TestEditsBlockManual(t *testing.T) {
 	var b bytes.Buffer
 	v := &view{w: &b, o: viewOpts{plain: true}}
 	v.editsBlock(&core.Result{PlannedEdits: []core.PlannedEdit{
 		{Step: "side-effect.mail", File: "php.ini", What: "manual: sendmail_path = rhythm-echo sendmail"},
 		{Step: "side-effect.queue", What: "manual: restart the queue workers"},
-		{Step: "dump", What: "dropped 2 GRANT statements"},
+		{Step: "dump", File: "/srv/prod.sql", What: "2 GRANT statements left out of the copy"},
 		{Step: "side-effect.cron", File: "wp-config.php", What: "define( 'DISABLE_WP_CRON', true );"},
 	}})
 	out := b.String()
 	for _, want := range []string{"by hand, php.ini: sendmail_path = rhythm-echo sendmail", "by hand: restart the queue workers",
-		"dropped 2 GRANT statements", "wp-config.php: define( 'DISABLE_WP_CRON', true );"} {
+		"DUMP STATEMENTS  1\n- 2 GRANT statements left out of the copy", "FILE EDITS  3", "wp-config.php: define( 'DISABLE_WP_CRON', true );"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("edits lack %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, ": dropped") || strings.Contains(out, "manual:") {
+	if strings.Contains(out, "prod.sql") || strings.Contains(out, "manual:") {
 		t.Errorf("edits:\n%s", out)
+	}
+}
+
+// A failed copy into a site points at prepare. A prepare that ran
+// without --url and left production's URLs points at prepare --url; any
+// other prepare points at no prepare at all.
+func TestPrepareNext(t *testing.T) {
+	site := engine.Job{To: core.Endpoint{Kind: core.LocalSite, Display: "/srv/staging"}}
+	url := &core.Result{Kind: "prepare", Findings: []core.Finding{{ID: core.FindingURLProductionSiteURL, Severity: core.SeverityHigh}}}
+	if got := prepareNext(url, site, true); got != "rhythm-roadie prepare /srv/staging --url <staging URL> rewrites production's URLs" {
+		t.Errorf("prepare without --url: %q", got)
+	}
+	withURL := site
+	withURL.Opts.URL = "https://staging.shop.test"
+	if got := prepareNext(url, withURL, true); got != "" {
+		t.Errorf("prepare with --url: %q", got)
+	}
+	if got := prepareNext(&core.Result{Kind: "prepare"}, site, true); got != "" {
+		t.Errorf("prepare, other findings: %q", got)
+	}
+	if got := prepareNext(&core.Result{Kind: "copy"}, site, true); got != "rhythm-roadie prepare /srv/staging fixes what it can of these" {
+		t.Errorf("copy: %q", got)
+	}
+	if got := prepareNext(url, site, false); got != "" {
+		t.Errorf("passed: %q", got)
 	}
 }
 

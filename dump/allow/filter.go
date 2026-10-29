@@ -38,7 +38,7 @@ type pendingDrop struct {
 
 // planNote is one plan line and how often it came up.
 type planNote struct {
-	text  string // "dropped GRANT: <reason>" or "kept CREATE TRIGGER x ..."
+	text  string // "GRANT left out of the copy: <reason>" or "kept CREATE TRIGGER x ..."
 	kind  string
 	why   string
 	first int64
@@ -220,7 +220,7 @@ func (f *Filter) Notes() []string {
 		case n.each, n.count == 1:
 			out = append(out, fmt.Sprintf("line %s: %s", size.Count(n.first), n.text))
 		default:
-			out = append(out, fmt.Sprintf("dropped %d %s statements (first at line %s): %s", n.count, n.kind, size.Count(n.first), n.why))
+			out = append(out, fmt.Sprintf("%d %s statements left out of the copy (first at line %s): %s", n.count, n.kind, size.Count(n.first), n.why))
 		}
 	}
 	return out

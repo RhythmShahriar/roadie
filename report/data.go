@@ -12,7 +12,7 @@ import (
 // and every renderer reads it back, so a view can only show what the
 // signed JSON holds. Fields are only added in v1.
 type Data struct {
-	Result              string          `json:"result"`      // pass, fail, error
+	Result              string          `json:"result"`      // pass, fail, error, unchecked
 	VerifyMode          string          `json:"verify_mode"` // exact, heuristic, none
 	FailOn              string          `json:"fail_on"`
 	Started             string          `json:"started"` // RFC 3339 UTC

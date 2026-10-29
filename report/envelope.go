@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
+	"github.com/RhythmShahriar/rhythm/kit/term"
 
 	"github.com/RhythmShahriar/roadie/core"
 )
@@ -30,6 +31,10 @@ const (
 	ResultPass  = "pass"
 	ResultFail  = "fail"
 	ResultError = "error"
+	// ResultUnchecked is a copy or prepare that wrote its target and
+	// checked nothing (--no-verify, or a stdout target verify can't read
+	// back): never a pass.
+	ResultUnchecked = "unchecked"
 )
 
 // Envelope builds the rhythm-roadie/v1 envelope of a result. Every value
@@ -52,7 +57,7 @@ func Envelope(r *core.Result, tool, version string) (*core.Envelope, error) {
 		Kind:     r.Kind,
 		Tool:     tool,
 		Version:  version,
-		Complete: d.Result != ResultError && (r.Verify == nil || !r.Verify.Coverage.Partial() && !r.Verify.Coverage.Unread()),
+		Complete: d.Result != ResultError && d.Result != ResultUnchecked && (r.Verify == nil || !r.Verify.Coverage.Partial() && !r.Verify.Coverage.Unread()),
 		Summary:  r.Summary(),
 		Verdict:  VerdictOK,
 		Data:     data,
@@ -92,7 +97,7 @@ func buildData(r *core.Result) *Data {
 		Uncovered:           rates(r.Uncovered),
 		Keys:                []KeyData{},
 		SideEffects:         []SideEffect{},
-		Findings:            withFix(nonNil(r.AllFindings())),
+		Findings:            withFix(safeFindings(nonNil(r.AllFindings()))),
 		Checks:              []CheckData{},
 		RemoteCommands:      nonNil(r.RemoteCommands),
 		NotCovered:          notCoveredList(r.NotCovered),
@@ -109,9 +114,9 @@ func buildData(r *core.Result) *Data {
 		d.Consistency.KeyFingerprint = &fp
 	}
 	for _, t := range r.Tables {
-		td := TableData{Name: t.Name, Rows: t.Rows, Action: t.Action, Profile: t.Profile, Columns: []ColumnData{}}
+		td := TableData{Name: term.SafeText(t.Name), Rows: t.Rows, Action: t.Action, Profile: t.Profile, Columns: []ColumnData{}}
 		for _, c := range t.Columns {
-			td.Columns = append(td.Columns, ColumnData{Name: c.Name, Rule: c.Rule, Changed: c.Changed, Kept: c.Kept})
+			td.Columns = append(td.Columns, ColumnData{Name: term.SafeText(c.Name), Rule: c.Rule, Changed: c.Changed, Kept: c.Kept})
 		}
 		d.Tables = append(d.Tables, td)
 	}
@@ -128,7 +133,7 @@ func buildData(r *core.Result) *Data {
 	}
 	for _, k := range keys {
 		d.Keys = append(d.Keys, KeyData{ID: k.ID, Severity: k.Severity.String(), Provider: k.Provider, Env: k.Env,
-			Location: k.At, Masked: k.Masked, Action: k.Action})
+			Location: safeLocation(k.At), Masked: term.SafeText(k.Masked), Action: k.Action})
 	}
 	for _, e := range effects {
 		d.SideEffects = append(d.SideEffects, SideEffect(e))
@@ -168,13 +173,17 @@ func buildData(r *core.Result) *Data {
 }
 
 // resultOf is data.result: error when the run stopped or couldn't check
-// (exit 2 or 3), fail when a finding is at or above --fail-on, else pass.
+// (exit 2 or 3), fail when a finding is at or above --fail-on, unchecked
+// for a copy or prepare verify didn't read, else pass.
 func resultOf(r *core.Result) string {
 	if r.Err != nil {
 		return ResultError
 	}
 	switch core.ExitFor(r, r.FailOn) {
 	case cli.ExitOK:
+		if r.Verify == nil && (r.Kind == "copy" || r.Kind == "prepare") {
+			return ResultUnchecked
+		}
 		return ResultPass
 	case cli.ExitFindings:
 		return ResultFail
@@ -196,7 +205,7 @@ func fingerprint(f *core.Fingerprint) *Fingerprint {
 func rates(us []core.Uncovered) []ColumnRate {
 	out := make([]ColumnRate, 0, len(us))
 	for _, u := range us {
-		out = append(out, ColumnRate(u))
+		out = append(out, ColumnRate{Table: term.SafeText(u.Table), Column: term.SafeText(u.Column), Rate: u.Rate})
 	}
 	return out
 }
@@ -204,6 +213,42 @@ func rates(us []core.Uncovered) []ColumnRate {
 // withFix fills the fix its detector left empty of each finding of low
 // or above, so every one in data.findings says what to do: a live key
 // points to prepare --only keys, anything else to its explain page.
+// safeFindings copies findings with every string that may come from the
+// data (row keys, paths, table and file names, examples, titles that
+// name them) through term.SafeText, as the screen, Markdown and HTML
+// show them: a CI step reading the JSON or SARIF with jq -r must not get
+// a production row key's escape sequences (PRD 15).
+func safeFindings(fs []core.Finding) []core.Finding {
+	out := make([]core.Finding, len(fs))
+	for i, f := range fs {
+		f.Title, f.Detail, f.Fix = term.SafeText(f.Title), term.SafeText(f.Detail), term.SafeText(f.Fix)
+		if f.Examples != nil {
+			ex := make([]string, len(f.Examples))
+			for j, e := range f.Examples {
+				ex[j] = term.SafeText(e)
+			}
+			f.Examples = ex
+		}
+		if f.Locations != nil {
+			ls := make([]core.LocationCount, len(f.Locations))
+			for j, l := range f.Locations {
+				l.Location = safeLocation(l.Location)
+				ls[j] = l
+			}
+			f.Locations = ls
+		}
+		out[i] = f
+	}
+	return out
+}
+
+// safeLocation is a location with its data-derived fields made safe.
+func safeLocation(l core.Location) core.Location {
+	l.File, l.Table, l.Column = term.SafeText(l.File), term.SafeText(l.Table), term.SafeText(l.Column)
+	l.Row, l.Path = term.SafeText(l.Row), term.SafeText(l.Path)
+	return l
+}
+
 func withFix(fs []core.Finding) []core.Finding {
 	for i := range fs {
 		if fs[i].Fix != "" || fs[i].Severity < core.SeverityLow {

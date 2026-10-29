@@ -166,8 +166,9 @@ outputs:
     value: ${{ steps.run.outputs.exit-code }}
   verdict:
     description: >
-      pass, fail or error, as data.result in report.json. A verify that couldn't read all its input
-      (INCOMPLETE) is error; a sampled verify is fail unless allow-sample is "true".
+      pass, fail, error or unchecked, as data.result in report.json. A verify that couldn't read all
+      its input (INCOMPLETE) is error; a sampled verify is fail unless allow-sample is "true"; a copy
+      or prepare run with --no-verify is unchecked (DONE), never pass.
     value: ${{ steps.run.outputs.verdict }}
   findings:
     description: How many findings are at or above fail-on.

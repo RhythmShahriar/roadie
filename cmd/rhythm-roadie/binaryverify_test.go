@@ -61,7 +61,7 @@ columns:
 `
 
 // A PostgreSQL bytea column holding a production email and a live key:
-// verify of the dump fails it, copy takes both out of the bytea, and an
+// verify of the dump fails it and copy takes both out of the bytea. An
 // exact verify of a copy that still holds them fails, never a false PASS.
 func TestPGByteaCopyAndVerify(t *testing.T) {
 	binaryEnv(t)

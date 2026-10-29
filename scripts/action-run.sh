@@ -193,11 +193,21 @@ at_or_above() {
 		| [$all[0:$i + 1][] as $s | .summary[$s] // 0] | add' "$1"
 }
 
+# result_of ENVELOPE prints data.result. A copy or prepare verify didn't
+# read (--no-verify) is unchecked, never pass, also in a report from a
+# Roadie that still wrote pass for it.
+result_of() {
+	jq -r '
+		(.data.result // "error") as $r
+		| if $r == "pass" and (.kind == "copy" or .kind == "prepare") and .data.verify_mode == "none"
+		then "unchecked" else $r end' "$1"
+}
+
 # word ENVELOPE prints the summary's verdict word. A verify that couldn't
 # read part of its input (coverage lists "(input ...)") is INCOMPLETE.
 word() {
 	local result kind sample unread
-	result=$(jq -r '.data.result // "error"' "$1")
+	result=$(result_of "$1")
 	kind=$(jq -r '.kind // ""' "$1")
 	sample=$(jq -r '.data.coverage.sample // 0' "$1")
 	unread=$(jq -r '[.data.coverage.skipped // [] | .[] | select(.table | startswith("(input"))] | length' "$1")
@@ -206,6 +216,7 @@ word() {
 	plan:fail) echo "PLAN, copy would stop" ;;
 	*:pass) if [ "$sample" != 0 ]; then echo "PASS (sample)"; else echo PASS; fi ;;
 	*:fail) echo FAIL ;;
+	*:unchecked) echo "DONE, not checked" ;;
 	*:error) if [ "$unread" != 0 ]; then echo INCOMPLETE; else echo ERROR; fi ;;
 	*) echo ERROR ;;
 	esac
@@ -367,6 +378,7 @@ run() {
 
 	local verdict
 	verdict=$(jq -r '.data.result // empty' "$env")
+	[ -z "$verdict" ] || verdict=$(result_of "$env")
 	if [ -z "$verdict" ]; then
 		case "$code" in 0) verdict=pass ;; 1) verdict=fail ;; *) verdict=error ;; esac
 	fi

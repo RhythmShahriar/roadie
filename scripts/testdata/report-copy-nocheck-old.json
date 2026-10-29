@@ -1,0 +1,17 @@
+{
+  "schema": "rhythm-roadie/v1",
+  "kind": "copy",
+  "tool": "rhythm-roadie",
+  "version": "1.0.0",
+  "complete": true,
+  "summary": {"critical": 0, "high": 0, "medium": 0, "low": 1, "info": 0, "tables": 40, "tables_pseudonymised": 12, "rows": 5000, "values_pseudonymised": 1234, "urls_rewritten": 55, "keys_found": 2, "keys_swapped": 1, "keys_blanked": 1, "side_effects_off": 6, "side_effects_total": 6, "uncovered_columns": 0},
+  "verdict": "ok",
+  "data": {
+    "result": "pass",
+    "verify_mode": "none",
+    "fail_on": "high",
+    "coverage": {"tables_scanned": 40, "tables_total": 40, "sample": 0},
+    "not_covered": [],
+    "signature": {"alg": "ed25519", "key_id": "roadie:Zx81mQ0aRt5uVw2c", "public_key": "AAAA", "sig": "AAAA"}
+  }
+}

@@ -82,7 +82,7 @@ func decodeHex(digits []byte) ([]byte, bool) {
 
 // ScanBytes returns the bytes a value holds, for a scan that looks for
 // personal data and keys: String and BinaryString as they are, a hex
-// literal (mysqldump --hex-blob) decoded, and a string in bytea hex
+// literal (mysqldump --hex-blob) decoded and a string in bytea hex
 // output (\x...) decoded, since a dump read without column types can't
 // tell a bytea column from text. It reports false for a value with no
 // bytes to scan.

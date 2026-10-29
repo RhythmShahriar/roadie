@@ -159,9 +159,10 @@ func refuse(kind string, w why) Decision {
 	return Decision{Verdict: Refuse, Kind: kind, Note: w.danger + "\x00" + w.advice}
 }
 
-// drop is a dropped Decision with its plan reason.
+// drop is a dropped Decision with its plan reason. The dump itself is
+// never edited: the statement is only left out of the copy.
 func drop(kind, reason string) Decision {
-	return Decision{Verdict: Drop, Kind: kind, Note: "dropped " + kind + ": " + reason}
+	return Decision{Verdict: Drop, Kind: kind, Note: kind + " left out of the copy: " + reason}
 }
 
 func keep() Decision { return Decision{Verdict: Keep} }

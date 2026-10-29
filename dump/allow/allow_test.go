@@ -241,7 +241,7 @@ func TestDropped(t *testing.T) {
 		{"/*!50717 PREPARE s FROM @rocksdb_get_is_supported */;", "PREPARE"},
 	} {
 		d, err := check(c.text, Options{Name: "prod.sql", Database: "shop"})
-		if err != nil || d.Verdict != Drop || d.Kind != c.kind || !strings.HasPrefix(d.Note, "dropped "+c.kind+": ") {
+		if err != nil || d.Verdict != Drop || d.Kind != c.kind || !strings.HasPrefix(d.Note, c.kind+" left out of the copy: ") {
 			t.Errorf("%q: %+v %v", c.text, d, err)
 		}
 	}
@@ -401,10 +401,10 @@ func TestFilter(t *testing.T) {
 		t.Errorf("trigger not rewritten:\n%s", joined)
 	}
 	want := []string{
-		"dropped 2 GRANT statements (first at line 5): the staging database keeps its own users and privileges",
-		"line 7: dropped PREPARE: " + reasonPercona,
-		"line 8: dropped EXECUTE: " + reasonPercona,
-		"line 9: dropped DEALLOCATE PREPARE: " + reasonPercona,
+		"2 GRANT statements left out of the copy (first at line 5): the staging database keeps its own users and privileges",
+		"line 7: PREPARE left out of the copy: " + reasonPercona,
+		"line 8: EXECUTE left out of the copy: " + reasonPercona,
+		"line 9: DEALLOCATE PREPARE left out of the copy: " + reasonPercona,
 		"line 11: kept CREATE TRIGGER t1 with DEFINER=CURRENT_USER (--keep-routines)",
 	}
 	if got := f.Notes(); strings.Join(got, "\n") != strings.Join(want, "\n") {

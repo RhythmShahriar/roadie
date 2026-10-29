@@ -190,8 +190,8 @@ func TestOpenAllowlist(t *testing.T) {
 		t.Errorf("passthrough text:\n%s", s)
 	}
 	want := []string{
-		"line 4: dropped USE: the import goes to the database --to names",
-		"line 7: dropped GRANT: the staging database keeps its own users and privileges",
+		"line 4: USE left out of the copy: the import goes to the database --to names",
+		"line 7: GRANT left out of the copy: the staging database keeps its own users and privileges",
 		"line 9: kept CREATE TRIGGER t1 with DEFINER=CURRENT_USER (--keep-routines)",
 	}
 	if !reflect.DeepEqual(n.lines, want) || !reflect.DeepEqual(Notes(src), want) {

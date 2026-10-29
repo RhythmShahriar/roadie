@@ -613,12 +613,28 @@ func (v *view) effectsBlock(r *core.Result, j engine.Job) {
 }
 
 // editsBlock prints the file edits of a plan; -v adds the step of each.
+// The dump reader's lines (step "dump") go under DUMP STATEMENTS: they
+// say what the copy leaves out or keeps, never an edit of the dump.
 func (v *view) editsBlock(r *core.Result) {
-	if len(r.PlannedEdits) == 0 {
+	var edits, dump []core.PlannedEdit
+	for _, e := range r.PlannedEdits {
+		if e.Step == "dump" {
+			dump = append(dump, e)
+		} else {
+			edits = append(edits, e)
+		}
+	}
+	if len(dump) > 0 {
+		v.section("DUMP STATEMENTS", len(dump), "", lipgloss.Color(ui.Muted))
+		for _, e := range dump {
+			v.item(e.What)
+		}
+	}
+	if len(edits) == 0 {
 		return
 	}
-	v.section("FILE EDITS", len(r.PlannedEdits), "", lipgloss.Color(ui.Muted))
-	for _, e := range r.PlannedEdits {
+	v.section("FILE EDITS", len(edits), "", lipgloss.Color(ui.Muted))
+	for _, e := range edits {
 		line := e.What
 		if e.File != "" {
 			line = e.File + ": " + line
@@ -916,8 +932,8 @@ func (v *view) footer(r *core.Result, j engine.Job, reportPath string) {
 			break
 		}
 	}
-	if failed && isSite(j.To.Kind) {
-		v.next("rhythm-roadie prepare " + j.To.Display + " fixes what it can of these")
+	if line := prepareNext(r, j, failed); line != "" {
+		v.next(line)
 	}
 	if reportPath != "" {
 		v.next("signed report: " + reportPath)
@@ -936,6 +952,28 @@ func (v *view) footer(r *core.Result, j engine.Job, reportPath string) {
 		// Echo or Soundcheck to look at.
 		v.next("next: rhythm echo up, then rhythm soundcheck run " + cmp.Or(j.Opts.URL, "<url>"))
 	}
+}
+
+// prepareNext is the next step a failed run into a site gets: after a
+// copy, prepare fixes what it can. After a prepare that ran without --url
+// and left production's URLs, it is the same prepare with --url; any
+// other failed prepare has no prepare to suggest.
+func prepareNext(r *core.Result, j engine.Job, failed bool) string {
+	if !failed || !isSite(j.To.Kind) {
+		return ""
+	}
+	if r.Kind != string(engine.Prepare) {
+		return "rhythm-roadie prepare " + j.To.Display + " fixes what it can of these"
+	}
+	if j.Opts.URL != "" {
+		return ""
+	}
+	for _, f := range r.AllFindings() {
+		if f.ID == core.FindingURLProduction || f.ID == core.FindingURLProductionSiteURL {
+			return "rhythm-roadie prepare " + j.To.Display + " --url <staging URL> rewrites production's URLs"
+		}
+	}
+	return ""
 }
 
 // basicAuthLine prints the generated basic-auth password once, after the

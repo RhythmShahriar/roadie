@@ -103,6 +103,18 @@ func TestEnvelopeVerdicts(t *testing.T) {
 		complete         bool
 		kind, verifyMode string
 	}{"input not read whole", unread, VerdictError, ResultError, false, "copy", "exact"})
+	// --no-verify: the copy was written and nothing checked it, so it
+	// never reads as a pass, also with an uncovered column allowed.
+	unchecked := copyPass()
+	unchecked.Verify = nil
+	unchecked.Findings = []core.Finding{{ID: core.FindingUncoveredColumn, Severity: core.SeverityMedium, Title: "x", Count: 1}}
+	cases = append(cases, struct {
+		name             string
+		r                *core.Result
+		verdict, result  string
+		complete         bool
+		kind, verifyMode string
+	}{"no verify", unchecked, VerdictFindings, ResultUnchecked, false, "copy", "none"})
 	for _, c := range cases {
 		e := mustEnvelope(t, c.r)
 		d, err := ParseData(e)
@@ -422,5 +434,33 @@ func TestViewVerdictIncomplete(t *testing.T) {
 	}
 	if word, _ := r.verdict(); word != "STOPPED" {
 		t.Errorf("stopped run: verdict %q", word)
+	}
+}
+
+// A production row key holding terminal escapes (an option_name with an
+// OSC title and a color) reaches neither the JSON nor the SARIF as
+// control characters, as it reaches neither the screen nor the HTML.
+func TestEnvelopeStripsControlCharacters(t *testing.T) {
+	r := verifyFail()
+	evil := "option_name=<img src=x>\x1b]0;pwn\x07\x1b[31mRED"
+	r.Verify.Findings = append(r.Verify.Findings, core.Finding{ID: core.FindingKeyGeneric, Severity: core.SeverityHigh,
+		Title: "A key in \x1b[31mred", Count: 1, Examples: []string{"sk_\x1b[0m"},
+		Locations: []core.LocationCount{{Location: core.Location{Table: "wp_options", Column: "option_value", Row: evil, Path: "json:\x1b[2J"}, Count: 1}}})
+	r.Keys = []core.KeyHit{{ID: "key.stripe-live", Severity: core.SeverityCritical, At: core.Location{Table: "wp_options", Row: evil}, Masked: "sk_live_…\x1b[0m"}}
+	r.Uncovered = []core.Uncovered{{Table: "wp_\x1b[1m", Column: "c\x07", Rate: 90}}
+	e := mustEnvelope(t, r)
+	sarif, err := SARIF(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, b := range map[string][]byte{"json": e.Data, "sarif": sarif} {
+		for _, bad := range []string{`\u001b`, `\u0007`, "\x1b", "\x07"} {
+			if bytes.Contains(b, []byte(bad)) {
+				t.Errorf("%s holds %q", name, bad)
+			}
+		}
+	}
+	if r.Keys[0].At.Row != evil {
+		t.Error("the result was changed in place")
 	}
 }
