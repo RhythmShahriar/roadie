@@ -132,9 +132,15 @@ func removeStale(p string) (held bool, info lockInfo, removed bool, err error) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	defer func() { _ = removeBusy(brk) }()
-	held, info = readLock(p)
+	held, gone, info := readLock(p)
 	if held {
 		return true, info, false, nil
+	}
+	if gone {
+		// Another run cleared it before this one held the break file. A
+		// lock may be made at p from now on without the break file, so
+		// removing p here could take a live lock away from its run.
+		return false, info, false, nil
 	}
 	switch err := removeBusy(p); {
 	case err == nil:
@@ -201,17 +207,20 @@ func lockTarget(l lockInfo, e core.Endpoint) string {
 	return e.Display
 }
 
-// readLock reads a lock file and reports whether its run still holds it.
-// A file still empty a moment after it was made is held: its run may be
-// writing it right now.
-func readLock(p string) (held bool, info lockInfo) {
+// readLock reads a lock file and reports whether its run still holds it,
+// or whether there is no lock file at all (gone). A file still empty a
+// moment after it was made is held: its run may be writing it right now.
+func readLock(p string) (held, gone bool, info lockInfo) {
 	var b []byte
 	err := retryBusy(func() (err error) {
 		b, err = os.ReadFile(p) // #nosec G304 -- a name Roadie built in its cache
 		return err
 	})
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, true, info
+	}
 	if err != nil {
-		return !errors.Is(err, fs.ErrNotExist), info
+		return true, false, info
 	}
 	sc := bufio.NewScanner(bytes.NewReader(b))
 	for sc.Scan() {
@@ -229,14 +238,14 @@ func readLock(p string) (held bool, info lockInfo) {
 	}
 	if info.pid <= 0 {
 		fi, err := os.Stat(p)
-		return err == nil && time.Since(fi.ModTime()) < lockFresh, info
+		return err == nil && time.Since(fi.ModTime()) < lockFresh, false, info
 	}
-	return info.pid == os.Getpid() || pidRunning(info.pid), info
+	return info.pid == os.Getpid() || pidRunning(info.pid), false, info
 }
 
 // releaseLock removes the lock when it is still this one.
 func releaseLock(p, token string) {
-	if _, info := readLock(p); info.token == token {
+	if _, _, info := readLock(p); info.token == token {
 		_ = removeBusy(p)
 	}
 }
