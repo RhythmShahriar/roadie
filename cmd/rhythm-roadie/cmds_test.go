@@ -456,7 +456,9 @@ func TestConfigKey(t *testing.T) {
 	if err := os.WriteFile(keyFile, []byte("k"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for src, want := range map[string]string{"file": " from " + keyFile + "\n", "env": " from ROADIE_KEY (it wins over " + keyFile + ")\n",
+	// Messages name the file with slashes on every OS.
+	shown := filepath.ToSlash(keyFile)
+	for src, want := range map[string]string{"file": " from " + shown + "\n", "env": " from ROADIE_KEY (it wins over " + shown + ")\n",
 		"new": "No consistency key is kept: each copy uses a new one (consistency: per-run). --keep-key or consistency: stable keeps one in .roadie/key.\n"} {
 		source = src
 		if out, _, code := runCmd(t, "config", "key", "show"); code != 0 || !strings.HasSuffix(out, want) {
@@ -479,7 +481,7 @@ func TestConfigKey(t *testing.T) {
 	if runCmd(t, "config", "key", "rotate"); saved != 2 {
 		t.Errorf("rotate on a terminal: saved %d", saved)
 	}
-	if out, _, code := runCmd(t, "config", "key", "forget"); code != 0 || forgot != 1 || !strings.Contains(out, "Removed "+keyFile) {
+	if out, _, code := runCmd(t, "config", "key", "forget"); code != 0 || forgot != 1 || !strings.Contains(out, "Removed "+shown) {
 		t.Errorf("forget: exit %d %q", code, out)
 	}
 	if _, errOut, code := runCmd(t, "config", "key", "rotat"); code != 2 || !strings.Contains(errOut, "did you mean: rhythm-roadie config key rotate") {

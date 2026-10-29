@@ -936,7 +936,7 @@ func (v *view) footer(r *core.Result, j engine.Job, reportPath string) {
 		v.next(line)
 	}
 	if reportPath != "" {
-		v.next("signed report: " + reportPath)
+		v.next("signed report: " + filepath.ToSlash(reportPath))
 	}
 	if k := j.To.Kind; !failed && r.Verify != nil && (k == core.DumpFile || k == core.Stdio) {
 		// A dump has no running site for Echo or Soundcheck to look at.

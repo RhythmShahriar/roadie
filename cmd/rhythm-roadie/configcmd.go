@@ -67,7 +67,7 @@ func configInit(ctx context.Context, p *parsed, stdout, stderr io.Writer) error 
 		return usageError(stderr, "config", "config init takes no arguments; got %q", p.args[1])
 	}
 	if _, err := os.Stat(configPath); err == nil && !p.f.force {
-		return usageError(stderr, "config", "%s exists; pass --force to replace it", configPath)
+		return usageError(stderr, "config", "%s exists; pass --force to replace it", filepath.ToSlash(configPath))
 	}
 	stack := p.f.stack
 	var suggestions []core.Uncovered
@@ -518,7 +518,9 @@ func configKey(ctx context.Context, p *parsed, stdout, stderr io.Writer) error {
 		return usageError(stderr, "config", "config key needs one of %s", orList(acts))
 	}
 	dir := p.projectDir()
-	keyFile := filepath.Join(dir, ".roadie", "key")
+	// keyFile has slashes on every OS, so messages name it the way they
+	// name the config file; Windows opens it all the same.
+	keyFile := filepath.ToSlash(filepath.Join(dir, ".roadie", "key"))
 	_, fromEnv := dep.env("ROADIE_KEY")
 	switch p.args[1] {
 	case "show":
