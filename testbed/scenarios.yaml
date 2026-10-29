@@ -301,9 +301,11 @@ scenarios:
     input: r15
     run: laravel
     setup: [laravel-site]
-    command: [copy, --from, "${in}/db.sql", --to, "${site}", --url, "http://laravel", --confirm-target, laravel, --yes, --json]
+    # The app's own personal columns (users.phone, orders.*) are named in
+    # laravel.tables; without them copy stops on uncovered columns.
+    command: [copy, --from, "${in}/db.sql", --to, "${site}", --config, "${in}/files/roadie.yaml", --url, "http://laravel", --confirm-target, laravel, --yes, --json]
     output: {db: laravel-db, tree: laravel-site}
-    verify: ["${site}", --from, "${in}/db.sql", --fail-on, medium, --json]
+    verify: ["${site}", --from, "${in}/db.sql", --config, "${in}/files/roadie.yaml", --fail-on, medium, --json]
     expect:
       exit_code: 0
       canaries: 0

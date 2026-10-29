@@ -84,7 +84,11 @@ func VerifyJob(ctx context.Context, j Job, target core.Endpoint, from *core.Endp
 	}
 	vj := verify.Job{Target: target, Rules: c.All(), Production: production(cfg, nil), Opts: r.verifyOptions(), Progress: j.Progress,
 		Stack:         core.StackInfo{Name: c.Stack(), Profiles: c.Profiles()},
-		RulesetSHA256: c.SHA256(), ConfigSHA256: configHash(cfg), ProfilePack: pack}
+		RulesetSHA256: c.SHA256(), ConfigSHA256: configHash(cfg), ProfilePack: pack,
+		// The uncovered scan leaves out the tables the rules truncate,
+		// drop or keep, as copy's own verify does: their columns are
+		// meant to hold no rule.
+		ScanTable: func(t string) bool { return scanTable(c, t) }}
 	if si, ok := in.(*streamInput); ok && target.Kind == core.Stdio {
 		// verify reads the spool pass 1 wrote; closing it removes it.
 		src, err := si.open(ctx, 2)

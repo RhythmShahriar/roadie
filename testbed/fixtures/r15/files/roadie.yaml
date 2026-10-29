@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Rhythm Shahriar <me@rhy.io>
+# SPDX-License-Identifier: MIT
+
+# r15: the app's own personal columns, beside the Laravel profile's.
+stack: laravel
+laravel:
+  tables:
+    users: {phone: phone}
+    orders: {shipping_name: full_name, shipping_address: address, ip_address: ip}
