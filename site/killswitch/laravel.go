@@ -434,6 +434,11 @@ func laravelMailStep(o Options) core.Step {
 				}
 				return on("MAIL_HOST is "+cmp.Or(host.Value, "unset")+" with credentials set, so mail from this copy reaches real people", at)
 			}
+			if publicMailHost(host.Value) {
+				// A relay that allows this server's address needs no
+				// credentials and still delivers.
+				return on("MAIL_HOST is "+host.Value+", a mail server other than Echo's sink, so mail from this copy may reach real people", host)
+			}
 			se.Status, se.How = "unknown", "MAIL_HOST is "+cmp.Or(host.Value, "unset")+" without credentials; a relay that needs none would still send"
 		case "log", "array":
 			se.How = "MAIL_MAILER is " + m + ", which sends nothing"
@@ -458,6 +463,33 @@ func loopback(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// localSuffixes end host names that only resolve on a local network or a
+// Docker host: Echo or Mailpit may run there.
+var localSuffixes = []string{".internal", ".local", ".localhost", ".test", ".lan", ".home.arpa", ".localdomain"}
+
+// publicMailHost reports a MAIL_HOST on the internet: a public IP
+// address, or a dotted name outside localSuffixes. A one-label name
+// (mailpit, a Compose service) and a private address may be Echo's sink
+// or a local catcher, so they stay unknown.
+func publicMailHost(host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(strings.Trim(strings.TrimSpace(host), "[]"), "."))
+	if host == "" || loopback(host) {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return !ip.IsPrivate() && !ip.IsLinkLocalUnicast() && !ip.IsUnspecified()
+	}
+	if !strings.Contains(host, ".") {
+		return false
+	}
+	for _, suf := range localSuffixes {
+		if strings.HasSuffix(host, suf) {
+			return false
+		}
+	}
+	return true
 }
 
 // idleQueues are the QUEUE_CONNECTION values that never leave a job for

@@ -157,10 +157,6 @@ func (o Options) mailers() []keys.Mailer {
 	return keys.Mailers()
 }
 
-func (o Options) scan(pairs []core.Pair) []core.KeyHit {
-	return o.scanIn("wp-config.php", pairs)
-}
-
 // scanIn finds the keys among the pairs of file.
 func (o Options) scanIn(file string, pairs []core.Pair) []core.KeyHit {
 	if o.Keys != nil {

@@ -467,8 +467,10 @@ func sameSite(a, b string) bool {
 	return norm(a) == norm(b)
 }
 
-// keyStep swaps or blanks every live key wp-config.php defines. Its Check
-// lists the live keys still there as key.<provider>-live findings.
+// keyStep swaps or blanks every live key wp-config.php defines and the
+// files it includes (wp-config-local.php and the like), whose defines PHP
+// runs as its own. Its Check lists the live keys still there as
+// key.<provider>-live findings.
 func keyStep(o Options) core.Step {
 	id := core.FindingKeyGeneric
 	// The literal defines and the strings inside defines built from an
@@ -481,11 +483,12 @@ func keyStep(o Options) core.Step {
 		}
 		return append(f.Pairs(), ms...), member
 	}
-	live := func(f *wpconfig.File) []core.KeyHit {
+	live := func(file string, f *wpconfig.File) []core.KeyHit {
 		var out []core.KeyHit
 		pairs, _ := all(f)
-		for _, h := range o.scan(pairs) {
+		for _, h := range o.scanIn(file, pairs) {
 			if h.Env == "live" {
+				h.At.File = file
 				out = append(out, h)
 			}
 		}
@@ -515,59 +518,120 @@ func keyStep(o Options) core.Step {
 		return on[0], member[on[0]], true
 	}
 	ks := &keyFileStep{step: step{id: id}}
+	// edit swaps or blanks the live keys of one file.
+	edit := func(file string, f *wpconfig.File) error {
+		for _, h := range live(file, f) {
+			p, isMember, ok := pairAt(f, h)
+			if !ok {
+				continue
+			}
+			v, action, err := o.replace(h, []byte(p.Value))
+			if err != nil {
+				return err
+			}
+			h.Action = action
+			ks.applied = append(ks.applied, h)
+			if action == "manual" || action == "kept" {
+				continue
+			}
+			set := func() error { return f.Set(p.Name, string(v)) }
+			if isMember {
+				set = func() error { return f.SetMember(p.Name, p.Line, string(v)) }
+			}
+			if err := set(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	plan, apply := configEdit(id,
 		func(f *wpconfig.File) []string {
 			var out []string
-			for _, h := range live(f) {
+			for _, h := range live("wp-config.php", f) {
 				out = append(out, fmt.Sprintf("%s at line %d (%s): swapped or blanked", h.ID, h.At.Line, h.Masked))
 			}
 			return out
 		},
 		func(f *wpconfig.File) error {
 			ks.applied = nil
-			for _, h := range live(f) {
-				p, isMember, ok := pairAt(f, h)
-				if !ok {
-					continue
-				}
-				v, action, err := o.replace(h, []byte(p.Value))
-				if err != nil {
-					return err
-				}
-				h.Action = action
-				ks.applied = append(ks.applied, h)
-				if action == "manual" || action == "kept" {
-					continue
-				}
-				set := func() error { return f.Set(p.Name, string(v)) }
-				if isMember {
-					set = func() error { return f.SetMember(p.Name, p.Line, string(v)) }
-				}
-				if err := set(); err != nil {
-					return err
-				}
-			}
-			return nil
+			return edit("wp-config.php", f)
 		},
 		"live keys stay in wp-config.php")
-	ks.plan, ks.apply = plan, apply
+	ks.plan = func(ctx context.Context, s core.Site) ([]core.PlannedEdit, error) {
+		out, err := plan(ctx, s)
+		if err != nil {
+			return out, err
+		}
+		inc, unknown := includedConfigs(ctx, s)
+		for _, in := range inc {
+			for _, h := range live(in.Rel, in.File) {
+				out = append(out, core.PlannedEdit{Step: id, File: in.Rel,
+					What: fmt.Sprintf("%s at line %d (%s): swapped or blanked", h.ID, h.At.Line, h.Masked)})
+			}
+		}
+		for _, why := range unknown {
+			out = append(out, core.PlannedEdit{Step: id, File: "wp-config.php", What: "note: live keys there aren't checked; " + why})
+		}
+		return out, nil
+	}
+	ks.apply = func(ctx context.Context, s core.Site) error {
+		if err := apply(ctx, s); err != nil {
+			return err
+		}
+		inc, _ := includedConfigs(ctx, s)
+		for _, in := range inc {
+			before := in.File.Bytes()
+			if err := edit(in.Rel, in.File); err != nil {
+				return killErr(id, in.Rel, err, "live keys stay in "+in.Rel, s)
+			}
+			if out := in.File.Bytes(); !bytes.Equal(out, before) {
+				if err := s.WriteFile(ctx, in.Rel, out, 0o640); err != nil {
+					return killErr(id, in.Rel, err, "live keys stay in "+in.Rel, s)
+				}
+			}
+		}
+		return nil
+	}
 	ks.check = func(ctx context.Context, s core.Site) (core.SideEffect, []core.Finding, error) {
-		se := core.SideEffect{ID: id, Status: "off", How: "no live key defined in wp-config.php"}
+		se := core.SideEffect{ID: id, Status: "off", How: "no live key defined in wp-config.php or the files it includes"}
 		f, err := readConfig(ctx, s)
 		if err != nil {
 			se.Status, se.How = "unknown", "wp-config.php can't be read"
 			return se, nil, nil
 		}
 		var out []core.Finding
-		for _, h := range live(f) {
+		for _, h := range live("wp-config.php", f) {
 			se.Status, se.How = "on", "live keys are still defined in wp-config.php"
 			fd := finding(h.ID, h.Severity, "a live key is defined in wp-config.php", prepareFix(s), fileAt(h.At.Line))
 			fd.Examples = []string{h.Masked}
 			out = append(out, fd)
 		}
+		inc, unknown := includedConfigs(ctx, s)
+		for _, in := range inc {
+			for _, h := range live(in.Rel, in.File) {
+				se.Status, se.How = "on", "live keys are still defined in "+in.Rel+", which wp-config.php includes"
+				fd := finding(h.ID, h.Severity, "a live key is defined in "+in.Rel+", which wp-config.php includes", prepareFix(s),
+					core.Location{File: in.Rel, Line: h.At.Line})
+				fd.Examples = []string{h.Masked}
+				out = append(out, fd)
+			}
+		}
+		if len(out) == 0 && len(unknown) > 0 {
+			se.Status, se.How = "unknown", "no live key in the files read; "+unknown[0]
+		}
 		return se, out, nil
 	}
 	return ks
+}
+
+// includedConfigs reads the files the site's wp-config.php includes, as
+// wpconfig.IncludedFiles does; nothing when wp-config.php can't be read.
+func includedConfigs(ctx context.Context, s core.Site) ([]wpconfig.Included, []string) {
+	f, err := readConfig(ctx, s)
+	if err != nil {
+		return nil, nil
+	}
+	return f.IncludedFiles(func(rel string) ([]byte, error) { return s.ReadFile(ctx, rel) })
 }
 
 // saltsStep regenerates the eight salts. Its Check gives status only:

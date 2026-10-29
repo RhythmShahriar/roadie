@@ -71,6 +71,16 @@ func TestMasks(t *testing.T) {
 		{core.MaskValue(core.KPostcode, "M1 1AE"), "•••"},
 		{core.MaskRow("wp_options", map[string]string{"option_name": "woocommerce_stripe_settings"}), "option_name=woocommerce_stripe_settings"},
 		{core.MaskRow("t", map[string]string{"id": "4", "email": "anna@gmail.com"}), "email=an•••@gm•••.com,id=4"},
+		{core.MaskRow("wp_usermeta", map[string]string{"meta_key": "_stripe_" + testutil.J("sk_", "live_", "51Habcdefghij", "klmnop0123456789")}), "meta_key=_str•••••"},
+		{core.MaskRow("api_tokens", map[string]string{"token": testutil.J("rk_", "live_", "abcdef")}), "token=rk_l•••••"},
+		{core.MaskRow("sms_optins", map[string]string{"phone": "+447911123456"}), "phone=+44 •••"},
+		{core.MaskRow("sms_optins", map[string]string{"phone": "07911123456"}), "phone=<key>"},
+		{core.MaskRow("t", map[string]string{"id": "123456789"}), "id=123456789"},
+		{core.MaskRow("t", map[string]string{"name": "Jane Doe"}), "name=<key>"},
+		{core.MaskRow("t", map[string]string{"ip": "81.2.69.160"}), "ip=81.•••"},
+		{core.MaskRow("t", map[string]string{"meta_key": "billing_phone_4479111234"}), "meta_key=<key>"},
+		{core.MaskRow("wp_options", map[string]string{"option_name": "_site_transient_update_plugins"}), "option_name=_site_transient_update_plugins"},
+		{core.MaskRow("wp_options", map[string]string{"option_name": "_transient_timeout_feed_d117b5738fbd35bd8c0391cdd1c0e8e7"}), "option_name=_tra•••••"},
 	}
 	for i, c := range cases {
 		if c.got != c.want {

@@ -282,6 +282,8 @@ func TestLaravelMailCheck(t *testing.T) {
 		{"MAIL_MAILER=mailgun\nMAILGUN_SECRET=key-fixture\n", "on", true},
 		{"MAIL_MAILER=ses\nAWS_ACCESS_KEY_ID=AKIAFIXTURE\n", "on", true},
 		{"MAIL_MAILER=smtp\nMAIL_HOST=127.0.0.1\nRHYTHM_ECHO_MODE=pass\n", "on", true},
+		{"MAIL_MAILER=smtp\nMAIL_HOST=smtp.mail.example\nMAIL_USERNAME=\nMAIL_PASSWORD=\n", "on", true},
+		{"MAIL_HOST=203.0.113.25\n", "on", true},
 
 		{"MAIL_MAILER=smtp\nMAIL_HOST=127.0.0.1\nMAIL_PORT=1025\nMAIL_USERNAME=\nMAIL_PASSWORD=\nRHYTHM_ECHO_MODE=seal\n", "off", false},
 		{"MAIL_MAILER=smtp\nMAIL_HOST=localhost\nMAIL_PASSWORD=p\n", "off", false},
@@ -290,6 +292,8 @@ func TestLaravelMailCheck(t *testing.T) {
 		{"MAIL_MAILER=array\n", "off", false},
 		{"MAIL_MAILER=mailgun\n", "unknown", false},
 		{"MAIL_MAILER=smtp\nMAIL_HOST=mailpit\n", "unknown", false},
+		{"MAIL_MAILER=smtp\nMAIL_HOST=host.docker.internal\n", "unknown", false},
+		{"MAIL_MAILER=smtp\nMAIL_HOST=10.0.0.5\n", "unknown", false},
 		{"MAIL_MAILER=failover\n", "unknown", false},
 	}
 	st := Steps(core.StackLaravel, laravelOptions())[2]

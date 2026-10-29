@@ -74,6 +74,9 @@ func (r *run) siteChecks(ctx context.Context, s core.Site) {
 	for _, name := range configFiles {
 		r.configFile(name)
 	}
+	for _, rel := range r.included {
+		r.configFile(rel)
+	}
 	if !r.skip.skips("key.") {
 		r.codeFiles(ctx, s)
 	}
@@ -91,9 +94,13 @@ type configRead struct {
 }
 
 // readConfigs reads and parses the site's config files once, before the
-// data scan, which needs a few of their switches (WCPAY_DEV_MODE).
-func readConfigs(ctx context.Context, s core.Site) map[string]configRead {
-	out := map[string]configRead{}
+// data scan, which needs a few of their switches (WCPAY_DEV_MODE). The
+// files wp-config.php includes (wp-config-local.php and the like) are
+// read too: their defines run as wp-config.php's do, so a live key or
+// production's database there counts the same. included lists them in
+// the order PHP reaches them.
+func readConfigs(ctx context.Context, s core.Site) (out map[string]configRead, included []string) {
+	out = map[string]configRead{}
 	for _, name := range configFiles {
 		b, err := s.ReadFile(ctx, name)
 		if errors.Is(err, fs.ErrNotExist) {
@@ -109,8 +116,36 @@ func readConfigs(ctx context.Context, s core.Site) map[string]configRead {
 			continue
 		}
 		out[name] = configRead{pairs: pairs}
+		if name == "wp-config.php" {
+			included = readIncluded(ctx, s, b, out)
+		}
 	}
-	return out
+	return out, included
+}
+
+// readIncluded adds the files wp-config.php (b) includes to out and
+// returns their names. An include Roadie can't follow is listed under
+// coverage.skipped, so the report says which file it didn't read.
+func readIncluded(ctx context.Context, s core.Site, b []byte, out map[string]configRead) []string {
+	f, err := wpconfig.Parse(b)
+	if err != nil {
+		return nil
+	}
+	files, unknown := f.IncludedFiles(func(rel string) ([]byte, error) { return s.ReadFile(ctx, rel) })
+	var names []string
+	for _, in := range files {
+		if _, ok := out[in.Rel]; ok {
+			continue
+		}
+		out[in.Rel] = configRead{pairs: append(in.File.Pairs(), in.File.MemberPairs()...)}
+		names = append(names, in.Rel)
+	}
+	for i, why := range unknown {
+		name := fmt.Sprintf("wp-config.php include %d", i+1)
+		out[name] = configRead{skip: &core.Skipped{Table: "wp-config.php include", Reason: why + "; its defines weren't checked"}}
+		names = append(names, name)
+	}
+	return names
 }
 
 // wcpayDevMode reports whether wp-config.php puts WooPayments in dev
@@ -409,16 +444,17 @@ func matchHost(hosts []string, host string) bool {
 
 // codeRoots are the folders of code files verify reads for keys
 // (PRD 12.1), with the depth and size limits.
-var codeRoots = []string{"wp-content/themes", "wp-content/plugins"}
+var codeRoots = []string{"wp-content/themes", "wp-content/plugins", "wp-content/mu-plugins"}
 
 const (
 	codeDepth   = 6
 	codeMaxSize = 2 << 20
 )
 
-// codeFiles reads the theme and plugin PHP files of a local site for live
-// keys, reported with action manual. Over ssh or an alias the remote
-// allowlist has no cat for them, so they are listed as skipped.
+// codeFiles reads the theme, plugin and mu-plugin PHP files of a local
+// site for live keys, reported with action manual. Over ssh or an alias
+// the remote allowlist has no cat for them, so they are listed as
+// skipped.
 func (r *run) codeFiles(ctx context.Context, s core.Site) {
 	switch s.Endpoint().Kind {
 	case core.LocalSite:

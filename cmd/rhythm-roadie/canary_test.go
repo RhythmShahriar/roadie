@@ -501,3 +501,63 @@ func TestCanaryKeys(t *testing.T) {
 	}
 	scan.scanDir(t, dir, input)
 }
+
+// TestCanaryRowKeys seeds a live-format key and a phone number as row
+// keys: a primary key, an option_name and a meta_key, where a finding's
+// location names its row. verify must find them and no output, file or
+// saved report may hold either value (PRD 15.3: a row key is masked as
+// a value is).
+func TestCanaryRowKeys(t *testing.T) {
+	requireLanes(t, "io", "values", "site", "detect", "engine")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	key := testutil.J("sk_", "live_", "51Hq", "Zx0aTq2wN8eLm3VbYpQrSt", "Uv")
+	phone := testutil.J("+44", "7911", "123456")
+	spaced := testutil.J("+44 ", "7911 ", "654321")
+	scan := newLeakScanner(nil, key, phone, spaced, strings.TrimPrefix(phone, "+"))
+	dump := "-- MySQL dump 10.13  Distrib 8.0.36, for Linux (x86_64)\n/*!40101 SET NAMES utf8mb4 */;\n" +
+		"CREATE TABLE `api_tokens` (\n  `token` varchar(99) NOT NULL,\n  `label` text,\n  PRIMARY KEY (`token`)\n);\n" +
+		"INSERT INTO `api_tokens` VALUES (" + sqlString(key) + ",'stripe');\n" +
+		"CREATE TABLE `sms_optins` (\n  `phone` varchar(32) NOT NULL,\n  `note` text,\n  PRIMARY KEY (`phone`)\n);\n" +
+		"INSERT INTO `sms_optins` VALUES (" + sqlString(phone) + ",'call " + spaced + "');\n" +
+		"CREATE TABLE `wp_options` (\n  `option_id` bigint unsigned NOT NULL,\n  `option_name` varchar(191) NOT NULL,\n  `option_value` longtext NOT NULL,\n  `autoload` varchar(20) NOT NULL,\n  PRIMARY KEY (`option_id`)\n);\n" +
+		"INSERT INTO `wp_options` VALUES (1,'siteurl','https://canary-shop.example','yes'),(2," + sqlString(key) + "," + sqlString(key) + ",'no');\n" +
+		"CREATE TABLE `wp_usermeta` (\n  `umeta_id` bigint unsigned NOT NULL,\n  `user_id` bigint unsigned NOT NULL,\n  `meta_key` varchar(255) DEFAULT NULL,\n  `meta_value` longtext,\n  PRIMARY KEY (`umeta_id`)\n);\n" +
+		"INSERT INTO `wp_usermeta` VALUES (1,1," + sqlString("_stripe_"+key) + "," + sqlString(spaced) + "),(2,1," + sqlString("sms_"+phone) + "," + sqlString(spaced) + ");\n" +
+		"-- Dump completed on 2026-10-26 14:02:11\n"
+	input := filepath.Join(dir, "rowkeys.sql")
+	if err := os.WriteFile(input, []byte(dump), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := dep
+	t.Cleanup(func() { dep = old })
+	dep = realDeps()
+	dep.parseEndpoint = site.ParseEndpoint
+	dep.defaultConfig = roadiecfg.Default
+	testutil.NoNetwork(t)
+	masked := false
+	for i, format := range []string{"--plain", "--json", "--md", "--html", "--sarif", "--junit"} {
+		for _, verbose := range []bool{false, true} {
+			args := []string{input, "--production", "canary-shop.example", "--offline", "--no-config", "--debug", format}
+			if verbose {
+				args = append(args, "-v")
+			}
+			for _, ext := range []string{"json", "md", "html", "sarif", "xml"} {
+				args = append(args, "-o", filepath.Join(dir, "out", fmt.Sprintf("rowkeys-%d-%t.%s", i, verbose, ext)))
+			}
+			out, errOut, code := runCmd(t, "verify", args...)
+			where := fmt.Sprintf("verify %s -v=%t", format, verbose)
+			if code != 1 {
+				t.Errorf("%s: exit %d, want 1\n%s", where, code, errOut)
+			}
+			masked = masked || strings.Contains(out, "sk_l•••") || strings.Contains(out, "+44 •••")
+			scan.scan(t, where+" stdout", out)
+			scan.scan(t, where+" stderr", errOut)
+		}
+	}
+	if !masked {
+		t.Error("no output names a masked key or phone: the rows weren't found")
+	}
+	// The -o files and the signed reports verify saved.
+	scan.scanDir(t, dir, input)
+}

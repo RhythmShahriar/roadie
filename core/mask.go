@@ -153,8 +153,10 @@ func MaskValue(kind FakeKind, s string) string {
 
 // MaskRow builds Location.Row from a row's key columns: "ID=42" or
 // "option_name=woocommerce_stripe_settings", sorted by column. Callers
-// pass only primary keys or option_name/meta_key, never data. A key value
-// that still looks like an email (some tables key on it) is masked.
+// pass only primary keys or option_name/meta_key; a table may still key on
+// data: an address, a phone, a live key or a token. Each key value goes
+// through maskRowValue, so only row numbers and names a program chose
+// come out as they are (PRD 15.3).
 // table names the table the row is in; it doesn't change the result yet
 // and is there so the signature never needs to change when it does.
 func MaskRow(table string, pk map[string]string) string {
@@ -166,13 +168,102 @@ func MaskRow(table string, pk map[string]string) string {
 	slices.Sort(cols)
 	parts := make([]string, 0, len(cols))
 	for _, c := range cols {
-		v := pk[c]
-		if strings.Contains(v, "@") {
-			v = MaskEmail(v)
-		}
-		parts = append(parts, c+"="+v)
+		parts = append(parts, c+"="+maskRowValue(pk[c]))
 	}
 	return strings.Join(parts, ",")
+}
+
+// maskRowValue masks one key value of a row. A row number (at most nine
+// digits, no leading zero) and a name a program chose (rowName) stay. An
+// address, a phone with its + and an IP address are masked as values of
+// that kind are; a value that reads as a key or token is masked as
+// MaskKey masks a key. Anything else, a long or zero-led number among
+// them, becomes <key>.
+func maskRowValue(v string) string {
+	switch {
+	case v == "":
+		return v
+	case allDigits(v):
+		if len(v) <= 9 && (len(v) == 1 || v[0] != '0') {
+			return v
+		}
+		return "<key>"
+	case strings.Count(v, "@") == 1 && !strings.ContainsAny(v, " \t,="):
+		return MaskEmail(v)
+	case strings.HasPrefix(strings.TrimSpace(v), "+"):
+		return MaskPhone(v)
+	case secretLike(v):
+		if m := MaskKey(v); !strings.ContainsAny(m, ",= ") {
+			return m
+		}
+		return "<key>"
+	case isAddr(v):
+		return MaskIP(v)
+	case rowName(v):
+		return v
+	}
+	return "<key>"
+}
+
+// isAddr reports an IPv4 or IPv6 address.
+func isAddr(v string) bool {
+	_, err := netip.ParseAddr(v)
+	return err == nil
+}
+
+// rowName reports a key value a program chose: an option or meta name of
+// letters, digits, _, -, . and : with no run of seven digits or more
+// (a phone or an account number). "woocommerce_stripe_settings" and
+// "_transient_timeout_wc_count" are names.
+func rowName(v string) bool {
+	if len(v) > 191 {
+		return false
+	}
+	run := 0
+	for i := 0; i < len(v); i++ {
+		switch c := v[i]; {
+		case c >= '0' && c <= '9':
+			if run++; run >= 7 {
+				return false
+			}
+			continue
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c == '_', c == '-', c == '.', c == ':':
+		default:
+			return false
+		}
+		run = 0
+	}
+	return true
+}
+
+// keyMarkers are the starts of live keys and tokens a row key may hold
+// even when the rest is short or all letters.
+var keyMarkers = []string{"sk_live_", "rk_live_", "whsec_", "xoxb-", "xoxp-", "AKIA", "ghp_", "glpat-", "shpat_", "sq0csp-"}
+
+// secretLike reports a value that holds a key, a token or a hash: a
+// marker from keyMarkers, or a run of letters and digits that is long
+// and mixed the way generated values are. 16 or more with letters and
+// digits, 20 or more in both cases, or 32 or more of anything.
+func secretLike(v string) bool {
+	for _, m := range keyMarkers {
+		if strings.Contains(v, m) {
+			return true
+		}
+	}
+	for run := range strings.FieldsFuncSeq(v, func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9')
+	}) {
+		lower := strings.ContainsFunc(run, func(r rune) bool { return r >= 'a' && r <= 'z' })
+		upper := strings.ContainsFunc(run, func(r rune) bool { return r >= 'A' && r <= 'Z' })
+		digit := strings.ContainsFunc(run, func(r rune) bool { return r >= '0' && r <= '9' })
+		switch {
+		case len(run) >= 32,
+			len(run) >= 16 && digit && (lower || upper),
+			len(run) >= 20 && lower && upper:
+			return true
+		}
+	}
+	return false
 }
 
 // pathFormats are the prefixes codec/nested gives each format level of a

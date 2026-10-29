@@ -146,3 +146,61 @@ func earlierDefine(p *parsed, name string, at int) bool {
 	}
 	return false
 }
+
+// Included is a file wp-config.php includes, parsed.
+type Included struct {
+	// Rel is the file relative to the site.
+	Rel  string
+	File *File
+	// Via is the statement that includes it: "wp-config.php line 2".
+	Via string
+}
+
+// IncludedFiles returns every file wp-config.php includes and the files
+// those include, in the order PHP reaches them, each once. A file that
+// isn't there is left out: it defines nothing. unknown says, for each
+// include Roadie can't follow (an expression, a file outside the site,
+// one too deep, unreadable or not parsed), where it is and why, so a
+// caller that reads the files for keys can say what it didn't read.
+func (f *File) IncludedFiles(read Reader) (files []Included, unknown []string) {
+	seen := map[string]bool{"wp-config.php": true}
+	var walk func(p *parsed, file string, depth int)
+	walk = func(p *parsed, file string, depth int) {
+		for _, in := range p.includes {
+			at := file + " line " + strconv.Itoa(in.line)
+			if in.path == "" {
+				unknown = append(unknown, at+" runs "+in.expr+", a file Roadie can't follow")
+				continue
+			}
+			rel := path.Join(path.Dir(file), in.path)
+			switch {
+			case rel == ".." || strings.HasPrefix(rel, "../") || path.IsAbs(rel):
+				unknown = append(unknown, at+" includes "+in.path+", outside the site")
+				continue
+			case seen[rel]:
+				continue
+			case depth >= maxIncludeDepth:
+				unknown = append(unknown, at+" includes "+rel+", deeper than Roadie follows")
+				continue
+			}
+			seen[rel] = true
+			b, err := read(rel)
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				unknown = append(unknown, at+" includes "+rel+", which can't be read")
+				continue
+			}
+			sub, err := Parse(b)
+			if err != nil {
+				unknown = append(unknown, at+" includes "+rel+", which Roadie can't parse")
+				continue
+			}
+			files = append(files, Included{Rel: rel, File: sub, Via: at})
+			walk(sub.p, rel, depth+1)
+		}
+	}
+	walk(f.p, "wp-config.php", 0)
+	return files, unknown
+}

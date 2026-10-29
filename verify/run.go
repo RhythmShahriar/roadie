@@ -82,6 +82,9 @@ type run struct {
 	unknown map[string]bool
 	// configs are the site's config files, read before the scan.
 	configs map[string]configRead
+	// included are the files wp-config.php includes, in configs too, in
+	// the order PHP reaches them.
+	included []string
 	// unparsed counts serialized-looking values that didn't parse, by
 	// column (table, NUL, column).
 	unparsed map[string]int64
@@ -154,7 +157,7 @@ func Run(ctx context.Context, j Job) (*core.VerifyResult, error) {
 		j.Progress.Phase("verify", 0)
 	}
 	if st != nil {
-		r.configs = readConfigs(ctx, st)
+		r.configs, r.included = readConfigs(ctx, st)
 	} else if hasDataSteps(j.Steps) {
 		r.capt = newCapture()
 	}
