@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/xml"
 	"errors"
 	"io"
@@ -139,15 +140,24 @@ func TestRun(t *testing.T) {
 
 // The README's picture is the golden it says it is: regenerating it gives
 // the same file.
+//
+// The font is the one the asset embeds, not this machine's: DejaVu Sans
+// Mono differs between distributions (the CI runner's isn't the one the
+// asset was made with). The font isn't what this test is about.
 func TestAssetIsCurrent(t *testing.T) {
-	const font = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
 	asset, err := os.ReadFile("../../docs/assets/copy.svg")
 	if err != nil {
 		t.Fatal(err)
 	}
-	fontData, err := os.ReadFile(font)
+	const fontStart, fontEnd = "src: url(data:font/ttf;base64,", "); }"
+	_, rest, ok := strings.Cut(string(asset), fontStart)
+	enc, _, ok2 := strings.Cut(rest, fontEnd)
+	if !ok || !ok2 {
+		t.Fatal("docs/assets/copy.svg embeds no font: run the command in scripts/screenshot/main.go's doc")
+	}
+	fontData, err := base64.StdEncoding.DecodeString(enc)
 	if err != nil {
-		t.Skipf("needs %s: %v", font, err)
+		t.Fatalf("the font docs/assets/copy.svg embeds: %v", err)
 	}
 	screen, err := os.ReadFile("../../cmd/rhythm-roadie/testdata/golden/screen/copy-pass-color.txt")
 	if err != nil {
