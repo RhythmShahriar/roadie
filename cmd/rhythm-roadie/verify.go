@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/RhythmShahriar/rhythm/kit/cli"
@@ -261,6 +262,6 @@ func (v *view) verifyView(r *core.Result, j engine.Job, exact bool, reportPath s
 		}
 	}
 	if reportPath != "" {
-		v.next("signed report: " + reportPath)
+		v.next("signed report: " + filepath.ToSlash(reportPath))
 	}
 }

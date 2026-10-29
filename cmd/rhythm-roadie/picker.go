@@ -145,13 +145,13 @@ func pickCopy(ctx context.Context, a asker, lr *lineReader, stdout, stderr io.Wr
 			fmt.Fprintf(stderr, "%s: couldn't save the answers: %v\n", prog(), err)
 			return max(code, cli.ExitUnavailable)
 		}
-		fmt.Fprintf(stderr, "Wrote %s for %s with source:, target: and url: set.\n", configPath, stackWords[stack])
+		fmt.Fprintf(stderr, "Wrote %s for %s with source:, target: and url: set.\n", filepath.ToSlash(configPath), stackWords[stack])
 		for _, pw := range []struct {
 			left     bool
 			key, env string
 		}{{srcPw, "source", "ROADIE_FROM_PASSWORD"}, {tgtPw, "target", "ROADIE_TO_PASSWORD"}} {
 			if pw.left {
-				fmt.Fprintf(stderr, "Left the password out of %s: in %s; set %s when you run Roadie.\n", pw.key, configPath, pw.env)
+				fmt.Fprintf(stderr, "Left the password out of %s: in %s; set %s when you run Roadie.\n", pw.key, filepath.ToSlash(configPath), pw.env)
 			}
 		}
 		excludeReports(stderr, stderr)
