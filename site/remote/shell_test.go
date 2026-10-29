@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -38,6 +39,14 @@ func TestEveryTemplateRunsInARealShell(t *testing.T) {
 		})
 	}
 }
+
+// gnuFind reports whether the find the templates run (PATH /usr/bin:/bin)
+// is GNU find, the one with -printf: only GNU find knows --version.
+var gnuFind = sync.OnceValue(func() bool {
+	c := exec.Command("/bin/sh", "-c", "find --version")
+	c.Env = []string{"PATH=/usr/bin:/bin"}
+	return c.Run() == nil
+})
 
 func runTemplate(t *testing.T, sh string, tm Template) {
 	t.Helper()
@@ -89,8 +98,10 @@ func runTemplate(t *testing.T, sh string, tm Template) {
 		t.Errorf("no shell sample for %s", tm)
 		return
 	}
-	if tm == Find && filepath.Base(sh) == "busybox" {
-		// busybox find has no -printf; the shell itself is what this checks.
+	if tm == Find && (filepath.Base(sh) == "busybox" || !gnuFind()) {
+		// busybox, BSD and macOS find have no -printf: Roadie needs GNU
+		// find on the host and says so (findErr); the shell itself is what
+		// this checks.
 		return
 	}
 	cmd, err := build(tm, "wp", site, a)
