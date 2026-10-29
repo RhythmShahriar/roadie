@@ -16,3 +16,7 @@ func pidRunning(pid int) bool {
 	err := syscall.Kill(pid, 0)
 	return err == nil || errors.Is(err, syscall.EPERM)
 }
+
+// lockBusy is Windows' "held open for a moment"; on Unix a file can be
+// removed or made again while others hold it open.
+func lockBusy(error) bool { return false }

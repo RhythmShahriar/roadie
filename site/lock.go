@@ -62,7 +62,7 @@ func LockNotify(target core.Endpoint, note func(string)) (unlock func(), err err
 	token := hex.EncodeToString(rnd[:])
 	body := fmt.Sprintf("pid=%d\nstarted=%s\ntarget=%s\ntoken=%s\n", os.Getpid(), time.Now().Format(time.RFC3339), oneLine(target.Display), token)
 	for try := 0; try < 3; try++ {
-		f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- a name Roadie built in its cache
+		f, err := createExcl(p)
 		if err == nil {
 			_, werr := f.WriteString(body)
 			if cerr := f.Close(); werr == nil {
@@ -113,7 +113,7 @@ func removeStale(p string) (held bool, info lockInfo, removed bool, err error) {
 	brk := p + ".break"
 	deadline := time.Now().Add(breakWait)
 	for {
-		f, err := os.OpenFile(brk, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- a name Roadie built in its cache
+		f, err := createExcl(brk)
 		if err == nil {
 			_ = f.Close()
 			break
@@ -123,7 +123,7 @@ func removeStale(p string) (held bool, info lockInfo, removed bool, err error) {
 		}
 		// A run that died while clearing leaves the break file behind.
 		if fi, serr := os.Stat(brk); serr == nil && time.Since(fi.ModTime()) > lockFresh {
-			_ = os.Remove(brk)
+			_ = removeBusy(brk)
 			continue
 		}
 		if time.Now().After(deadline) {
@@ -131,12 +131,12 @@ func removeStale(p string) (held bool, info lockInfo, removed bool, err error) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	defer func() { _ = os.Remove(brk) }()
+	defer func() { _ = removeBusy(brk) }()
 	held, info = readLock(p)
 	if held {
 		return true, info, false, nil
 	}
-	switch err := os.Remove(p); {
+	switch err := removeBusy(p); {
 	case err == nil:
 		return false, info, true, nil
 	case errors.Is(err, fs.ErrNotExist):
@@ -144,6 +144,35 @@ func removeStale(p string) (held bool, info lockInfo, removed bool, err error) {
 	default:
 		return false, info, false, fmt.Errorf("lock: %w", err)
 	}
+}
+
+// retryBusy runs op again while it fails with an error that passes in a
+// moment on Windows (lockBusy), for at most breakWait. On Unix it runs
+// op once.
+func retryBusy(op func() error) error {
+	deadline := time.Now().Add(breakWait)
+	for {
+		err := op()
+		if err == nil || !lockBusy(err) || time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// createExcl makes p with O_EXCL, retrying while Windows still holds a
+// removed p open.
+func createExcl(p string) (f *os.File, err error) {
+	err = retryBusy(func() (err error) {
+		f, err = os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- a name Roadie built in its cache
+		return err
+	})
+	return f, err
+}
+
+// removeBusy removes p, retrying while Windows reports it held open.
+func removeBusy(p string) error {
+	return retryBusy(func() error { return os.Remove(p) })
 }
 
 // lockInfo is what a lock file says.
@@ -176,7 +205,11 @@ func lockTarget(l lockInfo, e core.Endpoint) string {
 // A file still empty a moment after it was made is held: its run may be
 // writing it right now.
 func readLock(p string) (held bool, info lockInfo) {
-	b, err := os.ReadFile(p) // #nosec G304 -- a name Roadie built in its cache
+	var b []byte
+	err := retryBusy(func() (err error) {
+		b, err = os.ReadFile(p) // #nosec G304 -- a name Roadie built in its cache
+		return err
+	})
 	if err != nil {
 		return !errors.Is(err, fs.ErrNotExist), info
 	}
@@ -204,7 +237,7 @@ func readLock(p string) (held bool, info lockInfo) {
 // releaseLock removes the lock when it is still this one.
 func releaseLock(p, token string) {
 	if _, info := readLock(p); info.token == token {
-		_ = os.Remove(p)
+		_ = removeBusy(p)
 	}
 }
 

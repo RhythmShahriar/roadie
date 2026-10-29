@@ -31,3 +31,15 @@ func pidRunning(pid int) bool {
 	}
 	return code == stillActive
 }
+
+// errorSharingViolation is ERROR_SHARING_VIOLATION, which syscall doesn't
+// name.
+const errorSharingViolation syscall.Errno = 32
+
+// lockBusy reports an error that passes in a moment. A file another
+// program holds open (another run reading the lock, an antivirus scan)
+// can't be removed. A removed file can't be made again until its last
+// handle closes, which Windows reports as access denied.
+func lockBusy(err error) bool {
+	return errors.Is(err, syscall.ERROR_ACCESS_DENIED) || errors.Is(err, errorSharingViolation)
+}
