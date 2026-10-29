@@ -154,7 +154,8 @@ func (r *run) checks() []core.Check {
 // hits counts the findings of check id that fail the run and all of them
 // at low or above. fid names them in the check's detail: id, or
 // side-effect.connector-changed when only that finding is under
-// side-effect.mail.
+// side-effect.mail, side-effect.guard-changed when only that one is under
+// side-effect.action-scheduler.
 func (r *run) hits(id string) (failing, all int64, fid string) {
 	fid = id
 	for _, f := range r.res.Findings {
@@ -168,8 +169,13 @@ func (r *run) hits(id string) (failing, all int64, fid string) {
 			all += f.Count
 		}
 	}
-	if all > 0 && id == core.FindingSideEffectMail && !slices.ContainsFunc(r.res.Findings, func(f core.Finding) bool { return f.ID == id }) {
-		fid = core.FindingSideEffectConnectorChange
+	if all > 0 && !slices.ContainsFunc(r.res.Findings, func(f core.Finding) bool { return f.ID == id }) {
+		switch id {
+		case core.FindingSideEffectMail:
+			fid = core.FindingSideEffectConnectorChange
+		case core.FindingSideEffectActionScheduler:
+			fid = core.FindingSideEffectGuardChanged
+		}
 	}
 	return failing, all, fid
 }
@@ -181,8 +187,13 @@ func checkOf(id string) string {
 	if p, ok := strings.CutPrefix(id, "key."); ok && strings.HasSuffix(p, "-live") {
 		return CheckKeyLive
 	}
-	if id == core.FindingSideEffectConnectorChange {
+	switch id {
+	case core.FindingSideEffectConnectorChange:
 		return core.FindingSideEffectMail
+	case core.FindingSideEffectGuardChanged:
+		// Roadie's own mu-plugin pauses Action Scheduler; its row fails
+		// when the file was changed.
+		return core.FindingSideEffectActionScheduler
 	}
 	return id
 }

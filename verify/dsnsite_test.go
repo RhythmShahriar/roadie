@@ -120,3 +120,24 @@ func TestConnectorChangedFailsEchoRow(t *testing.T) {
 		t.Errorf("Roadie's connector: mail row %+v (%v)", c, ids(res))
 	}
 }
+
+// Roadie's guard plugin changed by hand fails the Action Scheduler row:
+// a hook commented out still has its name in the file.
+func TestGuardChangedFailsSchedulerRow(t *testing.T) {
+	o := killswitch.Options{}
+	steps := killswitch.Steps(core.StackWordPress, o)
+	mu := strings.Replace(string(killswitch.MuPlugin(o)), "add_filter( 'action_scheduler", "// add_filter( 'action_scheduler", 1)
+	st := testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\n"), killswitch.MuPluginPath: []byte(mu)})
+	st.StackName = core.StackWordPress
+	res := runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"})), Steps: steps})
+	if c := checkByID(res, core.FindingSideEffectActionScheduler); c.Status != "fail" || !strings.Contains(c.Detail, core.FindingSideEffectGuardChanged) {
+		t.Errorf("changed guard: row %+v, findings %v", c, ids(res))
+	}
+	// Negative: the guard as Roadie writes it isn't reported as changed.
+	st = testutil.FakeSite(map[string][]byte{"wp-config.php": []byte("<?php\n"), killswitch.MuPluginPath: killswitch.MuPlugin(o)})
+	st.StackName = core.StackWordPress
+	res = runJob(t, Job{Site: st, Source: source(options([]string{"1", "blogname", "Shop"})), Steps: steps})
+	if slices.ContainsFunc(res.Findings, func(f core.Finding) bool { return f.ID == core.FindingSideEffectGuardChanged }) {
+		t.Errorf("guard as written: %v", ids(res))
+	}
+}

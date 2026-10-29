@@ -274,6 +274,7 @@ func TestCheckOf(t *testing.T) {
 		core.FindingKeyGeneric:                core.FindingKeyGeneric,
 		core.FindingPIIEmail:                  core.FindingPIIEmail,
 		core.FindingSideEffectConnectorChange: core.FindingSideEffectMail,
+		core.FindingSideEffectGuardChanged:    core.FindingSideEffectActionScheduler,
 	} {
 		if got := checkOf(id); got != want {
 			t.Errorf("checkOf(%s) = %s, want %s", id, got, want)

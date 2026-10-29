@@ -32,6 +32,7 @@ const (
 	FindingConfigSalts               = "config.salts"
 	FindingSideEffectMail            = "side-effect.mail"
 	FindingSideEffectConnectorChange = "side-effect.connector-changed"
+	FindingSideEffectGuardChanged    = "side-effect.guard-changed"
 	FindingSideEffectCron            = "side-effect.cron"
 	FindingSideEffectActionScheduler = "side-effect.action-scheduler"
 	FindingSideEffectWebhooks        = "side-effect.webhooks"
@@ -134,7 +135,7 @@ var findingIDs = []string{
 	FindingKeyLiveMode, FindingKeyGeneric, FindingKeyUnknownEnv, FindingURLProduction,
 	FindingURLProductionSiteURL, FindingConfigEnvironment, FindingConfigPointsAtProduction,
 	FindingConfigSalts, FindingSideEffectMail, FindingSideEffectConnectorChange,
-	FindingSideEffectCron, FindingSideEffectActionScheduler, FindingSideEffectWebhooks,
+	FindingSideEffectGuardChanged, FindingSideEffectCron, FindingSideEffectActionScheduler, FindingSideEffectWebhooks,
 	FindingSideEffectGateways, FindingSideEffectSubscriptions, FindingSideEffectAutomateWoo,
 	FindingSideEffectQueue, FindingSideEffectJetpack, FindingSideEffectNotApplicable,
 	FindingSearchIndexable, FindingAuthNone, FindingUploadsPersonal, FindingSoundcheckFailed,

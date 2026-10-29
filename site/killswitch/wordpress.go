@@ -190,6 +190,15 @@ func literal(f *wpconfig.File, name string) (wpconfig.Define, bool) {
 	return d, ok && d.Literal && d.BeforeSettings
 }
 
+// inForce is literal for a define that turns a side effect off: PHP must
+// also run it, so one inside an if, a block or after "or" (if (false) {
+// define( ... ); }) doesn't count. prepare writes its defines at the top
+// level.
+func inForce(f *wpconfig.File, name string) (wpconfig.Define, bool) {
+	d, ok := literal(f, name)
+	return d, ok && !d.Conditional
+}
+
 func wordpressSteps(o Options) []core.Step {
 	steps := []core.Step{
 		environmentStep(),
@@ -212,7 +221,7 @@ func environmentStep() core.Step {
 	id := core.FindingConfigEnvironment
 	plan, apply := configEdit(id,
 		func(f *wpconfig.File) []string {
-			if d, ok := literal(f, "WP_ENVIRONMENT_TYPE"); ok && d.Value == "staging" {
+			if d, ok := inForce(f, "WP_ENVIRONMENT_TYPE"); ok && d.Value == "staging" {
 				return []string{"WP_ENVIRONMENT_TYPE is already 'staging'"}
 			}
 			return []string{"define( 'WP_ENVIRONMENT_TYPE', 'staging' );"}
@@ -228,11 +237,13 @@ func environmentStep() core.Step {
 		}
 		d, ok := f.Lookup("WP_ENVIRONMENT_TYPE")
 		switch {
-		case ok && d.Literal && d.BeforeSettings && slices.Contains([]string{"staging", "local", "development"}, d.Value):
+		case ok && d.Literal && d.BeforeSettings && !d.Conditional && slices.Contains([]string{"staging", "local", "development"}, d.Value):
 			se.How = "WP_ENVIRONMENT_TYPE is '" + d.Value + "' in wp-config.php"
 			return se, nil, nil
 		case !ok:
 			se.Status, se.How = "on", "WP_ENVIRONMENT_TYPE isn't set, which WordPress reads as production"
+		case d.Conditional:
+			se.Status, se.How = "on", "WP_ENVIRONMENT_TYPE is set only inside a condition PHP may skip"
 		case !d.BeforeSettings:
 			se.Status, se.How = "on", "WP_ENVIRONMENT_TYPE is defined after wp-settings.php, too late for WordPress to read it"
 		default:
@@ -252,11 +263,14 @@ func cronStep(o Options) core.Step {
 			se.Status, se.How = "unknown", "wp-config.php can't be read"
 			return se, nil, nil
 		}
-		if d, ok := literal(f, "DISABLE_WP_CRON"); ok && (d.Value == "true" || d.Value == "1") {
+		if d, ok := inForce(f, "DISABLE_WP_CRON"); ok && (d.Value == "true" || d.Value == "1") {
 			return se, nil, nil
 		}
 		d, _ := f.Lookup("DISABLE_WP_CRON")
 		se.Status, se.How = "on", "DISABLE_WP_CRON isn't true, so WP-Cron runs production's scheduled events"
+		if d.Conditional && d.Value == "true" {
+			se.How = "DISABLE_WP_CRON is set only inside a condition PHP may skip, so WP-Cron may run production's scheduled events"
+		}
 		return se, []core.Finding{finding(id, core.SeverityHigh, se.How, "define( 'DISABLE_WP_CRON', true ); in wp-config.php", fileAt(d.Line))}, nil
 	}}
 	if o.kept("cron") {
@@ -768,10 +782,12 @@ func sortedKeys(m map[string][]byte) []string {
 	return out
 }
 
-// hasHooks reports a Roadie mu-plugin on the site holding every hook.
+// hasHooks reports a Roadie mu-plugin on the site, unchanged since Roadie
+// wrote it, holding every hook. A changed file counts as none: a hook
+// name is still in it when its add_filter is commented out or dead.
 func hasHooks(ctx context.Context, s core.Site, hooks ...string) bool {
 	b, err := s.ReadFile(ctx, MuPluginPath)
-	if err != nil || !bytes.Contains(b, []byte(MuPluginMarker)) {
+	if err != nil || !MuPluginIntact(b) {
 		return false
 	}
 	for _, h := range hooks {
@@ -815,21 +831,26 @@ func schedulerStep(o Options) core.Step {
 		if known {
 			se.How += "; " + strconv.FormatInt(pending, 10) + " pending actions kept, never run"
 		}
+		var out []core.Finding
+		if b, err := s.ReadFile(ctx, MuPluginPath); err == nil && bytes.Contains(b, []byte(MuPluginMarker)) && !MuPluginIntact(b) {
+			out = append(out, finding(core.FindingSideEffectGuardChanged, core.SeverityHigh,
+				"roadie-staging.php was changed after Roadie wrote it, so its hooks may not run", prepareFix(s), core.Location{File: MuPluginPath}))
+		}
 		if hasHooks(ctx, s, hookAsyncRunner, hookBatches, hookRunQueue) {
-			return se, nil, nil
+			return se, out, nil
 		}
 		se.Status, se.How = "on", "nothing pauses Action Scheduler"
 		if !known {
 			se.Status = "unknown"
-			return se, nil, nil
+			return se, out, nil
 		}
 		if pending == 0 {
-			return se, nil, nil
+			return se, out, nil
 		}
 		fd := finding(id, core.SeverityHigh, "Action Scheduler isn't paused and has pending actions", prepareFix(s), core.Location{Table: wpdb.Prefix(ctx, s) + "actionscheduler_actions", Column: "status"})
 		fd.Count, fd.Locations[0].Count = pending, pending
 		fd.Detail = strconv.FormatInt(pending, 10) + " pending actions"
-		return se, []core.Finding{fd}, nil
+		return se, append(out, fd), nil
 	}
 	return withData(st, schedulerData)
 }

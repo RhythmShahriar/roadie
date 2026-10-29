@@ -200,10 +200,12 @@ func indexable(how string, at core.Location) core.Finding {
 		Count: 1, Fix: fixNoindex, Locations: []core.LocationCount{{Location: at, Count: 1}}}
 }
 
-// noindexHook reports a Roadie mu-plugin on the site that adds noindex.
+// noindexHook reports a Roadie mu-plugin on the site, unchanged since
+// Roadie wrote it, that adds noindex. A changed file counts as none: its
+// wp_robots filter may be commented out or in dead code.
 func noindexHook(ctx context.Context, s core.Site) bool {
 	b, err := s.ReadFile(ctx, killswitch.MuPluginPath)
-	return err == nil && bytes.Contains(b, []byte(killswitch.MuPluginMarker)) && bytes.Contains(b, []byte("'wp_robots'"))
+	return err == nil && killswitch.MuPluginIntact(b) && bytes.Contains(b, []byte("'wp_robots'"))
 }
 
 // Blocks reports whether a robots.txt disallows the whole site for every

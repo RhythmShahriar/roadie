@@ -188,6 +188,7 @@ var effectLabels = map[string][2]string{
 	core.FindingSideEffectAutomateWoo:     {"AutomateWoo", "AutomateWoo"},
 	core.FindingSideEffectQueue:           {"Queue", "queue"},
 	core.FindingSideEffectConnectorChange: {"Echo connector", "Echo connector"},
+	core.FindingSideEffectGuardChanged:    {"Roadie guard plugin", "guard plugin"},
 	core.FindingSideEffectNotApplicable:   {"Database only", "database only"},
 	core.FindingConfigSalts:               {"Salts and APP_KEY", "salts"},
 	core.FindingSearchIndexable:           {"noindex", "noindex"},

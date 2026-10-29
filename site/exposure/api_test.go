@@ -184,6 +184,9 @@ func TestCheck(t *testing.T) {
 		{"robots allows", core.StackWordPress, map[string]string{"robots.txt": ownRobots}, "1", "on"},
 		{"robots allows googlebot", core.StackWordPress, map[string]string{"robots.txt": "User-agent: *\nDisallow: /\n\nUser-agent: Googlebot\nAllow: /\n"}, "1", "on"},
 		{"foreign mu-plugin", core.StackWordPress, map[string]string{killswitch.MuPluginPath: "<?php // 'wp_robots'"}, "1", "on"},
+		// A hand edit that puts the wp_robots filter in dead code keeps
+		// the hook's name in the file; the guard's sum no longer matches.
+		{"mu-plugin wp_robots in dead code", core.StackWordPress, map[string]string{killswitch.MuPluginPath: strings.Replace(mu, "add_filter( 'wp_robots'", "if (0) add_filter( 'wp_robots'", 1)}, "1", "on"},
 		{"laravel no robots", core.StackLaravel, nil, "", "on"},
 		{"laravel default robots", core.StackLaravel, map[string]string{"public/robots.txt": "User-agent: *\nDisallow:\n"}, "", "on"},
 

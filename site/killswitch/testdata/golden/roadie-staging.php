@@ -3,6 +3,8 @@
  * Plugin Name: Roadie staging guard
  * Description: Keeps this pseudonymised staging copy from running production's queues, renewals, mail and search indexing.
  * Roadie (rhythm-roadie 1.0.0) wrote this file. Delete it to turn the guard off.
+ * Roadie-Sum: 45c523b12ba2cf4d711dab22feb95309ee183bdde941175cd0dcc4b24c1f95bc
+ * rhythm-roadie verify reports this file as changed when its bytes no longer match the sum above.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

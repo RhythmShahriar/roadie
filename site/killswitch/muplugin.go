@@ -4,6 +4,9 @@
 package killswitch
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 )
 
@@ -14,6 +17,49 @@ const MuPluginPath = "wp-content/mu-plugins/roadie-staging.php"
 // MuPluginMarker is in the header of every mu-plugin Roadie writes; a
 // file at MuPluginPath without it is someone else's and is never replaced.
 const MuPluginMarker = "Plugin Name: Roadie staging guard"
+
+// muSumLabel starts the header line holding the mu-plugin's own sha256:
+// the sum of the file with that hex written as 64 zeros. A hand edit
+// (a hook commented out or put in dead code) no longer matches it.
+const muSumLabel = " * Roadie-Sum: "
+
+// muSumZero stands in for the sum while it is computed.
+var muSumZero = strings.Repeat("0", sha256.Size*2)
+
+// MuPluginIntact reports whether b is a Roadie mu-plugin exactly as
+// Roadie wrote it: the marker is there and the file's bytes match the sum
+// in its header. A hook name in the file says nothing on its own: a
+// commented-out add_filter or one in dead code still holds the name.
+func MuPluginIntact(b []byte) bool {
+	if !bytes.Contains(b, []byte(MuPluginMarker)) {
+		return false
+	}
+	i := bytes.Index(b, []byte(muSumLabel))
+	if i < 0 || bytes.Contains(b[i+len(muSumLabel):], []byte(muSumLabel)) {
+		return false
+	}
+	at := i + len(muSumLabel)
+	if len(b) < at+len(muSumZero) {
+		return false
+	}
+	want, err := hex.DecodeString(string(b[at : at+len(muSumZero)]))
+	if err != nil {
+		return false
+	}
+	zeroed := bytes.Clone(b)
+	copy(zeroed[at:], muSumZero)
+	got := sha256.Sum256(zeroed)
+	return bytes.Equal(got[:], want)
+}
+
+// sealMuPlugin writes the sum of src into its Roadie-Sum line.
+func sealMuPlugin(src string) []byte {
+	b := []byte(src)
+	sum := sha256.Sum256(b)
+	at := bytes.Index(b, []byte(muSumLabel)) + len(muSumLabel)
+	copy(b[at:], hex.EncodeToString(sum[:]))
+	return b
+}
 
 // Crawlers are the bots robots.txt names on their own (PRD 13.2), so a
 // bot that skips the "*" group is still told to stay out.
@@ -83,6 +129,8 @@ func muPlugin(o Options) []byte {
  * ` + MuPluginMarker + `
  * Description: Keeps this pseudonymised staging copy from running production's queues, renewals, mail and search indexing.
  * Roadie (rhythm-roadie ` + strings.NewReplacer("*/", "", "\n", " ").Replace(o.version()) + `) wrote this file. Delete it to turn the guard off.
+` + muSumLabel + muSumZero + `
+ * rhythm-roadie verify reports this file as changed when its bytes no longer match the sum above.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -165,5 +213,5 @@ add_action( 'admin_bar_menu', function ( $bar ) {
 	);
 }, 100 );
 `)
-	return []byte(b.String())
+	return sealMuPlugin(b.String())
 }

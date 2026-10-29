@@ -707,3 +707,89 @@ func TestMailEchoMode(t *testing.T) {
 		}
 	}
 }
+
+// A guard plugin changed by hand after prepare: a hook commented out or
+// put in dead code still has its name in the file, so the name alone
+// can't say the hook runs. The file's sum no longer matches, so verify
+// reports side-effect.guard-changed and reads every hook as missing.
+func TestGuardChanged(t *testing.T) {
+	ctx := context.Background()
+	o := fixtureOptions()
+	d := prodDB()
+	s := fixtureSite(prodFiles(), d)
+	applyAll(t, s, d, o)
+	b, err := s.ReadFile(ctx, MuPluginPath)
+	if err != nil || !MuPluginIntact(b) {
+		t.Fatalf("as written: intact %v, err %v", MuPluginIntact(b), err)
+	}
+	edits := map[string]func(string) string{
+		"commented out": func(v string) string {
+			return strings.Replace(v, "add_filter( '"+hookAsyncRunner+"'", "// add_filter( '"+hookAsyncRunner+"'", 1)
+		},
+		"dead code": func(v string) string {
+			return strings.Replace(v, "add_filter( '"+hookJetpack+"'", "if (0) add_filter( '"+hookJetpack+"'", 1)
+		},
+		"one byte": func(v string) string { return v + " " },
+	}
+	for name, edit := range edits {
+		t.Run(name, func(t *testing.T) {
+			changed := edit(string(b))
+			if MuPluginIntact([]byte(changed)) {
+				t.Fatal("a changed guard reads as intact")
+			}
+			_ = s.WriteFile(ctx, MuPluginPath, []byte(changed), 0o644)
+			status, ids := check(t, s, o)
+			if !slices.Contains(ids[core.FindingSideEffectActionScheduler], core.FindingSideEffectGuardChanged) {
+				t.Errorf("findings %v, want %s", ids[core.FindingSideEffectActionScheduler], core.FindingSideEffectGuardChanged)
+			}
+			if status[core.FindingSideEffectActionScheduler] != "on" || !slices.Contains(ids[core.FindingSideEffectActionScheduler], core.FindingSideEffectActionScheduler) {
+				t.Errorf("action scheduler %q %v, want on with pending actions", status[core.FindingSideEffectActionScheduler], ids[core.FindingSideEffectActionScheduler])
+			}
+		})
+	}
+	_ = s.WriteFile(ctx, MuPluginPath, b, 0o644)
+	if _, ids := check(t, s, o); len(ids[core.FindingSideEffectActionScheduler]) != 0 {
+		t.Errorf("guard as written: %v", ids[core.FindingSideEffectActionScheduler])
+	}
+}
+
+// A define inside a condition PHP may skip doesn't turn a switch off:
+// if (false) { define( 'DISABLE_WP_CRON', true ); } leaves WP-Cron on.
+func TestConditionalDefines(t *testing.T) {
+	ctx := context.Background()
+	o := fixtureOptions()
+	d := prodDB()
+	s := fixtureSite(prodFiles(), d)
+	applyAll(t, s, d, o)
+	b, err := s.ReadFile(ctx, "wp-config.php")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ id, line string }{
+		{core.FindingSideEffectCron, "define( 'DISABLE_WP_CRON', true );"},
+		{core.FindingConfigEnvironment, "define( 'WP_ENVIRONMENT_TYPE', 'staging' );"},
+	} {
+		t.Run(c.id, func(t *testing.T) {
+			if !strings.Contains(string(b), c.line) {
+				t.Fatalf("wp-config.php has no %s", c.line)
+			}
+			_ = s.WriteFile(ctx, "wp-config.php", []byte(strings.Replace(string(b), c.line, "if (false) { "+c.line+" }", 1)), 0o644)
+			status, ids := check(t, s, o)
+			if status[c.id] != "on" || !slices.Contains(ids[c.id], c.id) {
+				t.Errorf("%s: status %q findings %v, want on", c.id, status[c.id], ids[c.id])
+			}
+			// prepare then writes the define where PHP runs it.
+			for _, st := range Steps(core.StackWordPress, o) {
+				if st.ID() != c.id {
+					continue
+				}
+				if err := st.Apply(ctx, s); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if status, ids := check(t, s, o); status[c.id] != "off" || len(ids[c.id]) != 0 {
+				t.Errorf("%s after prepare: status %q findings %v, want off", c.id, status[c.id], ids[c.id])
+			}
+		})
+	}
+}
