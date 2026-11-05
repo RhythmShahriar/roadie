@@ -32,8 +32,8 @@ github.com/AzureAD/microsoft-authentication-library-for-go v1.7.0 h1:4iB+IesclUX
 github.com/AzureAD/microsoft-authentication-library-for-go v1.7.0/go.mod h1:HKpQxkWaGLJ+D/5H8QRpyQXA1eKjxkFlOMwck5+33Jk=
 github.com/MakeNowJust/heredoc v1.0.0 h1:cXCdzVdstXyiTqTvfqk9SDHpKNjxuom+DOlyEeQ4pzQ=
 github.com/MakeNowJust/heredoc v1.0.0/go.mod h1:mG5amYoWBHf8vpLOuehzbGGw0EHxpZZ6lCpQ4fNJ8LE=
-github.com/RhythmShahriar/echo v1.1.2 h1:B95jE+VhLcpc93ukaXkHgSvh64OBt8bpWATjrz6JkCk=
-github.com/RhythmShahriar/echo v1.1.2/go.mod h1:qwxE5F88U2VKHmwEyiv+clMUVD1S3MimcuTWLhIijVM=
+github.com/RhythmShahriar/echo v1.2.0 h1:HNTvWn8oeF1wnaiAwvPZ6EjeD3pGSYTDB68RGlroUsw=
+github.com/RhythmShahriar/echo v1.2.0/go.mod h1:rcXgXH0CGyM4f4aEM9WieNEzlhk54cR2loNh/z+ab5k=
 github.com/RhythmShahriar/rhythm v0.8.0 h1:8KINufTgl/UGAJ/ztqppMGOw+ZNZWXsgmTcYBxqsvPQ=
 github.com/RhythmShahriar/rhythm v0.8.0/go.mod h1:pj2ZFNeyV6I4y/HYtTMPU2+INGiw6IetuoRg55YiVBY=
 github.com/alessio/shellescape v1.4.1 h1:V7yhSDDn8LP4lc4jS8pFkt0zCnzVJlG5JXy9BVKJUX0=
